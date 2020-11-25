@@ -42,16 +42,16 @@ namespace SpaceOyster.SafeExchange
             return await TryCatch(async () =>
             {
                 var secretsList = await permissionsHelper.ListSecretsWithPermissionAsync(subjectName, PermissionType.Read);
-                return new OkObjectResult(new { status = "ok", secretNames = ConvertToListOfSecretNames(secretsList) });
+                return new OkObjectResult(new { status = "ok", secrets = ConvertToListOfObjectDescriptions(secretsList) });
             }, "Read-SecretsList", log);
         }
 
-        private static IList<string> ConvertToListOfSecretNames(IList<SubjectPermissions> permissions)
+        private static IList<OutputObjectDescription> ConvertToListOfObjectDescriptions(IList<SubjectPermissions> permissions)
         {
-            var result = new List<string>(permissions.Count);
+            var result = new List<OutputObjectDescription>(permissions.Count);
             foreach (var permission in permissions)
             {
-                result.Add(permission.SecretName);
+                result.Add(new OutputObjectDescription(permission));
             }
             return result;
         }
