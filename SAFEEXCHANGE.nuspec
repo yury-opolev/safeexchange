@@ -2,7 +2,7 @@
 <package >
   <metadata>
     <id>SpaceOyster.SafeExchange</id>
-    <version>0.0.0.3</version>
+    <version>0.0.0.4</version>
     <title>SafeExchange</title>
     <authors>Yury Opolev [space.oyster@outlook.com]</authors>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
