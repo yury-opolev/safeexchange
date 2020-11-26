@@ -6,7 +6,7 @@
     <title>SafeExchange</title>
     <authors>Yury Opolev [space.oyster@outlook.com]</authors>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <license type="expression">MIT</license>
+    <license type="expression">BSD-3-Clause</license>
     <projectUrl>https://github.com/yury-opolev/safeexchange</projectUrl>
     <description>Azure Functions API for safe storage and exchange of secret data</description>
     <releaseNotes>Summary of changes made in this release of the package.</releaseNotes>
