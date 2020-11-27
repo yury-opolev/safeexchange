@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <Version>{VERSION}</Version>
+    <FileVersion>{VERSION}</FileVersion>
+  </PropertyGroup>
+</Project>

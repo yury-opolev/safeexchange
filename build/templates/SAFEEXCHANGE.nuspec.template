@@ -2,14 +2,14 @@
 <package >
   <metadata>
     <id>SpaceOyster.SafeExchange</id>
-    <version>0.0.0.4</version>
+    <version>{VERSION}</version>
     <title>SafeExchange</title>
     <authors>Yury Opolev [space.oyster@outlook.com]</authors>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <license type="expression">BSD-3-Clause</license>
     <projectUrl>https://github.com/yury-opolev/safeexchange</projectUrl>
     <description>Azure Functions API for safe storage and exchange of secret data</description>
-    <copyright>Copyright 2020</copyright>
+    <copyright>Copyright 2020 (c) Yury Opolev</copyright>
     <tags>Azure API</tags>
   </metadata>
   <files>
