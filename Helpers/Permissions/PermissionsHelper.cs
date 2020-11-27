@@ -200,7 +200,7 @@ namespace SpaceOyster.SafeExchange
 
             var query = new TableQuery<SubjectPermissions>()
                 .Where(TableQuery.CombineFilters(rowKeyFilter, TableOperators.And, canReadFilter))
-                .Select(new string[] { "SecretName" });
+                .Select(new string[] { "SecretName", "CanRead", "CanWrite", "CanGrantAccess", "CanRevokeAccess" });
             TableContinuationToken continuationToken = null;
 
             do
