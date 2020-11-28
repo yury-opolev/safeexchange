@@ -57,6 +57,13 @@ namespace SpaceOyster.SafeExchange
             }
 
             var permissionsHelper = new PermissionsHelper(subjectPermissionsTable);
+            var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
+            if (existingPermissions.Count == 0)
+            {
+                log.LogInformation($"Cannot handle permissions for secret '{secretId}', as not exists");
+                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
+            }
+
             switch (req.Method.ToLower())
             {
                 case "post":
