@@ -8,10 +8,10 @@ namespace SpaceOyster.SafeExchange
     using Microsoft.Azure.WebJobs;
     using Microsoft.Extensions.Logging;
 
-    public static class SafeExchangePurge
+    public class SafeExchangePurge
     {
         [FunctionName("SafeExchange-Purge")]
-        public static async Task Run(
+        public async Task Run(
             [TimerTrigger("0 0 */6 * * *")] // every 6 hours
             TimerInfo timer,
             [Table("SubjectPermissions")]
@@ -23,7 +23,7 @@ namespace SpaceOyster.SafeExchange
             log.LogInformation("SafeExchange-Purge triggered.");
 
             var metadataHelper = new MetadataHelper(objectMetadataTable);
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);
 

@@ -2,7 +2,9 @@
 
 namespace SpaceOyster.SafeExchange
 {
+    using System.Net.Http.Headers;
     using System.Security.Claims;
+    using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
 
     public static class TokenHelper
@@ -58,9 +60,52 @@ namespace SpaceOyster.SafeExchange
             return principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value ?? principal.FindFirst("oid")?.Value;
         }
 
+        public static TokenResult GetTokenResult(HttpRequest request, ClaimsPrincipal principal, ILogger log)
+        {
+            var accessToken = GetAccessToken(request);
+            var accountId = GetAccountId(principal);
+
+            log.LogInformation($"GetTokenResult: AccountId [{accountId}], token {(string.IsNullOrEmpty(accessToken) ? "is empty" : "extracted")}");
+
+            return new TokenResult(accountId, accessToken);
+        }
+
         private static bool HasClaim(ClaimsPrincipal principal, string type, ILogger log)
         {
             return principal.HasClaim(claim => claim.Type.Equals(type));
+        }
+
+        private static string GetAccessToken(HttpRequest request)
+        {
+            var authHeader = AuthenticationHeaderValue.Parse(request.Headers["Authorization"]);
+            if (authHeader != null && authHeader.Scheme.ToLower() == "bearer" && !string.IsNullOrEmpty(authHeader.Parameter))
+            {
+                return authHeader.Parameter;
+            }
+
+            return null;
+        }
+
+        private static string GetAccountId(ClaimsPrincipal principal)
+        {
+            var objectId = principal?.FindFirst("oid");
+            if (objectId == null)
+            {
+                objectId = principal?.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier");
+            }
+
+            var tenantId = principal?.FindFirst("tid");
+            if (tenantId == null)
+            {
+                tenantId = principal?.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid");
+            }
+
+            if (objectId != null && tenantId != null)
+            {
+                return $"{objectId.Value}.{tenantId.Value}";
+            }
+
+            return null;
         }
     }
 }

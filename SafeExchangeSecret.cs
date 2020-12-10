@@ -16,12 +16,18 @@ namespace SpaceOyster.SafeExchange
     using System.Web.Http;
     using System.Collections.Generic;
     using Microsoft.Azure.Cosmos.Table;
-    using System.Text;
 
-    public static class SafeExchangeSecret
+    public class SafeExchangeSecret
     {
+        private readonly IGraphClientProvider graphClientProvider;
+
+        public SafeExchangeSecret(IGraphClientProvider graphClientProvider)
+        {
+            this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
+        }
+
         [FunctionName("SafeExchange-Secret")]
-        public static async Task<IActionResult> Run(
+        public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "patch", "delete", Route = "secrets/{secretId}")]
             HttpRequest req,
             [Table("SubjectPermissions")]
@@ -40,7 +46,7 @@ namespace SpaceOyster.SafeExchange
             }
 
             var metadataHelper = new MetadataHelper(objectMetadataTable);
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, this.graphClientProvider);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
 
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);
@@ -54,7 +60,7 @@ namespace SpaceOyster.SafeExchange
                     return await HandleSecretCreation(req, secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, log);
 
                 case "get":
-                    return await HandleSecretRead(secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, purgeHelper, log, replyType, context);
+                    return await HandleSecretRead(req, secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, purgeHelper, log, replyType, context);
 
                 case "patch":
                     return await HandleSecretUpdate(req, secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, log);
@@ -130,7 +136,7 @@ namespace SpaceOyster.SafeExchange
             }, "Create-Secret", log);
         }
 
-        private static async Task<IActionResult> HandleSecretRead(string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, PurgeHelper purgeHelper, ILogger log, ReplyDataType replyType, ExecutionContext context)
+        private static async Task<IActionResult> HandleSecretRead(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, PurgeHelper purgeHelper, ILogger log, ReplyDataType replyType, ExecutionContext context)
         {
             var userName = TokenHelper.GetName(principal);
             return await TryCatch(async () =>
@@ -142,7 +148,8 @@ namespace SpaceOyster.SafeExchange
                     return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
                 }
 
-                if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Read, log)))
+                var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
+                if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Read, tokenResult, log)))
                 {
                     return PermissionsHelper.InsufficientPermissionsResult(PermissionType.Read, secretId);
                 }
@@ -212,7 +219,8 @@ namespace SpaceOyster.SafeExchange
                     return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
                 }
 
-                if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Write, log)))
+                var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
+                if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Write, tokenResult, log)))
                 {
                     return PermissionsHelper.InsufficientPermissionsResult(PermissionType.Write, secretId);
                 }
@@ -239,7 +247,8 @@ namespace SpaceOyster.SafeExchange
                     return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
                 }
 
-                if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Write, log)))
+                var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
+                if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Write, tokenResult, log)))
                 {
                     return PermissionsHelper.InsufficientPermissionsResult(PermissionType.Write, secretId);
                 }

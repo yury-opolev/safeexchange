@@ -14,10 +14,10 @@ namespace SpaceOyster.SafeExchange
     using Microsoft.Azure.WebJobs.Extensions.Http;
     using Microsoft.Extensions.Logging;
 
-    public static class SafeExchangeListSecrets
+    public class SafeExchangeListSecrets
     {
         [FunctionName("SafeExchange-ListSecrets")]
-        public static async Task<IActionResult> Run(
+        public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "secrets")]
             HttpRequest req,
             [Table("SubjectPermissions")]
@@ -33,7 +33,7 @@ namespace SpaceOyster.SafeExchange
                 return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null);
             return await HandleReadSecretsList(userName, permissionsHelper, log, context);
         }
 

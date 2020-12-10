@@ -16,9 +16,14 @@ namespace SpaceOyster.SafeExchange
 
         private bool initialized = false;
 
-        public PermissionsHelper(CloudTable subjectPermissionsTable)
+        private readonly IGraphClientProvider graphClientProvider;
+
+        private readonly string[] graphScopes = new string[] { "User.Read" };
+
+        public PermissionsHelper(CloudTable subjectPermissionsTable, IGraphClientProvider graphClientProvider)
         {
             this.subjectPermissionsTable = subjectPermissionsTable ?? throw new ArgumentNullException(nameof(subjectPermissionsTable));
+            this.graphClientProvider = graphClientProvider;
         }
 
         public async Task InitializeAsync()
@@ -160,11 +165,52 @@ namespace SpaceOyster.SafeExchange
             return await this.GetAllRowsForSubjectPermissions(userName, permission);
         }
 
-        public async Task<bool> IsAuthorizedAsync(string userName, string secretName, PermissionType permission, ILogger log)
+        public async Task<bool> IsAuthorizedAsync(string userName, string secretName, PermissionType permission, TokenResult tokenResult, ILogger log)
         {
             var isAuthorized = await this.HasPermissionAsync(userName, secretName, permission);
-            log.LogInformation($"User '{userName}' {(isAuthorized ? "has" : "does not have")} {permission} permissions for '{secretName}'.");
+            log.LogInformation($"User '{userName}' {(isAuthorized ? "has" : "does not have")}  direct {permission} permissions for '{secretName}'.");
+            
+            if (!isAuthorized)
+            {
+                isAuthorized = await this.IsGroupAuthorizedAsync(tokenResult, userName, secretName, permission, log);
+            }
+
             return isAuthorized;
+        }
+
+        public async Task<bool> IsGroupAuthorizedAsync(TokenResult tokenResult, string userName, string secretName, PermissionType permission, ILogger log)
+        {
+            var groupAuthorization = Environment.GetEnvironmentVariable("FEATURES-USE-GROUP-AUTHORIZATION");
+            if (!("TRUE".Equals(groupAuthorization, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                return false;
+            }
+
+            var userGroups = await this.GetUserGroups(tokenResult, log);
+            foreach (var userGroup in userGroups)
+            {
+                if (await this.HasPermissionAsync(userGroup, secretName, permission))
+                {
+                    log.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group [{userGroup}].");
+                    return true;
+                }
+                log.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via group [{userGroup}].");
+            }
+            
+            log.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via groups.");
+            return false;
+        }
+
+        private async Task<IList<string>> GetUserGroups(TokenResult tokenResult, ILogger log)
+        {
+            if (this.graphClientProvider == null)
+            {
+                throw new ArgumentNullException(nameof(this.graphClientProvider));
+            }
+
+            var graphClient = this.graphClientProvider.GetGraphClient(tokenResult, this.graphScopes, log);
+            var userGroups = await GroupsHelper.TryGetCurrentUserGroupsAsync(graphClient, log);
+            return userGroups;
         }
 
         public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId)

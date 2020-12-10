@@ -15,10 +15,17 @@ namespace SpaceOyster.SafeExchange
     using System;
     using System.Collections.Generic;
 
-    public static class SafeExchangeReadAccess
+    public class SafeExchangeReadAccess
     {
+        private readonly IGraphClientProvider graphClientProvider;
+
+        public SafeExchangeReadAccess(IGraphClientProvider graphClientProvider)
+        {
+            this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
+        }
+
         [FunctionName("SafeExchange-Access")]
-        public static async Task<IActionResult> Run(
+        public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", Route = "access/{secretId}")]
             HttpRequest req,
             [Table("SubjectPermissions")]
@@ -56,7 +63,7 @@ namespace SpaceOyster.SafeExchange
                 }
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, this.graphClientProvider);
             var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
             if (existingPermissions.Count == 0)
             {
@@ -64,11 +71,12 @@ namespace SpaceOyster.SafeExchange
                 return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
             }
 
+            var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
             switch (req.Method.ToLower())
             {
                 case "post":
                 {
-                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.GrantAccess, log)))
+                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.GrantAccess, tokenResult, log)))
                     {
                         return PermissionsHelper.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId);
                     }
@@ -77,7 +85,7 @@ namespace SpaceOyster.SafeExchange
 
                 case "get":
                 {
-                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Read, log)))
+                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Read, tokenResult, log)))
                     {
                         return PermissionsHelper.InsufficientPermissionsResult(PermissionType.Read, secretId);
                     }
@@ -86,7 +94,7 @@ namespace SpaceOyster.SafeExchange
 
                 case "delete":
                 {
-                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.RevokeAccess, log)))
+                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.RevokeAccess, tokenResult, log)))
                     {
                         return PermissionsHelper.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId);
                     }
