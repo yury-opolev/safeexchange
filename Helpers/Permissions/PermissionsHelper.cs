@@ -14,15 +14,18 @@ namespace SpaceOyster.SafeExchange
     {
         private CloudTable subjectPermissionsTable;
 
+        private CloudTable groupDictionaryTable;
+
         private bool initialized = false;
 
         private readonly IGraphClientProvider graphClientProvider;
 
         private readonly string[] graphScopes = new string[] { "User.Read" };
 
-        public PermissionsHelper(CloudTable subjectPermissionsTable, IGraphClientProvider graphClientProvider)
+        public PermissionsHelper(CloudTable subjectPermissionsTable, CloudTable groupDictionaryTable, IGraphClientProvider graphClientProvider)
         {
             this.subjectPermissionsTable = subjectPermissionsTable ?? throw new ArgumentNullException(nameof(subjectPermissionsTable));
+            this.groupDictionaryTable = groupDictionaryTable;
             this.graphClientProvider = graphClientProvider;
         }
 
@@ -34,6 +37,10 @@ namespace SpaceOyster.SafeExchange
             }
 
             await this.subjectPermissionsTable.CreateIfNotExistsAsync();
+            if (this.groupDictionaryTable != null)
+            {
+                await this.groupDictionaryTable.CreateIfNotExistsAsync();
+            }
             this.initialized = true;
         }
 
@@ -168,7 +175,7 @@ namespace SpaceOyster.SafeExchange
         public async Task<bool> IsAuthorizedAsync(string userName, string secretName, PermissionType permission, TokenResult tokenResult, ILogger log)
         {
             var isAuthorized = await this.HasPermissionAsync(userName, secretName, permission);
-            log.LogInformation($"User '{userName}' {(isAuthorized ? "has" : "does not have")}  direct {permission} permissions for '{secretName}'.");
+            log.LogInformation($"User '{userName}' {(isAuthorized ? "has" : "does not have")} direct {permission} permissions for '{secretName}'.");
             
             if (!isAuthorized)
             {
@@ -186,18 +193,23 @@ namespace SpaceOyster.SafeExchange
                 return false;
             }
 
-            var userGroups = await this.GetUserGroups(tokenResult, log);
-            foreach (var userGroup in userGroups)
+            var userGroupIds = await this.GetUserGroups(tokenResult, log);
+            foreach (var userGroupId in userGroupIds)
             {
-                if (await this.HasPermissionAsync(userGroup, secretName, permission))
+                var userGroupName = await this.GetUserGroupNameAsync(userGroupId, log);
+                if (string.IsNullOrEmpty(userGroupName))
                 {
-                    log.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group [{userGroup}].");
+                    continue;
+                }
+
+                if (await this.HasPermissionAsync(userGroupName, secretName, permission))
+                {
+                    log.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {userGroupName} ({userGroupId}).");
                     return true;
                 }
-                log.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via group [{userGroup}].");
             }
             
-            log.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via groups.");
+            log.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via groups ({userGroupIds.Count} groups total).");
             return false;
         }
 
@@ -209,8 +221,23 @@ namespace SpaceOyster.SafeExchange
             }
 
             var graphClient = this.graphClientProvider.GetGraphClient(tokenResult, this.graphScopes, log);
-            var userGroups = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
-            return userGroups;
+            var userMembershipIds = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
+            return userMembershipIds;
+        }
+
+        private async Task<string> GetUserGroupNameAsync(string groupId, ILogger log)
+        {
+            var existingRow = await this.groupDictionaryTable
+                .ExecuteAsync(TableOperation.Retrieve<GroupDictionaryItem>(
+                    PermissionsHelper.GetPartitionKey(groupId),
+                    string.Empty));
+
+            if (!(existingRow.Result is GroupDictionaryItem groupItem))
+            {
+                return string.Empty;
+            }
+
+            return groupItem.GroupMail;
         }
 
         public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId)

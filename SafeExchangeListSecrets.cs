@@ -33,7 +33,7 @@ namespace SpaceOyster.SafeExchange
                 return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null, null);
             return await HandleReadSecretsList(userName, permissionsHelper, log, context);
         }
 

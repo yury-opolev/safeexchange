@@ -23,7 +23,7 @@ namespace SpaceOyster.SafeExchange
             log.LogInformation("SafeExchange-Purge triggered.");
 
             var metadataHelper = new MetadataHelper(objectMetadataTable);
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null, null);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);
 

@@ -34,6 +34,8 @@ namespace SpaceOyster.SafeExchange
             CloudTable subjectPermissionsTable,
             [Table("ObjectMetadata")]
             CloudTable objectMetadataTable,
+            [Table("GroupDictionary")]
+            CloudTable groupDictionaryTable,
             string secretId, ClaimsPrincipal principal, ILogger log, ExecutionContext context)
         {
             var userName = TokenHelper.GetName(principal);
@@ -46,7 +48,7 @@ namespace SpaceOyster.SafeExchange
             }
 
             var metadataHelper = new MetadataHelper(objectMetadataTable);
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, this.graphClientProvider);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, groupDictionaryTable, this.graphClientProvider);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
 
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);

@@ -30,6 +30,8 @@ namespace SpaceOyster.SafeExchange
             HttpRequest req,
             [Table("SubjectPermissions")]
             CloudTable subjectPermissionsTable,
+            [Table("GroupDictionary")]
+            CloudTable groupDictionaryTable,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
             var userName = TokenHelper.GetName(principal);
@@ -63,7 +65,7 @@ namespace SpaceOyster.SafeExchange
                 }
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, this.graphClientProvider);
+            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, groupDictionaryTable, this.graphClientProvider);
             var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
             if (existingPermissions.Count == 0)
             {
