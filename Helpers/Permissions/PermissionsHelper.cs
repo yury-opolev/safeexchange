@@ -209,7 +209,7 @@ namespace SpaceOyster.SafeExchange
             }
 
             var graphClient = this.graphClientProvider.GetGraphClient(tokenResult, this.graphScopes, log);
-            var userGroups = await GroupsHelper.TryGetCurrentUserGroupsAsync(graphClient, log);
+            var userGroups = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
             return userGroups;
         }
 

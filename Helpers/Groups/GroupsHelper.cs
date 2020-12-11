@@ -10,22 +10,28 @@ namespace SpaceOyster.SafeExchange
 
     public static class GroupsHelper
     {
-        public static async Task<IList<string>> TryGetCurrentUserGroupsAsync(GraphServiceClient graphClient, ILogger log)
+        public static async Task<IList<string>> TryGetMemberOfAsync(GraphServiceClient graphClient, ILogger log)
         {
             var totalGroups = new List<string>();
 
             try
             {
-                var groups = await graphClient.Me.MemberOf.Request().GetAsync();
-                while (groups.Count > 0)
+                var memberOf = await graphClient.Me.MemberOf
+                    .Request()
+                    .Select("id,mail,mailNickname")
+                    .GetAsync();
+                while (memberOf.Count > 0)
                 {
-                    foreach (Group g in groups)
+                    foreach (Group group in memberOf)
                     {
-                        totalGroups.Add(g.DisplayName);
+                        if (!string.IsNullOrEmpty(group.Mail))
+                        {
+                            totalGroups.Add(group.Mail);
+                        }
                     }
-                    if (groups.NextPageRequest != null)
+                    if (memberOf.NextPageRequest != null)
                     {
-                        groups = await groups.NextPageRequest.GetAsync();
+                        memberOf = await memberOf.NextPageRequest.GetAsync();
                     }
                     else
                     {
@@ -36,6 +42,41 @@ namespace SpaceOyster.SafeExchange
             catch (Exception exception)
             {
                 log.LogWarning($"Cannot retrieve user groups, {exception.GetType()}: {exception.Message}");
+            }
+
+            return totalGroups;
+        }
+
+        public static async Task<IList<string>> TryGetMemberObjectIdsAsync(GraphServiceClient graphClient, ILogger log)
+        {
+            var totalGroups = new List<string>();
+
+            try
+            {
+                var securityEnabledOnly = false;
+                var groupIds = await graphClient.Me
+                    .GetMemberObjects(securityEnabledOnly)
+                    .Request()
+                    .PostAsync();
+                while (groupIds.Count > 0)
+                {
+                    foreach (string groupId in groupIds)
+                    {
+                        totalGroups.Add(groupId);
+                    }
+                    if (groupIds.NextPageRequest != null)
+                    {
+                        groupIds = await groupIds.NextPageRequest.PostAsync();
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                log.LogWarning($"Cannot retrieve user group Ids, {exception.GetType()}: {exception.Message}");
             }
 
             return totalGroups;
