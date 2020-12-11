@@ -51,8 +51,8 @@ namespace SpaceOyster.SafeExchange
 
             this.msalClient = ConfidentialClientApplicationBuilder
                 .Create(aadClientId)
-                .WithAuthority(AadAuthorityAudience.AzureAdAndPersonalMicrosoftAccount, true)
-                //.WithTenantId(tenantId)
+                .WithAuthority(AadAuthorityAudience.AzureAdMyOrg, true)
+                .WithTenantId(tenantId)
                 .WithClientSecret(aadClientSecret)
                 .Build();
         }
