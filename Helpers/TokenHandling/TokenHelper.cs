@@ -77,7 +77,12 @@ namespace SpaceOyster.SafeExchange
 
         private static string GetAccessToken(HttpRequest request)
         {
-            var authHeader = AuthenticationHeaderValue.Parse(request.Headers["Authorization"]);
+            if (!request.Headers.ContainsKey("Authorization") || 
+                !AuthenticationHeaderValue.TryParse(request.Headers["Authorization"], out var authHeader))
+            {
+                return null;
+            }
+
             if (authHeader != null && authHeader.Scheme.ToLower() == "bearer" && !string.IsNullOrEmpty(authHeader.Parameter))
             {
                 return authHeader.Parameter;
