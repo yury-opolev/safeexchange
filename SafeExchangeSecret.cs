@@ -165,6 +165,18 @@ namespace SpaceOyster.SafeExchange
                     await purgeHelper.DestroyAsync(secretId);
                 }
 
+                var resultData = new
+                {
+                    secret = secretBundle.Value,
+                    contentType = secretBundle.ContentType,
+                    destroySettings = new
+                    {
+                        destroyAfterRead = metadata.DestroyAfterRead,
+                        scheduleDestroy = metadata.ScheduleDestroy,
+                        destroyAt = metadata.DestroyAt
+                    }
+                };
+
                 switch (replyType)
                 {
                     case ReplyDataType.Html:
@@ -172,12 +184,12 @@ namespace SpaceOyster.SafeExchange
                         var templatePath = Path.Combine(context.FunctionAppDirectory, "Templates", "GetSecret.template.html");
                         var data = File.ReadAllText(templatePath);
                         data = data.Replace("{SECRETNAME}", secretId);
-                        data = data.Replace("{DATAOBJECT}", JsonConvert.SerializeObject(new { secret = secretBundle.Value, contentType = secretBundle.ContentType }));
+                        data = data.Replace("{DATAOBJECT}", JsonConvert.SerializeObject(resultData));
                         return new ContentResult() { Content = data, ContentType = "text/html" };
                     }
 
                     default:
-                        return new OkObjectResult(new { status = "ok", result = new { secret = secretBundle.Value, contentType = secretBundle.ContentType } });
+                        return new OkObjectResult(new { status = "ok", result = resultData });
                 }
             }, "Get-Secret", log);
         }
