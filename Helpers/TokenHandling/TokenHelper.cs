@@ -9,30 +9,25 @@ namespace SpaceOyster.SafeExchange
 
     public static class TokenHelper
     {
-        public static TokenType GetTokenType(ClaimsPrincipal principal, ILogger log)
+        public static TokenType GetTokenType(ClaimsPrincipal principal)
         {
             var userName = GetName(principal);
-            if (HasClaim(principal, "appid", log) && HasClaim(principal, "appidacr", log))
+            if (HasClaim(principal, "appid") && HasClaim(principal, "appidacr"))
             {
-                log.LogInformation($"Principal {userName} is authenticated with access token");
                 return TokenType.AccessToken;
             }
 
-            log.LogInformation($"Principal {userName} is authenticated with id token");
             return TokenType.IdToken;
         }
 
-        public static bool IsUserAccessToken(ClaimsPrincipal principal, ILogger log)
+        public static bool IsUserToken(ClaimsPrincipal principal, ILogger log)
         {
-            var tokenType = GetTokenType(principal, log);
-            if (tokenType != TokenType.AccessToken)
-            {
-                return false;
-            }
-
+            var tokenType = GetTokenType(principal);
             var userName = GetName(principal);
-            var result = HasClaim(principal, "http://schemas.microsoft.com/identity/claims/scope", log) || HasClaim(principal, "scope", log);
-            log.LogInformation($"Principal {userName} is authenticated as user");
+            var result = (tokenType == TokenType.IdToken) || 
+                (HasClaim(principal, "http://schemas.microsoft.com/identity/claims/scope") || HasClaim(principal, "scope"));
+
+            log.LogInformation($"Principal {userName} is authenticated as a {(result ? "user" : "app")} with {tokenType}");
             return result;
         }
 
@@ -70,7 +65,7 @@ namespace SpaceOyster.SafeExchange
             return new TokenResult(accountId, accessToken);
         }
 
-        private static bool HasClaim(ClaimsPrincipal principal, string type, ILogger log)
+        private static bool HasClaim(ClaimsPrincipal principal, string type)
         {
             return principal.HasClaim(claim => claim.Type.Equals(type));
         }

@@ -27,7 +27,7 @@ namespace SpaceOyster.SafeExchange
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-ListSecrets triggered by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
 
-            if (TokenHelper.GetTokenType(principal, log) == TokenType.AccessToken && !TokenHelper.IsUserAccessToken(principal, log))
+            if (!TokenHelper.IsUserToken(principal, log))
             {
                 log.LogInformation($"{userName} is not authenticated with user access/id token.");
                 return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
