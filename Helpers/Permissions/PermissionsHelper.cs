@@ -91,20 +91,7 @@ namespace SpaceOyster.SafeExchange
 
             if (result.Result is SubjectPermissions subjectPermissions)
             {
-                switch (permission)
-                {
-                    case PermissionType.Read:
-                        return subjectPermissions.CanRead;
-
-                    case PermissionType.Write:
-                        return subjectPermissions.CanWrite;
-
-                    case PermissionType.GrantAccess:
-                        return subjectPermissions.CanGrantAccess;
-
-                    case PermissionType.RevokeAccess:
-                        return subjectPermissions.CanRevokeAccess;
-                }
+                return IsPresentPermission(subjectPermissions, permission);
             }
             return false;
         }
@@ -194,17 +181,18 @@ namespace SpaceOyster.SafeExchange
             }
 
             var userGroupIds = await this.GetUserGroups(tokenResult, log);
-            foreach (var userGroupId in userGroupIds)
+            var existingPermissions = await this.GetAllPermissionsAsync(secretName);
+            foreach (var existingPermission in existingPermissions)
             {
-                var userGroupName = await this.GetUserGroupNameAsync(userGroupId, log);
-                if (string.IsNullOrEmpty(userGroupName))
+                var groupId = await this.GetUserGroupIdAsync(existingPermission.SubjectName, log);
+                if (string.IsNullOrEmpty(groupId))
                 {
                     continue;
                 }
 
-                if (await this.HasPermissionAsync(userGroupName, secretName, permission))
+                if (userGroupIds.Contains(groupId) && IsPresentPermission(existingPermission, permission))
                 {
-                    log.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {userGroupName} ({userGroupId}).");
+                    log.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {existingPermission.SubjectName} ({groupId}).");
                     return true;
                 }
             }
@@ -225,11 +213,11 @@ namespace SpaceOyster.SafeExchange
             return userMembershipIds;
         }
 
-        private async Task<string> GetUserGroupNameAsync(string groupId, ILogger log)
+        private async Task<string> GetUserGroupIdAsync(string groupName, ILogger log)
         {
             var existingRow = await this.groupDictionaryTable
                 .ExecuteAsync(TableOperation.Retrieve<GroupDictionaryItem>(
-                    PermissionsHelper.GetPartitionKey(groupId),
+                    PermissionsHelper.GetPartitionKey(groupName),
                     string.Empty));
 
             if (!(existingRow.Result is GroupDictionaryItem groupItem))
@@ -237,7 +225,7 @@ namespace SpaceOyster.SafeExchange
                 return string.Empty;
             }
 
-            return groupItem.GroupMail;
+            return groupItem.GroupId;
         }
 
         public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId)
@@ -287,14 +275,35 @@ namespace SpaceOyster.SafeExchange
             return result;
         }
 
-        private static string GetPartitionKey(string secretName)
+        private bool IsPresentPermission(SubjectPermissions subjectPermissions, PermissionType permission)
         {
-            return Base64Helper.StringToBase64(secretName);
+            switch (permission)
+            {
+                case PermissionType.Read:
+                    return subjectPermissions.CanRead;
+
+                case PermissionType.Write:
+                    return subjectPermissions.CanWrite;
+
+                case PermissionType.GrantAccess:
+                    return subjectPermissions.CanGrantAccess;
+
+                case PermissionType.RevokeAccess:
+                    return subjectPermissions.CanRevokeAccess;
+
+                default:
+                    return false;
+            }
         }
 
-        private static string GetRowKey(string userName)
+        private static string GetPartitionKey(string keyName)
         {
-            return Base64Helper.StringToBase64(userName);
+            return Base64Helper.StringToBase64(keyName);
+        }
+
+        private static string GetRowKey(string keyName)
+        {
+            return Base64Helper.StringToBase64(keyName);
         }
     }
 }
