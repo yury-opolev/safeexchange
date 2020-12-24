@@ -1,5 +1,5 @@
 # safeexchange
-  This repo is holdinf sources for SafeExchange API for safe storage and exchange of secret data.
+  This repo is holding sources for SafeExchange backend service, used for safe storage and exchange of secrets.
 
   SafeExchange backend consists of Azure Key Vault, Azure AD Application, and Azure Function App.
 
