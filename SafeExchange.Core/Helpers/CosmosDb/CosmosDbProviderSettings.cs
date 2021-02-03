@@ -2,7 +2,7 @@
 /// SafeExchange
 /// </summary>
 
-namespace SafeExchange.Core.Helpers.CosmosDb
+namespace SpaceOyster.SafeExchange.Core.CosmosDb
 {
     using System;
 

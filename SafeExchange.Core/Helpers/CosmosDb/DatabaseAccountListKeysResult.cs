@@ -2,11 +2,9 @@
 /// SafeExchange
 /// </summary>
 
-namespace SafeExchange.Core.Helpers.CosmosDb
+namespace SpaceOyster.SafeExchange.Core.CosmosDb
 {
     using System;
-    using System.Collections.Generic;
-    using System.Text;
 
     public class DatabaseAccountListKeysResult
     {

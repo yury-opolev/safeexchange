@@ -2,7 +2,7 @@
 /// SafeExchange
 /// </summary>
 
-namespace SafeExchange.Core.Helpers.CosmosDb
+namespace SpaceOyster.SafeExchange.Core.CosmosDb
 {
     using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Services.AppAuthentication;
@@ -13,7 +13,7 @@ namespace SafeExchange.Core.Helpers.CosmosDb
     using System.Text.Json;
     using System.Threading.Tasks;
 
-    public class CosmosDbProvider
+    public class CosmosDbProvider : ICosmosDbProvider
     {
         private bool initialized;
 
