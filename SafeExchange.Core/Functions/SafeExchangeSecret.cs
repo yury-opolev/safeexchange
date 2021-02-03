@@ -13,14 +13,13 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Web.Http;
     using System.Collections.Generic;
-    using Microsoft.Azure.Cosmos.Table;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
 
     public class SafeExchangeSecret
     {
         private readonly IGraphClientProvider graphClientProvider;
 
-        private ICosmosDbProvider cosmosDbProvider;
+        private readonly ICosmosDbProvider cosmosDbProvider;
 
         public SafeExchangeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
         {

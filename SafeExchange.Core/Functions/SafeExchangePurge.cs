@@ -4,19 +4,26 @@ namespace SpaceOyster.SafeExchange.Core
 {
     using System;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Cosmos.Table;
     using Microsoft.Extensions.Logging;
+    using SpaceOyster.SafeExchange.Core.CosmosDb;
 
     public class SafeExchangePurge
     {
-        public async Task Run(
-            CloudTable subjectPermissionsTable,
-            CloudTable objectMetadataTable,
-            ILogger log)
+        private readonly ICosmosDbProvider cosmosDbProvider;
+
+        public SafeExchangePurge(ICosmosDbProvider cosmosDbProvider)
         {
+            this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
+        }
+
+        public async Task Run(ILogger log)
+        {
+            var subjectPermissions = await this.cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var objectMetadata = await this.cosmosDbProvider.GetObjectMetadataContainerAsync();
+
             log.LogInformation("SafeExchange-Purge triggered.");
 
-            var metadataHelper = new MetadataHelper(objectMetadataTable);
+            var metadataHelper = new MetadataHelper(objectMetadata);
             var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null, null);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);
