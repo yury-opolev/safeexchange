@@ -9,39 +9,23 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.Cosmos.Table;
+    using Microsoft.Azure.Cosmos;
 
     public class PermissionsHelper
     {
-        private CloudTable subjectPermissionsTable;
+        private readonly Container subjectPermissions;
 
-        private CloudTable groupDictionaryTable;
-
-        private bool initialized = false;
+        private readonly Container groupDictionary;
 
         private readonly IGraphClientProvider graphClientProvider;
 
         private readonly string[] graphScopes = new string[] { "User.Read" };
 
-        public PermissionsHelper(CloudTable subjectPermissionsTable, CloudTable groupDictionaryTable, IGraphClientProvider graphClientProvider)
+        public PermissionsHelper(Container subjectPermissions, Container groupDictionary, IGraphClientProvider graphClientProvider)
         {
-            this.subjectPermissionsTable = subjectPermissionsTable ?? throw new ArgumentNullException(nameof(subjectPermissionsTable));
-            this.groupDictionaryTable = groupDictionaryTable;
-            this.graphClientProvider = graphClientProvider;
-        }
-
-        public async Task InitializeAsync()
-        {
-            if (this.initialized)
-            {
-                return;
-            }
-
-            await this.subjectPermissionsTable.CreateIfNotExistsAsync();
-            if (this.groupDictionaryTable != null)
-            {
-                await this.groupDictionaryTable.CreateIfNotExistsAsync();
-            }
-            this.initialized = true;
+            this.subjectPermissions = subjectPermissions ?? throw new ArgumentNullException(nameof(subjectPermissions));
+            this.groupDictionary = groupDictionary; // null allowed
+            this.graphClientProvider = graphClientProvider; // null allowed
         }
 
         public async Task SetPermissionAsync(string userName, string secretName, PermissionType permission)
@@ -51,12 +35,8 @@ namespace SpaceOyster.SafeExchange.Core
             var canGrantAccess = permission == PermissionType.GrantAccess;
             var canRevokeAccess = permission == PermissionType.RevokeAccess;
 
-            await this.InitializeAsync();
-            var existingRow = await this.subjectPermissionsTable
-                .ExecuteAsync(TableOperation.Retrieve<SubjectPermissions>(
-                    PermissionsHelper.GetPartitionKey(secretName),
-                    PermissionsHelper.GetRowKey(userName)));
-            if (existingRow.Result is SubjectPermissions subjectPermissions)
+            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretName, userName);
+            if (subjectPermissions != default(SubjectPermissions))
             {
                 canRead = canRead || subjectPermissions.CanRead;
                 canWrite = canWrite || subjectPermissions.CanWrite;
@@ -66,8 +46,8 @@ namespace SpaceOyster.SafeExchange.Core
 
             var subjectPermission = new SubjectPermissions()
             {
+                Id = PermissionsHelper.GetId(secretName, userName),
                 PartitionKey = PermissionsHelper.GetPartitionKey(secretName),
-                RowKey = PermissionsHelper.GetRowKey(userName),
 
                 SecretName = secretName,
                 SubjectName = userName,
@@ -78,33 +58,24 @@ namespace SpaceOyster.SafeExchange.Core
                 CanRevokeAccess = canRevokeAccess
             };
 
-            await this.subjectPermissionsTable.ExecuteAsync(TableOperation.InsertOrMerge(subjectPermission));
+            await this.subjectPermissions.UpsertItemAsync(subjectPermission);
         }
 
         public async Task<bool> HasPermissionAsync(string userName, string secretName, PermissionType permission)
         {
-            await this.InitializeAsync();
-            var result = await this.subjectPermissionsTable
-                .ExecuteAsync(TableOperation.Retrieve<SubjectPermissions>(
-                    PermissionsHelper.GetPartitionKey(secretName),
-                    PermissionsHelper.GetRowKey(userName)));
-
-            if (result.Result is SubjectPermissions subjectPermissions)
+            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretName, userName);
+            if (subjectPermissions == default(SubjectPermissions))
             {
-                return IsPresentPermission(subjectPermissions, permission);
+                return false;
             }
-            return false;
+
+            return IsPresentPermission(subjectPermissions, permission);
         }
 
         public async Task DeletePermissionAsync(string userName, string secretName, PermissionType permission)
         {
-            await this.InitializeAsync();
-            var existingRow = await this.subjectPermissionsTable
-                .ExecuteAsync(TableOperation.Retrieve<SubjectPermissions>(
-                    PermissionsHelper.GetPartitionKey(secretName),
-                    PermissionsHelper.GetRowKey(userName)));
-
-            if (!(existingRow.Result is SubjectPermissions subjectPermission))
+            var subjectPermission = await this.GetSubjectPermissionsAsync(secretName, userName);
+            if (subjectPermission == default(SubjectPermissions))
             {
                 return;
             }
@@ -130,11 +101,11 @@ namespace SpaceOyster.SafeExchange.Core
 
             if (!subjectPermission.CanRead && !subjectPermission.CanWrite && !subjectPermission.CanGrantAccess && !subjectPermission.CanRevokeAccess)
             {
-                await this.subjectPermissionsTable.ExecuteAsync(TableOperation.Delete(subjectPermission));
+                await this.subjectPermissions.DeleteItemAsync<SubjectPermissions>(PermissionsHelper.GetId(secretName, userName), new PartitionKey(PermissionsHelper.GetPartitionKey(secretName)));
             }
             else
             {
-                await this.subjectPermissionsTable.ExecuteAsync(TableOperation.InsertOrMerge(subjectPermission));
+                await this.subjectPermissions.UpsertItemAsync(subjectPermission);
             }
         }
 
@@ -143,19 +114,17 @@ namespace SpaceOyster.SafeExchange.Core
             var rows  = await this.GetAllPermissionsAsync(secretName);
             foreach (var row in rows)
             {
-                await this.subjectPermissionsTable.ExecuteAsync(TableOperation.Delete(row));
+                await this.subjectPermissions.DeleteItemAsync<SubjectPermissions>(row.Id, new PartitionKey(row.PartitionKey));
             }
         }
 
         public async Task<IList<SubjectPermissions>> GetAllPermissionsAsync(string secretName)
         {
-            await this.InitializeAsync();
             return await this.GetAllRows(secretName);
         }
 
         public async Task<IList<SubjectPermissions>> ListSecretsWithPermissionAsync(string userName, PermissionType permission)
         {
-            await this.InitializeAsync();
             return await this.GetAllRowsForSubjectPermissions(userName, permission);
         }
 
@@ -296,14 +265,26 @@ namespace SpaceOyster.SafeExchange.Core
             }
         }
 
-        private static string GetPartitionKey(string keyName)
+        public async Task<SubjectPermissions> GetSubjectPermissionsAsync(string secretName, string userName)
         {
-            return Base64Helper.StringToBase64(keyName);
+            var partitionKey = new PartitionKey(PermissionsHelper.GetPartitionKey(secretName));
+            var itemResponse = await this.subjectPermissions.ReadItemAsync<SubjectPermissions>(PermissionsHelper.GetId(secretName, userName), partitionKey);
+            return itemResponse.Resource;
         }
 
-        private static string GetRowKey(string keyName)
+        private static string GetId(string secretName, string userName)
         {
-            return Base64Helper.StringToBase64(keyName);
+            return $"{secretName}:{userName}";
+        }
+
+        private static string GetPartitionKey(string secretName)
+        {
+            if (string.IsNullOrEmpty(secretName))
+            {
+                return "-";
+            }
+
+            return secretName.ToUpper().Substring(0, 1);
         }
     }
 }

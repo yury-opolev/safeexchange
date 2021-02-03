@@ -45,7 +45,9 @@ namespace SpaceOyster.SafeExchange.Core
             var objectMetadata = new ObjectMetadata()
             {
                 Id = secretName,
-                PartitionKey = secretName,
+                PartitionKey = MetadataHelper.GetPartitionKey(secretName),
+
+                ObjectName = secretName,
 
                 CreatedAt = createdAt,
                 CreatedBy = createdBy,
@@ -63,7 +65,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<ObjectMetadata> GetSecretMetadataAsync(string secretName)
         {
-            var partitionKey = new PartitionKey(secretName);
+            var partitionKey = new PartitionKey(MetadataHelper.GetPartitionKey(secretName));
             var itemResponse = await this.objectMetadata.ReadItemAsync<ObjectMetadata>(secretName, partitionKey);
             return itemResponse.Resource;
         }
@@ -76,7 +78,7 @@ namespace SpaceOyster.SafeExchange.Core
                 return;
             }
 
-            await this.objectMetadata.DeleteItemAsync<ObjectMetadata>(secretName, new PartitionKey(secretName));
+            await this.objectMetadata.DeleteItemAsync<ObjectMetadata>(secretName, new PartitionKey(MetadataHelper.GetPartitionKey(secretName)));
         }
 
         public async Task<IList<string>> GetSecretsToPurgeAsync()
@@ -98,6 +100,16 @@ namespace SpaceOyster.SafeExchange.Core
             }
 
             return result;
+        }
+
+        private static string GetPartitionKey(string secretName)
+        {
+            if (string.IsNullOrEmpty(secretName))
+            {
+                return "-";
+            }
+
+            return secretName.ToUpper().Substring(0, 1);
         }
     }
 }
