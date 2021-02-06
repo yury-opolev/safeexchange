@@ -9,16 +9,24 @@ namespace SpaceOyster.SafeExchange.Core
     using System.Web.Http;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.Cosmos.Table;
     using Microsoft.Extensions.Logging;
+    using SpaceOyster.SafeExchange.Core.CosmosDb;
 
     public class SafeExchangeListSecrets
     {
+        private readonly ICosmosDbProvider cosmosDbProvider;
+
+        public SafeExchangeListSecrets(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        {
+            this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
+        }
+
         public async Task<IActionResult> Run(
             HttpRequest req,
-            CloudTable subjectPermissionsTable,
             ClaimsPrincipal principal, ILogger log)
         {
+            var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-ListSecrets triggered by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
 
@@ -28,7 +36,7 @@ namespace SpaceOyster.SafeExchange.Core
                 return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, null, null);
+            var permissionsHelper = new PermissionsHelper(subjectPermissions, null, null);
             return await HandleReadSecretsList(userName, permissionsHelper, log);
         }
 

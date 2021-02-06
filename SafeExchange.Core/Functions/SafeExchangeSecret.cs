@@ -31,9 +31,9 @@ namespace SpaceOyster.SafeExchange.Core
             HttpRequest req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var subjectPermissionsContainer = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
-            var objectMetadataContainer = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
-            var groupDictionaryContainer = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var objectMetadata = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var groupDictionary = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
 
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-Secret triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
@@ -44,8 +44,8 @@ namespace SpaceOyster.SafeExchange.Core
                 return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
             }
 
-            var metadataHelper = new MetadataHelper(objectMetadataContainer);
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, groupDictionaryTable, this.graphClientProvider);
+            var metadataHelper = new MetadataHelper(objectMetadata);
+            var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
 
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);

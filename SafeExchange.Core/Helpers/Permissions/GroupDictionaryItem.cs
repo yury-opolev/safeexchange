@@ -2,17 +2,14 @@
 
 namespace SpaceOyster.SafeExchange.Core
 {
-    using System;
-    using Microsoft.Azure.Cosmos.Table;
-
-    public class GroupDictionaryItem : TableEntity
+    public class GroupDictionaryItem
     {
+        public string id { get; set; }
+
+        public string PartitionKey { get; set; }
+
         public string GroupId { get; set; }
 
         public string GroupMail { get; set; }
-
-        public bool ScheduleExpiration { get; set; }
-
-        public DateTime ExpireAt { get; set; }
     }
 }

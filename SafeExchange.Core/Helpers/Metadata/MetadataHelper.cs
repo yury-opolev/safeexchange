@@ -44,7 +44,7 @@ namespace SpaceOyster.SafeExchange.Core
 
             var objectMetadata = new ObjectMetadata()
             {
-                Id = secretName,
+                id = secretName,
                 PartitionKey = MetadataHelper.GetPartitionKey(secretName),
 
                 ObjectName = secretName,
@@ -85,17 +85,17 @@ namespace SpaceOyster.SafeExchange.Core
         {
             var now = DateTime.UtcNow;
 
-            QueryDefinition query = new QueryDefinition("SELECT Id FROM ObjectMetadata OM WHERE OM.ScheduleDestroy = @schedule_destroy AND OM.DestroyAt <= @destroy_at")
+            var query = new QueryDefinition("SELECT id FROM ObjectMetadata OM WHERE OM.ScheduleDestroy = @schedule_destroy AND OM.DestroyAt <= @destroy_at")
                 .WithParameter("@schedule_destroy", true)
                 .WithParameter("@destroy_at", now);
 
             var result = new List<string>();
-            using (FeedIterator<ObjectMetadata> resultSetIterator = objectMetadata.GetItemQueryIterator<ObjectMetadata>(query))
+            using (var resultSetIterator = objectMetadata.GetItemQueryIterator<ObjectMetadata>(query))
             {
                 while (resultSetIterator.HasMoreResults)
                 {
-                    FeedResponse<ObjectMetadata> response = await resultSetIterator.ReadNextAsync();
-                    result.AddRange(response.Select(om => om.Id));
+                    var response = await resultSetIterator.ReadNextAsync();
+                    result.AddRange(response.Select(om => om.id));
                 }
             }
 

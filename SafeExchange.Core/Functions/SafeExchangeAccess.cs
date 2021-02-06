@@ -7,27 +7,31 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
-    using Microsoft.Azure.Cosmos.Table;
     using System.IO;
     using Newtonsoft.Json;
     using System;
     using System.Collections.Generic;
+    using SpaceOyster.SafeExchange.Core.CosmosDb;
 
     public class SafeExchangeAccess
     {
         private readonly IGraphClientProvider graphClientProvider;
 
-        public SafeExchangeAccess(IGraphClientProvider graphClientProvider)
+        private readonly ICosmosDbProvider cosmosDbProvider;
+
+        public SafeExchangeAccess(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
         {
+            this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
         }
 
         public async Task<IActionResult> Run(
             HttpRequest req,
-            CloudTable subjectPermissionsTable,
-            CloudTable groupDictionaryTable,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
+            var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var groupDictionary = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-Access triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
 
@@ -59,7 +63,7 @@ namespace SpaceOyster.SafeExchange.Core
                 }
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, groupDictionaryTable, this.graphClientProvider);
+            var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
             var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
             if (existingPermissions.Count == 0)
             {

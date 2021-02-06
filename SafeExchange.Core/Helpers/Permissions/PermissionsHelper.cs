@@ -46,7 +46,7 @@ namespace SpaceOyster.SafeExchange.Core
 
             var subjectPermission = new SubjectPermissions()
             {
-                Id = PermissionsHelper.GetId(secretName, userName),
+                id = PermissionsHelper.GetId(secretName, userName),
                 PartitionKey = PermissionsHelper.GetPartitionKey(secretName),
 
                 SecretName = secretName,
@@ -114,7 +114,7 @@ namespace SpaceOyster.SafeExchange.Core
             var rows  = await this.GetAllPermissionsAsync(secretName);
             foreach (var row in rows)
             {
-                await this.subjectPermissions.DeleteItemAsync<SubjectPermissions>(row.Id, new PartitionKey(row.PartitionKey));
+                await this.subjectPermissions.DeleteItemAsync<SubjectPermissions>(row.id, new PartitionKey(row.PartitionKey));
             }
         }
 
@@ -184,17 +184,14 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async Task<string> GetUserGroupIdAsync(string groupName, ILogger log)
         {
-            var existingRow = await this.groupDictionaryTable
-                .ExecuteAsync(TableOperation.Retrieve<GroupDictionaryItem>(
-                    PermissionsHelper.GetPartitionKey(groupName),
-                    string.Empty));
+            var existingGroup = await this.groupDictionary.ReadItemAsync<GroupDictionaryItem>(groupName, new PartitionKey());
 
-            if (!(existingRow.Result is GroupDictionaryItem groupItem))
+            if (existingGroup.Resource == default(GroupDictionaryItem))
             {
                 return string.Empty;
             }
 
-            return groupItem.GroupId;
+            return existingGroup.Resource.GroupId;
         }
 
         public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId)
@@ -204,42 +201,37 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async Task<IList<SubjectPermissions>> GetAllRows(string secretName)
         {
+            var query = new QueryDefinition("SELECT * FROM SubjectPermissions SP WHERE SP.SecretName = @secret_name")
+                .WithParameter("@secret_name", secretName);
+
             var result = new List<SubjectPermissions>();
-
-            var query = new TableQuery<SubjectPermissions>()
-                .Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, GetPartitionKey(secretName)));
-            TableContinuationToken continuationToken = null;
-
-            do
+            using (var resultSetIterator = subjectPermissions.GetItemQueryIterator<SubjectPermissions>(query))
             {
-                var page = await this.subjectPermissionsTable.ExecuteQuerySegmentedAsync(query, continuationToken);
-                continuationToken = page.ContinuationToken;
-                result.AddRange(page.Results ?? new List<SubjectPermissions>());
+                while (resultSetIterator.HasMoreResults)
+                {
+                    var response = await resultSetIterator.ReadNextAsync();
+                    result.AddRange(response);
+                }
             }
-            while (continuationToken != null);
 
             return result;
         }
 
         private async Task<IList<SubjectPermissions>> GetAllRowsForSubjectPermissions(string subjectName, PermissionType permission)
         {
+            var query = new QueryDefinition("SELECT * FROM SubjectPermissions SP WHERE SP.SubjectName = @subject_name AND SP.CanRead = @can_read")
+                .WithParameter("@subject_name", subjectName)
+                .WithParameter("@can_read", true);
+
             var result = new List<SubjectPermissions>();
-
-            var rowKeyFilter = TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, GetRowKey(subjectName));
-            var canReadFilter = TableQuery.GenerateFilterConditionForBool("CanRead", QueryComparisons.Equal, true);
-
-            var query = new TableQuery<SubjectPermissions>()
-                .Where(TableQuery.CombineFilters(rowKeyFilter, TableOperators.And, canReadFilter))
-                .Select(new string[] { "SecretName", "CanRead", "CanWrite", "CanGrantAccess", "CanRevokeAccess" });
-            TableContinuationToken continuationToken = null;
-
-            do
+            using (var resultSetIterator = subjectPermissions.GetItemQueryIterator<SubjectPermissions>(query))
             {
-                var page = await this.subjectPermissionsTable.ExecuteQuerySegmentedAsync(query, continuationToken);
-                continuationToken = page.ContinuationToken;
-                result.AddRange(page.Results ?? new List<SubjectPermissions>());
+                while (resultSetIterator.HasMoreResults)
+                {
+                    var response = await resultSetIterator.ReadNextAsync();
+                    result.AddRange(response);
+                }
             }
-            while (continuationToken != null);
 
             return result;
         }

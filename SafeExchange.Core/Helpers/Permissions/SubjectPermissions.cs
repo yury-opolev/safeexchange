@@ -2,12 +2,9 @@
 
 namespace SpaceOyster.SafeExchange.Core
 {
-    using Newtonsoft.Json;
-
     public class SubjectPermissions
     {
-        [JsonProperty("id")]
-        public string Id { get; set; }
+        public string id { get; set; }
 
         public string PartitionKey { get; set; }
 

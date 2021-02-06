@@ -87,6 +87,7 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             }
 
             await this.RetrieveCosmosDbKeysAsync();
+
             try
             {
                 var client = new CosmosClient(this.settings.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
