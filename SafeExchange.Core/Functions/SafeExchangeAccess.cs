@@ -30,7 +30,7 @@ namespace SpaceOyster.SafeExchange.Core
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
             var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
-            var groupDictionary = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
 
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-Access triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
