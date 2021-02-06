@@ -5,6 +5,7 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Threading.Tasks;
     using Microsoft.Azure.Cosmos;
 
@@ -66,8 +67,16 @@ namespace SpaceOyster.SafeExchange.Core
         public async Task<ObjectMetadata> GetSecretMetadataAsync(string secretName)
         {
             var partitionKey = new PartitionKey(MetadataHelper.GetPartitionKey(secretName));
-            var itemResponse = await this.objectMetadata.ReadItemAsync<ObjectMetadata>(secretName, partitionKey);
-            return itemResponse.Resource;
+
+            try
+            {
+                var itemResponse = await this.objectMetadata.ReadItemAsync<ObjectMetadata>(secretName, partitionKey);
+                return itemResponse.Resource;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return default(ObjectMetadata);
+            }
         }
 
         public async Task DeleteSecretMetadataAsync(string secretName)

@@ -10,6 +10,7 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.Cosmos.Table;
     using Microsoft.Azure.Cosmos;
+    using System.Net;
 
     public class PermissionsHelper
     {
@@ -184,14 +185,22 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async Task<string> GetUserGroupIdAsync(string groupName, ILogger log)
         {
-            var existingGroup = await this.groupDictionary.ReadItemAsync<GroupDictionaryItem>(groupName, new PartitionKey());
-
-            if (existingGroup.Resource == default(GroupDictionaryItem))
+            try
             {
+                var existingGroup = await this.groupDictionary.ReadItemAsync<GroupDictionaryItem>(groupName, new PartitionKey("-"));
+                if (existingGroup.Resource == default(GroupDictionaryItem))
+                {
+                    log.LogInformation($"No userGroup '{groupName}' is registered.");
+                    return string.Empty;
+                }
+
+                return existingGroup.Resource.GroupId;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                log.LogInformation($"No userGroup '{groupName}' is registered.");
                 return string.Empty;
             }
-
-            return existingGroup.Resource.GroupId;
         }
 
         public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId)
@@ -259,9 +268,16 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<SubjectPermissions> GetSubjectPermissionsAsync(string secretName, string userName)
         {
-            var partitionKey = new PartitionKey(PermissionsHelper.GetPartitionKey(secretName));
-            var itemResponse = await this.subjectPermissions.ReadItemAsync<SubjectPermissions>(PermissionsHelper.GetId(secretName, userName), partitionKey);
-            return itemResponse.Resource;
+            try
+            {
+                var partitionKey = new PartitionKey(PermissionsHelper.GetPartitionKey(secretName));
+                var itemResponse = await this.subjectPermissions.ReadItemAsync<SubjectPermissions>(PermissionsHelper.GetId(secretName, userName), partitionKey);
+                return itemResponse.Resource;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return default(SubjectPermissions);
+            }
         }
 
         private static string GetId(string secretName, string userName)

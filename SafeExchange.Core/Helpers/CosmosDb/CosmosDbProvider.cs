@@ -23,7 +23,7 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
         private DatabaseAccountListKeysResult databaseKeys;
 
-        public CosmosDbProvider(ILogger log)
+        public CosmosDbProvider(ILogger<CosmosDbProvider> log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
 
