@@ -13,24 +13,28 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Web.Http;
     using System.Collections.Generic;
-    using Microsoft.Azure.Cosmos.Table;
+    using SpaceOyster.SafeExchange.Core.CosmosDb;
 
     public class SafeExchangeSecret
     {
         private readonly IGraphClientProvider graphClientProvider;
 
-        public SafeExchangeSecret(IGraphClientProvider graphClientProvider)
+        private readonly ICosmosDbProvider cosmosDbProvider;
+
+        public SafeExchangeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
         {
+            this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
         }
 
         public async Task<IActionResult> Run(
             HttpRequest req,
-            CloudTable subjectPermissionsTable,
-            CloudTable objectMetadataTable,
-            CloudTable groupDictionaryTable,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
+            var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var objectMetadata = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+            var groupDictionary = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
+
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-Secret triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
 
@@ -40,8 +44,8 @@ namespace SpaceOyster.SafeExchange.Core
                 return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
             }
 
-            var metadataHelper = new MetadataHelper(objectMetadataTable);
-            var permissionsHelper = new PermissionsHelper(subjectPermissionsTable, groupDictionaryTable, this.graphClientProvider);
+            var metadataHelper = new MetadataHelper(objectMetadata);
+            var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
 
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);

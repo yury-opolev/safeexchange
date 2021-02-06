@@ -11,29 +11,25 @@ namespace SpaceOyster.SafeExchange.Functions
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
-    using Microsoft.Azure.Cosmos.Table;
     using SpaceOyster.SafeExchange.Core;
+    using SpaceOyster.SafeExchange.Core.CosmosDb;
 
     public class SafeAccess
     {
         private SafeExchangeAccess accessHandler;
 
-        public SafeAccess(IGraphClientProvider graphClientProvider) 
+        public SafeAccess(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider) 
         {
-            this.accessHandler = new SafeExchangeAccess(graphClientProvider);
+            this.accessHandler = new SafeExchangeAccess(cosmosDbProvider, graphClientProvider);
         }
 
         [FunctionName("SafeExchange-Access")]
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", Route = "access/{secretId}")]
             HttpRequest req,
-            [Table("SubjectPermissions")]
-            CloudTable subjectPermissionsTable,
-            [Table("GroupDictionary")]
-            CloudTable groupDictionaryTable,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            return await this.accessHandler.Run(req, subjectPermissionsTable, groupDictionaryTable, secretId, principal, log);
+            return await this.accessHandler.Run(req, secretId, principal, log);
         }
     }
 }

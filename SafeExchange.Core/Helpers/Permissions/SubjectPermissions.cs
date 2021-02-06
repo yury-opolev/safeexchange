@@ -2,10 +2,12 @@
 
 namespace SpaceOyster.SafeExchange.Core
 {
-    using Microsoft.Azure.Cosmos.Table;
-
-    public class SubjectPermissions : TableEntity
+    public class SubjectPermissions
     {
+        public string id { get; set; }
+
+        public string PartitionKey { get; set; }
+
         public string SecretName { get; set; }
 
         public string SubjectName { get; set; }

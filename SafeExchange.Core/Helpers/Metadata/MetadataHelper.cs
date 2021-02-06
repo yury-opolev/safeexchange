@@ -4,40 +4,23 @@ namespace SpaceOyster.SafeExchange.Core
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
+    using System.Net;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Cosmos.Table;
+    using Microsoft.Azure.Cosmos;
 
     public class MetadataHelper
     {
-        private CloudTable objectMetadataTable;
+        private Container objectMetadata;
 
-        private bool initialized = false;
-
-        public MetadataHelper(CloudTable objectMetadataTable)
+        public MetadataHelper(Container objectMetadata)
         {
-            this.objectMetadataTable = objectMetadataTable ?? throw new ArgumentNullException(nameof(objectMetadataTable));
-        }
-
-        public async Task InitializeAsync()
-        {
-            if (this.initialized)
-            {
-                return;
-            }
-
-            await this.objectMetadataTable.CreateIfNotExistsAsync();
-            this.initialized = true;
+            this.objectMetadata = objectMetadata ?? throw new ArgumentNullException(nameof(objectMetadata));
         }
 
         public async Task SetSecretMetadataAsync(string secretName, string setBy, bool setDestroyValues, bool destroyAfterRead, bool scheduleDestroy, DateTime destroyAt)
         {
             var now = DateTime.UtcNow;
-
-            await this.InitializeAsync();
-            var existingRow = await this.objectMetadataTable
-                .ExecuteAsync(TableOperation.Retrieve<ObjectMetadata>(
-                    MetadataHelper.GetPartitionKey(secretName),
-                    MetadataHelper.GetRowKey()));
 
             var createdAt = now;
             var createdBy = setBy;
@@ -46,7 +29,8 @@ namespace SpaceOyster.SafeExchange.Core
             var newScheduleDestroy = setDestroyValues ? scheduleDestroy : false;
             var newDestroyAt = setDestroyValues ? destroyAt : now;
 
-            if (existingRow.Result is ObjectMetadata existingMetadata)
+            var existingMetadata = await this.GetSecretMetadataAsync(secretName);
+            if (existingMetadata != default(ObjectMetadata))
             {
                 createdAt = existingMetadata.CreatedAt;
                 createdBy = existingMetadata.CreatedBy;
@@ -61,8 +45,10 @@ namespace SpaceOyster.SafeExchange.Core
 
             var objectMetadata = new ObjectMetadata()
             {
+                id = secretName,
                 PartitionKey = MetadataHelper.GetPartitionKey(secretName),
-                RowKey = MetadataHelper.GetRowKey(),
+
+                ObjectName = secretName,
 
                 CreatedAt = createdAt,
                 CreatedBy = createdBy,
@@ -75,80 +61,64 @@ namespace SpaceOyster.SafeExchange.Core
                 DestroyAt = newDestroyAt
             };
 
-            await this.objectMetadataTable.ExecuteAsync(TableOperation.InsertOrMerge(objectMetadata));
+            await this.objectMetadata.UpsertItemAsync(objectMetadata);
         }
 
         public async Task<ObjectMetadata> GetSecretMetadataAsync(string secretName)
         {
-            await this.InitializeAsync();
-            var existingRow = await this.objectMetadataTable
-                .ExecuteAsync(TableOperation.Retrieve<ObjectMetadata>(
-                    MetadataHelper.GetPartitionKey(secretName),
-                    MetadataHelper.GetRowKey()));
+            var partitionKey = new PartitionKey(MetadataHelper.GetPartitionKey(secretName));
 
-            if (existingRow.Result is ObjectMetadata existingMetadata)
+            try
             {
-                return existingMetadata;
+                var itemResponse = await this.objectMetadata.ReadItemAsync<ObjectMetadata>(secretName, partitionKey);
+                return itemResponse.Resource;
             }
-
-            return default(ObjectMetadata);
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return default(ObjectMetadata);
+            }
         }
 
         public async Task DeleteSecretMetadataAsync(string secretName)
         {
-            await this.InitializeAsync();
-            var existingRow = await this.objectMetadataTable
-                .ExecuteAsync(TableOperation.Retrieve<ObjectMetadata>(
-                    MetadataHelper.GetPartitionKey(secretName),
-                    MetadataHelper.GetRowKey()));
-
-            if (!(existingRow.Result is ObjectMetadata existingMetadata))
+            var existingMetadata = await this.GetSecretMetadataAsync(secretName);
+            if (existingMetadata == default(ObjectMetadata))
             {
                 return;
             }
 
-            await this.objectMetadataTable.ExecuteAsync(TableOperation.Delete(existingMetadata));
+            await this.objectMetadata.DeleteItemAsync<ObjectMetadata>(secretName, new PartitionKey(MetadataHelper.GetPartitionKey(secretName)));
         }
 
         public async Task<IList<string>> GetSecretsToPurgeAsync()
         {
             var now = DateTime.UtcNow;
+
+            var query = new QueryDefinition("SELECT id FROM ObjectMetadata OM WHERE OM.ScheduleDestroy = @schedule_destroy AND OM.DestroyAt <= @destroy_at")
+                .WithParameter("@schedule_destroy", true)
+                .WithParameter("@destroy_at", now);
+
             var result = new List<string>();
-
-            var scheduleDestroyFilter = TableQuery.GenerateFilterConditionForBool("ScheduleDestroy", QueryComparisons.Equal, true);
-            var destroyAtFilter = TableQuery.GenerateFilterConditionForDate("DestroyAt", QueryComparisons.LessThanOrEqual, now);
-
-            var query = new TableQuery<ObjectMetadata>()
-                .Where(TableQuery.CombineFilters(scheduleDestroyFilter, TableOperators.And, destroyAtFilter))
-                .Select(new string[] { "PartitionKey" });
-            TableContinuationToken continuationToken = null;
-
-            do
+            using (var resultSetIterator = objectMetadata.GetItemQueryIterator<ObjectMetadata>(query))
             {
-                var page = await this.objectMetadataTable.ExecuteQuerySegmentedAsync(query, continuationToken);
-                continuationToken = page.ContinuationToken;
-                if (page.Results != null)
+                while (resultSetIterator.HasMoreResults)
                 {
-                    foreach (var row in page.Results)
-                    {
-                        var secretName = Base64Helper.Base64ToString(row.PartitionKey);
-                        result.Add(secretName);
-                    }
+                    var response = await resultSetIterator.ReadNextAsync();
+                    result.AddRange(response.Select(om => om.id));
                 }
             }
-            while (continuationToken != null);
 
             return result;
         }
 
         private static string GetPartitionKey(string secretName)
         {
-            return Base64Helper.StringToBase64(secretName);
-        }
+            if (string.IsNullOrEmpty(secretName))
+            {
+                return "-";
+            }
 
-        private static string GetRowKey()
-        {
-            return string.Empty;
+            return secretName.ToUpper().Substring(0, 1);
         }
     }
 }

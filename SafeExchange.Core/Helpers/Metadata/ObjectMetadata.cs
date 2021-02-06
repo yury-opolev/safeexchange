@@ -3,11 +3,14 @@
 namespace SpaceOyster.SafeExchange.Core
 {
     using System;
-    using Microsoft.Azure.Cosmos.Table;
 
-    public class ObjectMetadata : TableEntity
+    public class ObjectMetadata
     {
-        public string SecretName { get; set; }
+        public string id { get; set; }
+
+        public string PartitionKey { get; set; }
+
+        public string ObjectName { get; set; }
 
         public DateTime CreatedAt { get; set; }
 
