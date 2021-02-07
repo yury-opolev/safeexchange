@@ -83,6 +83,12 @@ namespace SpaceOyster.SafeExchange.Core
                 return new BadRequestObjectResult(new { status = "error", error = $"{nameof(value)} is required" });
             }
 
+            if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
+            {
+                log.LogInformation($"Cannot create secret '{secretId}', as not allowed to create secrets with system reserved names");
+                return new ConflictObjectResult(new { status = "conflict", error = $"Secret '{secretId}' already exists" });
+            }
+
             string contentType = data?.contentType;
 
             var now = DateTime.UtcNow;
@@ -137,6 +143,12 @@ namespace SpaceOyster.SafeExchange.Core
 
         private static async Task<IActionResult> HandleSecretRead(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, PurgeHelper purgeHelper, ILogger log, ReplyDataType replyType)
         {
+            if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
+            {
+                log.LogInformation($"Cannot get secret '{secretId}', as not allowed to get secrets for system reserved names");
+                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
+            }
+
             var userName = TokenHelper.GetName(principal);
             return await TryCatch(async () =>
             {
@@ -192,6 +204,12 @@ namespace SpaceOyster.SafeExchange.Core
 
         private static async Task<IActionResult> HandleSecretUpdate(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, ILogger log)
         {
+            if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
+            {
+                log.LogInformation($"Cannot update secret '{secretId}', as not allowed to update secrets for system reserved names");
+                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
+            }
+
             dynamic data = await GetRequestDataAsync(req);
             
             string value = data?.value;
@@ -247,6 +265,12 @@ namespace SpaceOyster.SafeExchange.Core
 
         private static async Task<IActionResult> HandleSecretDeletion(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, ILogger log)
         {
+            if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
+            {
+                log.LogInformation($"Cannot delete secret '{secretId}', as not allowed to delete secrets for system reserved names");
+                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
+            }
+
             var userName = TokenHelper.GetName(principal);
             return await TryCatch(async () =>
             {

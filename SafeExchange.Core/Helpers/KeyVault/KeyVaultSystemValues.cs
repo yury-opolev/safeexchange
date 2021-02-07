@@ -24,7 +24,7 @@ namespace SpaceOyster.SafeExchange.Core
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        public bool IsSystemSettingName(string name)
+        public static bool IsSystemSettingName(string name)
         {
             var regex = new Regex(SystemNameRegex, RegexOptions.Compiled | RegexOptions.IgnoreCase);
             return regex.IsMatch(name);
