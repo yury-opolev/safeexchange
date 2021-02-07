@@ -12,6 +12,7 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Collections.Generic;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
+    using global::SafeExchange.Core.Helpers.GlobalFilters;
 
     public class SafeExchangeAccess
     {
@@ -29,17 +30,17 @@ namespace SpaceOyster.SafeExchange.Core
             HttpRequest req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
+            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            if (shouldReturn)
+            {
+                return filterResult;
+            }
+
             var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
             var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
 
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-Access triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
-
-            if (!TokenHelper.IsUserToken(principal, log))
-            {
-                log.LogInformation($"{userName} is not authenticated with user access/id token.");
-                return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
-            }
 
             string subject = null;
             IList<PermissionType> permissionList = null;

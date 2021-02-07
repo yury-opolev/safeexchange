@@ -7,6 +7,7 @@ namespace SpaceOyster.SafeExchange.Core
     using System.Security.Claims;
     using System.Threading.Tasks;
     using System.Web.Http;
+    using global::SafeExchange.Core.Helpers.GlobalFilters;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
@@ -25,16 +26,16 @@ namespace SpaceOyster.SafeExchange.Core
             HttpRequest req,
             ClaimsPrincipal principal, ILogger log)
         {
+            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            if (shouldReturn)
+            {
+                return filterResult;
+            }
+
             var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
 
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-ListSecrets triggered by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
-
-            if (!TokenHelper.IsUserToken(principal, log))
-            {
-                log.LogInformation($"{userName} is not authenticated with user access/id token.");
-                return new ObjectResult(new { status = "unauthorized", error = $"Not authorized" }) { StatusCode = StatusCodes.Status401Unauthorized };
-            }
 
             var permissionsHelper = new PermissionsHelper(subjectPermissions, null, null);
             return await HandleReadSecretsList(userName, permissionsHelper, log);

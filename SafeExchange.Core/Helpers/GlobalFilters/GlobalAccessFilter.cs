@@ -47,6 +47,7 @@ namespace SafeExchange.Core.Helpers.GlobalFilters
                 return result;
             }
 
+            var userName = TokenHelper.GetName(principal);
             var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
             var graphClient = this.graphClientProvider.GetGraphClient(tokenResult, this.graphScopes, log);
             var userGroups = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
@@ -54,10 +55,12 @@ namespace SafeExchange.Core.Helpers.GlobalFilters
             {
                 if (userGroups.Contains(groupId))
                 {
+                    log.LogInformation($"{userName} is a member of global access group '{groupId}', authorized.");
                     return result;
                 }
             }
 
+            log.LogInformation($"{userName} is not a member of any global access group, unauthorized.");
             result.shouldReturn = true;
             result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not a member of a global group." }) { StatusCode = StatusCodes.Status401Unauthorized };
             return result;

@@ -11,18 +11,21 @@ namespace SafeExchange.Core.Helpers.GlobalFilters
     using System;
     using System.Collections.Generic;
     using System.Security.Claims;
+    using System.Threading;
     using System.Threading.Tasks;
 
     public class GlobalFilters : IRequestFilter
     {
-        public static Lazy<GlobalFilters> Instance = new Lazy<GlobalFilters>();
+        public static Lazy<GlobalFilters> Instance = new Lazy<GlobalFilters>(() => new GlobalFilters(new GraphClientProvider()), LazyThreadSafetyMode.PublicationOnly);
 
         private IList<IRequestFilter> currentFilters;
 
-        public GlobalFilters()
+        public GlobalFilters(IGraphClientProvider graphClientProvider)
         {
             this.currentFilters = new List<IRequestFilter>();
-            currentFilters.Add(new GlobalAccessFilter(new GraphClientProvider()));
+
+            currentFilters.Add(new UserTokenFilter());
+            currentFilters.Add(new GlobalAccessFilter(graphClientProvider));
         }
 
         public async ValueTask<(bool shouldReturn, IActionResult actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, ILogger log)
