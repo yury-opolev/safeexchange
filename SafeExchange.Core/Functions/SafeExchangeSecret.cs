@@ -86,7 +86,7 @@ namespace SpaceOyster.SafeExchange.Core
             if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
             {
                 log.LogInformation($"Cannot create secret '{secretId}', as not allowed to create secrets with system reserved names");
-                return new ConflictObjectResult(new { status = "conflict", error = $"Secret '{secretId}' already exists" });
+                return new ConflictObjectResult(new { status = "conflict", error = $"Secret '{secretId}' not allowed" });
             }
 
             string contentType = data?.contentType;
