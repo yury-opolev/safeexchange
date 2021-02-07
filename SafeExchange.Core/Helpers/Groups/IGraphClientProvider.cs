@@ -4,9 +4,10 @@ namespace SpaceOyster.SafeExchange.Core
 {
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
+    using System.Threading.Tasks;
 
     public interface IGraphClientProvider
     {
-        GraphServiceClient GetGraphClient(TokenResult tokenResult, string[] scopes, ILogger logger);
+        Task<GraphServiceClient> GetGraphClientAsync(TokenResult tokenResult, string[] scopes, ILogger logger);
     }
 }

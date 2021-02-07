@@ -7,7 +7,6 @@ namespace SpaceOyster.SafeExchange.Core
     using System.Security.Claims;
     using System.Threading.Tasks;
     using System.Web.Http;
-    using global::SafeExchange.Core.Helpers.GlobalFilters;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;

@@ -2,12 +2,11 @@
 /// SafeExchange
 /// </summary>
 
-namespace SafeExchange.Core.Helpers.GlobalFilters
+namespace SpaceOyster.SafeExchange.Core
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
-    using SpaceOyster.SafeExchange.Core;
     using System.Security.Claims;
     using System.Threading.Tasks;
 

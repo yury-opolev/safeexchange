@@ -2,12 +2,11 @@
 /// SafeExchange
 /// </summary>
 
-namespace SafeExchange.Core.Helpers.GlobalFilters
+namespace SpaceOyster.SafeExchange.Core
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
-    using SpaceOyster.SafeExchange.Core;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -49,7 +48,7 @@ namespace SafeExchange.Core.Helpers.GlobalFilters
 
             var userName = TokenHelper.GetName(principal);
             var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
-            var graphClient = this.graphClientProvider.GetGraphClient(tokenResult, this.graphScopes, log);
+            var graphClient = await this.graphClientProvider.GetGraphClientAsync(tokenResult, this.graphScopes, log);
             var userGroups = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
             foreach (var groupId in accessGroupIds)
             {

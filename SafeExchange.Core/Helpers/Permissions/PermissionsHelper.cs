@@ -178,7 +178,7 @@ namespace SpaceOyster.SafeExchange.Core
                 throw new ArgumentNullException(nameof(this.graphClientProvider));
             }
 
-            var graphClient = this.graphClientProvider.GetGraphClient(tokenResult, this.graphScopes, log);
+            var graphClient = await this.graphClientProvider.GetGraphClientAsync(tokenResult, this.graphScopes, log);
             var userMembershipIds = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
             return userMembershipIds;
         }

@@ -14,7 +14,6 @@ namespace SpaceOyster.SafeExchange.Core
     using System.Web.Http;
     using System.Collections.Generic;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
-    using global::SafeExchange.Core.Helpers.GlobalFilters;
 
     public class SafeExchangeSecret
     {

@@ -2,7 +2,7 @@
 /// SafeExchange
 /// </summary>
 
-namespace SafeExchange.Core.Helpers.GlobalFilters
+namespace SpaceOyster.SafeExchange.Core
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;

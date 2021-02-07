@@ -12,7 +12,6 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Collections.Generic;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
-    using global::SafeExchange.Core.Helpers.GlobalFilters;
 
     public class SafeExchangeAccess
     {
