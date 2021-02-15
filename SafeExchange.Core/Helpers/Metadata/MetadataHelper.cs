@@ -94,7 +94,7 @@ namespace SpaceOyster.SafeExchange.Core
         {
             var now = DateTime.UtcNow;
 
-            var query = new QueryDefinition("SELECT id FROM ObjectMetadata OM WHERE OM.ScheduleDestroy = @schedule_destroy AND OM.DestroyAt <= @destroy_at")
+            var query = new QueryDefinition("SELECT OM.id FROM ObjectMetadata OM WHERE OM.ScheduleDestroy = @schedule_destroy AND OM.DestroyAt <= @destroy_at")
                 .WithParameter("@schedule_destroy", true)
                 .WithParameter("@destroy_at", now);
 
