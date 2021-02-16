@@ -8,7 +8,6 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Azure.Cosmos.Table;
     using Microsoft.Azure.Cosmos;
     using System.Net;
 
@@ -31,6 +30,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task SetPermissionAsync(string userName, string secretName, PermissionType permission)
         {
+            userName = Normalize(userName);
+
             var canRead = permission == PermissionType.Read;
             var canWrite = permission == PermissionType.Write;
             var canGrantAccess = permission == PermissionType.GrantAccess;
@@ -64,6 +65,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<bool> HasPermissionAsync(string userName, string secretName, PermissionType permission)
         {
+            userName = Normalize(userName);
+
             var subjectPermissions = await this.GetSubjectPermissionsAsync(secretName, userName);
             if (subjectPermissions == default(SubjectPermissions))
             {
@@ -75,6 +78,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task DeletePermissionAsync(string userName, string secretName, PermissionType permission)
         {
+            userName = Normalize(userName);
+
             var subjectPermission = await this.GetSubjectPermissionsAsync(secretName, userName);
             if (subjectPermission == default(SubjectPermissions))
             {
@@ -126,11 +131,15 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<IList<SubjectPermissions>> ListSecretsWithPermissionAsync(string userName, PermissionType permission)
         {
+            userName = Normalize(userName);
+
             return await this.GetAllRowsForSubjectPermissions(userName, permission);
         }
 
         public async Task<bool> IsAuthorizedAsync(string userName, string secretName, PermissionType permission, TokenResult tokenResult, ILogger log)
         {
+            userName = Normalize(userName);
+
             var isAuthorized = await this.HasPermissionAsync(userName, secretName, permission);
             log.LogInformation($"User '{userName}' {(isAuthorized ? "has" : "does not have")} direct {permission} permissions for '{secretName}'.");
             
@@ -144,6 +153,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<bool> IsGroupAuthorizedAsync(TokenResult tokenResult, string userName, string secretName, PermissionType permission, ILogger log)
         {
+            userName = Normalize(userName);
+
             var groupAuthorization = Environment.GetEnvironmentVariable("FEATURES-USE-GROUP-AUTHORIZATION");
             if (!("TRUE".Equals(groupAuthorization, StringComparison.InvariantCultureIgnoreCase)))
             {
@@ -293,6 +304,16 @@ namespace SpaceOyster.SafeExchange.Core
             }
 
             return secretName.ToUpper().Substring(0, 1);
+        }
+
+        private static string Normalize(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Trim(' ').ToLowerInvariant();
         }
     }
 }
