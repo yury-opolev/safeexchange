@@ -35,8 +35,8 @@ namespace SpaceOyster.SafeExchange.Core
 
             var now = DateTime.UtcNow;
 
-            var existingRequest = await this.TryGetAccessRequestAsync(userId, secretId, RequestStatus.InProgress);
-            if (existingRequest != default(AccessRequest))
+            var existingRequests = await this.TryGetAccessRequestsAsync(userId, secretId, RequestStatus.InProgress);
+            foreach (var existingRequest in existingRequests)
             {
                 PermissionsHelper.TryParsePermissions(existingRequest.Permissions, out var existingPermissionsList);
                 if (PermissionsHelper.AreEqual(existingPermissionsList, permissions))
@@ -168,10 +168,10 @@ namespace SpaceOyster.SafeExchange.Core
             return updatedItemResponse.Resource;
         }
 
-        private async ValueTask<AccessRequest> TryGetAccessRequestAsync(string userId, string secretId, RequestStatus status)
+        private async ValueTask<IList<AccessRequest>> TryGetAccessRequestsAsync(string userId, string secretId, RequestStatus status)
         {
             // TODO ...
-            return await Task.FromResult(default(AccessRequest));
+            return await Task.FromResult(default(IList<AccessRequest>));
         }
 
         private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
