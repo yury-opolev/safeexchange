@@ -20,10 +20,11 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ILogger logger;
 
-        public AccessRequestHelper(Container accessRequests, PermissionsHelper permissionsHelper, ILogger logger)
+        public AccessRequestHelper(Container accessRequests, PermissionsHelper permissionsHelper, NotificationsHelper notificationsHelper, ILogger logger)
         {
             this.accessRequests = accessRequests ?? throw new ArgumentNullException(nameof(accessRequests));
             this.permissionsHelper = permissionsHelper ?? throw new ArgumentNullException(nameof(permissionsHelper));
+            this.notificationsHelper = notificationsHelper ?? throw new ArgumentNullException(nameof(notificationsHelper));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -169,6 +170,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async ValueTask<AccessRequest> TryGetAccessRequestAsync(string userId, string secretId, RequestStatus status)
         {
+            // TODO ...
             return await Task.FromResult(default(AccessRequest));
         }
 
@@ -196,7 +198,7 @@ namespace SpaceOyster.SafeExchange.Core
             else
             {
                 userIdsToNotify = new List<string>(1) { accessRequest.SubjectName };
-                messageText = accessRequest.Status == RequestStatus.Approved ? "Access granted." : "Access denied.";
+                messageText = accessRequest.Status == RequestStatus.Approved ? "Access granted." : "Access request rejected.";
             }
 
             var message = new NotificationMessage()
