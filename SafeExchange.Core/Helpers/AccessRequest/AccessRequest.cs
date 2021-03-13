@@ -8,6 +8,25 @@ namespace SpaceOyster.SafeExchange.Core
 
     public class AccessRequest
     {
+        public AccessRequest()
+        {
+        }
+
+        public AccessRequest(AccessRequest resource)
+        {
+            this.id = resource.id;
+            this.PartitionKey = resource.PartitionKey;
+
+            this.SubjectName = resource.SubjectName;
+            this.ObjectName = resource.ObjectName;
+            this.Permissions = resource.Permissions;
+
+            this.RequestedAt = resource.RequestedAt;
+            this.Status = resource.Status;
+            this.FinishedBy = resource.FinishedBy;
+            this.FinishedAt = resource.FinishedAt;
+        }
+
         public string id { get; set; }
 
         public string PartitionKey { get; set; }
@@ -30,6 +49,10 @@ namespace SpaceOyster.SafeExchange.Core
         public DateTime RequestedAt { get; set; }
 
         public RequestStatus Status { get; set; }
+
+        public string FinishedBy { get; set; }
+
+        public DateTime FinishedAt { get; set; }
 
         public override string ToString()
         {

@@ -71,6 +71,11 @@ namespace SpaceOyster.SafeExchange.Core
             }
         }
 
+        public async Task TryNotifyAsync(string userId, NotificationMessage message)
+        {
+            await Task.CompletedTask;
+        }
+
         private async Task<NotificationSubscription> TryGetExistingSubscription(string userId, string Url)
         {
             var query = new QueryDefinition("SELECT NS.id FROM NotificationSubscriptions NS WHERE NS.UserId = @user_id AND NS.Url = @url")

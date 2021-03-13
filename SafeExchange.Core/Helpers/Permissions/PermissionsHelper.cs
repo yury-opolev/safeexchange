@@ -10,6 +10,7 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.Cosmos;
     using System.Net;
+    using System.Linq;
 
     public class PermissionsHelper
     {
@@ -26,6 +27,33 @@ namespace SpaceOyster.SafeExchange.Core
             this.subjectPermissions = subjectPermissions ?? throw new ArgumentNullException(nameof(subjectPermissions));
             this.groupDictionary = groupDictionary; // null allowed
             this.graphClientProvider = graphClientProvider; // null allowed
+        }
+
+        public static bool TryParsePermissions(string permissions, out IList<PermissionType> permissionList)
+        {
+            var chunks = permissions.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            permissionList = new List<PermissionType>(chunks.Length);
+            foreach (var chunk in chunks)
+            {
+                if (!Enum.TryParse(chunk, ignoreCase: true, out PermissionType permissionType))
+                {
+                    return false;
+                }
+                permissionList.Add(permissionType);
+            }
+            return true;
+        }
+
+        public static bool AreEqual(IList<PermissionType> leftPermissions, IList<PermissionType> rightPermissions)
+        {
+            var leftNotRight = leftPermissions.Except(rightPermissions);
+            var rightNotLeft = rightPermissions.Except(leftPermissions);
+            return !leftNotRight.Any() && !rightNotLeft.Any();
+        }
+
+        public static string PermissionsToString(IList<PermissionType> permissionList)
+        {
+            return string.Join(',', permissionList);
         }
 
         public async Task SetPermissionAsync(string userName, string secretName, PermissionType permission)

@@ -8,10 +8,12 @@ namespace SpaceOyster.SafeExchange.Core
     {
         None = 0,
 
-        InProgress = 10,
+        InProgress = 100,
         
-        Approved = 20,
+        Approved = 200,
         
-        Rejected = 30
+        Rejected = 300,
+
+        Expired = 400
     }
 }

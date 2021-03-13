@@ -54,7 +54,7 @@ namespace SpaceOyster.SafeExchange.Core
                 }
 
                 string permission = data?.permission;
-                if (!TryParsePermissions(permission, out permissionList))
+                if (!PermissionsHelper.TryParsePermissions(permission, out permissionList))
                 {
                     log.LogInformation($"Cannot parse {nameof(permission)}.");
                     return new BadRequestObjectResult(new { status = "error", error = $"Valid value of {nameof(permission)} is required" });
@@ -136,22 +136,6 @@ namespace SpaceOyster.SafeExchange.Core
                 result.Add(new OutputSubjectPermissions(permission));
             }
             return result;
-        }
-
-        private static bool TryParsePermissions(string permissions, out IList<PermissionType> permissionList)
-        {
-            var chunks = permissions.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            permissionList = new List<PermissionType>(chunks.Length);
-            var permissionType = PermissionType.Read;
-            foreach (var chunk in chunks)
-            {
-                if (!Enum.TryParse(chunk, ignoreCase: true, out permissionType))
-                {
-                    return false;
-                }
-                permissionList.Add(permissionType);
-            }
-            return true;
         }
     }
 }
