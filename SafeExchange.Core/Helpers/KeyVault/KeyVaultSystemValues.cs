@@ -17,6 +17,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         private const string TokenProviderSettingsName = "system-setting-000001";
 
+        private const string VapidOptionsSettingsName = "system-setting-000002";
+
         private ILogger log;
 
         public KeyVaultSystemSettings(ILogger log)
@@ -37,12 +39,27 @@ namespace SpaceOyster.SafeExchange.Core
             var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(TokenProviderSettingsName);
             if (!existingSecretVersions.Any())
             {
-                log.LogInformation($"Cannot get TokenProviderSettings, as not exists.");
+                log.LogInformation($"Cannot get {nameof(TokenProviderSettings)}, as not exists.");
                 return default(TokenProviderSettings);
             }
 
             var secretBundle = await keyVaultHelper.GetSecretAsync(TokenProviderSettingsName);
             return JsonSerializer.Deserialize<TokenProviderSettings>(secretBundle.Value);
+        }
+
+        public async Task<VapidOptions> GetVapidOptionsAsync()
+        {
+            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), this.log);
+
+            var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(VapidOptionsSettingsName);
+            if (!existingSecretVersions.Any())
+            {
+                log.LogInformation($"Cannot get {nameof(VapidOptions)}, as not exists.");
+                return default(VapidOptions);
+            }
+
+            var secretBundle = await keyVaultHelper.GetSecretAsync(TokenProviderSettingsName);
+            return JsonSerializer.Deserialize<VapidOptions>(secretBundle.Value);
         }
     }
 }

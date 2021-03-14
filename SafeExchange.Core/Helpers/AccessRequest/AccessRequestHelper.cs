@@ -170,8 +170,22 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async ValueTask<IList<AccessRequest>> TryGetAccessRequestsAsync(string userId, string secretId, RequestStatus status)
         {
-            // TODO ...
-            return await Task.FromResult(default(IList<AccessRequest>));
+            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.SubjectName = @user_id AND AR.ObjectName = @secret_id AND AR.Status = @status")
+                .WithParameter("@user_id", userId)
+                .WithParameter("@secret_id", secretId)
+                .WithParameter("@status", status);
+
+            var result = new List<AccessRequest>();
+            using (var resultSetIterator = this.accessRequests.GetItemQueryIterator<AccessRequest>(query))
+            {
+                while (resultSetIterator.HasMoreResults)
+                {
+                    var response = await resultSetIterator.ReadNextAsync();
+                    result.AddRange(response);
+                }
+            }
+
+            return result;
         }
 
         private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
