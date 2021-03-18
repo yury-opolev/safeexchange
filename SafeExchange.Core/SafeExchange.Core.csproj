@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.Graph" Version="3.21.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.24.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
+    <PackageReference Include="WebPush" Version="1.0.11" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Templates\GetSecret.template.html" />

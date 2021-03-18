@@ -9,11 +9,18 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
+    using System.Text.Json;
     using System.Threading.Tasks;
+    using WebPush;
 
     public class NotificationsHelper
     {
         private Container notificationSubscriptions;
+
+        private VapidOptions options;
+
+        private JsonSerializerOptions serializerOptions;
 
         private ILogger log;
 
@@ -21,9 +28,10 @@ namespace SpaceOyster.SafeExchange.Core
         {
             this.notificationSubscriptions = notificationSubscriptions ?? throw new ArgumentNullException(nameof(notificationSubscriptions));
             this.log = logger ?? throw new ArgumentNullException(nameof(logger));
+            this.serializerOptions = new JsonSerializerOptions() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         }
 
-        public async Task<NotificationSubscription> SubscribeAsync(string userId, NotificationSubscription subscription)
+        public async ValueTask<NotificationSubscription> SubscribeAsync(string userId, NotificationSubscription subscription)
         {
             this.log.LogInformation($"{nameof(SubscribeAsync)}: UserId = {userId}, Subscription = {subscription}");
 
@@ -43,7 +51,7 @@ namespace SpaceOyster.SafeExchange.Core
             return subscription;
         }
 
-        public async Task<bool> UnsubscribeAsync(string userId, NotificationSubscription subscription)
+        public async ValueTask<bool> UnsubscribeAsync(string userId, NotificationSubscription subscription)
         {
             this.log.LogInformation($"{nameof(UnsubscribeAsync)}: UserId = {userId}, Subscription = {subscription}");
 
@@ -60,7 +68,7 @@ namespace SpaceOyster.SafeExchange.Core
             return true;
         }
 
-        public async Task RemoveAllUserSubscriptionsAsync(string userId)
+        public async ValueTask RemoveAllUserSubscriptionsAsync(string userId)
         {
             this.log.LogInformation($"{nameof(RemoveAllUserSubscriptionsAsync)}: UserId = {userId}");
 
@@ -71,12 +79,48 @@ namespace SpaceOyster.SafeExchange.Core
             }
         }
 
-        public async Task TryNotifyAsync(string userId, NotificationMessage message)
+        public async ValueTask TryNotifyAsync(string userId, NotificationMessage message)
         {
-            await Task.CompletedTask;
+            var existingSubscriptions = await this.TryGetAllExistingSubscriptions(userId);
+            if (!existingSubscriptions.Any())
+            {
+                this.log.LogInformation($"User {userId} does not have any notification subscriptions.");
+            }
+
+            foreach (var subscription in existingSubscriptions)
+            {
+                await this.TryNotifyInternalAsync(subscription, message);
+            }
         }
 
-        private async Task<NotificationSubscription> TryGetExistingSubscription(string userId, string Url)
+        private async ValueTask TryNotifyInternalAsync(NotificationSubscription subscription, NotificationMessage message)
+        {
+            var vapidOptions = await this.GetVapidOptionsAsync();
+            var pushSubscription = new PushSubscription(subscription.Url, subscription.P256dh, subscription.Auth);
+            var vapidDetails = new VapidDetails(vapidOptions.Subject, vapidOptions.PublicKey, vapidOptions.PrivateKey);
+            var webPushClient = new WebPushClient();
+
+            try
+            {
+                var payload = JsonSerializer.Serialize(message, this.serializerOptions);
+                await webPushClient.SendNotificationAsync(pushSubscription, payload, vapidDetails);
+                this.log.LogInformation($"Notification for subscription {subscription} is sent.");
+            }
+            catch (WebPushException wpException)
+            {
+                if (wpException.StatusCode.Equals(HttpStatusCode.Gone))
+                {
+                    this.log.LogWarning($"Notification subscription {subscription} is no longer valid.");
+                    await this.UnsubscribeAsync(subscription.UserId, subscription);
+                }
+            }
+            catch (Exception ex)
+            {
+                this.log.LogError(ex, $"Error sending webpush notification to {subscription.UserId}.");
+            }
+        }
+
+        private async ValueTask<NotificationSubscription> TryGetExistingSubscription(string userId, string Url)
         {
             var query = new QueryDefinition("SELECT NS.id FROM NotificationSubscriptions NS WHERE NS.UserId = @user_id AND NS.Url = @url")
                 .WithParameter("@user_id", userId)
@@ -121,6 +165,22 @@ namespace SpaceOyster.SafeExchange.Core
             }
 
             return userId.ToUpper().Substring(0, 1);
+        }
+
+        private async ValueTask<VapidOptions> GetVapidOptionsAsync()
+        {
+            if (this.options == null)
+            {
+                await this.InitVapidOptionsAsync();
+            }
+
+            return this.options;
+        }
+
+        private async Task<VapidOptions> InitVapidOptionsAsync()
+        {
+            var systemSettings = new KeyVaultSystemSettings(this.log);
+            return await systemSettings.GetVapidOptionsAsync();
         }
     }
 }
