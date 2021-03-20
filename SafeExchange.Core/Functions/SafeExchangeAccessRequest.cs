@@ -9,8 +9,10 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
     using System;
+    using System.Linq;
     using System.Security.Claims;
     using System.Threading.Tasks;
+    using System.Web.Http;
 
     public class SafeExchangeAccessRequest
     {
@@ -32,6 +34,20 @@ namespace SpaceOyster.SafeExchange.Core
                 return filterResult;
             }
 
+            if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
+            {
+                log.LogInformation($"Cannot request access to secret '{secretId}', as not allowed for system reserved names");
+                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
+            }
+
+            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
+            var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(secretId);
+            if (!existingSecretVersions.Any())
+            {
+                log.LogInformation($"Cannot request access to secret '{secretId}', as not exists");
+                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
+            }
+
             var accessRequests = await cosmosDbProvider.GetAccessRequestsContainerAsync();
             var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
             var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
@@ -42,9 +58,24 @@ namespace SpaceOyster.SafeExchange.Core
             var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, log);
 
             var userName = TokenHelper.GetName(principal);
-            await accessRequestHelper.RequestAccessAsync(userName, secretId, null);
+            return await TryCatch(async () =>
+            {
+                await accessRequestHelper.RequestAccessAsync(userName, secretId, null);
+                return new OkObjectResult(new { status = "ok" });
+            }, "Request-Access", log);
+        }
 
-            return new OkObjectResult(new { status = "ok" });
+        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (Exception ex)
+            {
+                log.LogError($"{actionName} had exception {ex.GetType()}: {ex.Message}");
+                return new ExceptionResult(ex, true);
+            }
         }
     }
 }

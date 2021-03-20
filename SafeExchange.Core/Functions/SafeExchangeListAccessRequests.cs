@@ -12,6 +12,7 @@ namespace SpaceOyster.SafeExchange.Core
     using System.Collections.Generic;
     using System.Security.Claims;
     using System.Threading.Tasks;
+    using System.Web.Http;
 
     public class SafeExchangeListAccessRequests
     {
@@ -43,9 +44,24 @@ namespace SpaceOyster.SafeExchange.Core
             var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, log);
 
             var userName = TokenHelper.GetName(principal);
-            var existingAccessRequests = await accessRequestHelper.GetAccessRequestsToHandleAsync(userName);
+            return await TryCatch(async () =>
+            {
+                var existingAccessRequests = await accessRequestHelper.GetAccessRequestsToHandleAsync(userName);
+                return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(existingAccessRequests) });
+            }, "List-AccessRequests", log);
+        }
 
-            return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(existingAccessRequests) });
+        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (Exception ex)
+            {
+                log.LogError($"{actionName} had exception {ex.GetType()}: {ex.Message}");
+                return new ExceptionResult(ex, true);
+            }
         }
 
         private static IList<OutputAccessRequest> ConvertToOutputAccessRequests(IList<AccessRequest> accessRequests)
