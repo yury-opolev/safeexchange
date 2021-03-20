@@ -46,9 +46,19 @@ namespace SpaceOyster.SafeExchange.Core
 
         public static bool AreEqual(IList<PermissionType> leftPermissions, IList<PermissionType> rightPermissions)
         {
-            var leftNotRight = leftPermissions.Except(rightPermissions);
+            return IsSubsetOrEqual(leftPermissions, rightPermissions) && IsSubsetOrEqual(rightPermissions, leftPermissions);
+        }
+
+        /// <summary>
+        /// Return true if right permissions is a subset of or equal to left permissions
+        /// </summary>
+        /// <param name="leftPermissions">Left permissions</param>
+        /// <param name="rightPermissions">Right permissions</param>
+        /// <returns>True if right permissions is a subset of or equal to left permissions.</returns>
+        public static bool IsSubsetOrEqual(IList<PermissionType> leftPermissions, IList<PermissionType> rightPermissions)
+        {
             var rightNotLeft = rightPermissions.Except(leftPermissions);
-            return !leftNotRight.Any() && !rightNotLeft.Any();
+            return !rightNotLeft.Any();
         }
 
         public static string PermissionsToString(IList<PermissionType> permissionList)

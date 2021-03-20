@@ -30,9 +30,10 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async ValueTask<IList<AccessRequest>> GetAccessRequestsToHandleAsync(string userId)
         {
-            // TODO ...
+            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.Recipients.Name = @user_id")
+                .WithParameter("@user_id", userId);
 
-            return await Task.FromResult<IList<AccessRequest>>(null);
+            return await ProcessQueryAsync(query);
         }
 
         public async ValueTask RequestAccessAsync(string userId, string secretId, IList<PermissionType> permissions)
@@ -53,6 +54,7 @@ namespace SpaceOyster.SafeExchange.Core
                 }
             }
 
+            List<RequestRecipient> recipientsList = await this.GetSubjectsWithGrantRightsAsync(secretId, userId);
             var accessRequest = new AccessRequest()
             {
                 id = GetNewId(),
@@ -61,6 +63,8 @@ namespace SpaceOyster.SafeExchange.Core
                 ObjectName = secretId,
                 SubjectName = userId,
                 Permissions = permissionsCsv,
+
+                Recipients = recipientsList.ToArray(),
 
                 RequestedAt = now,
                 Status = RequestStatus.InProgress
@@ -106,6 +110,21 @@ namespace SpaceOyster.SafeExchange.Core
 
             var updatedAccessRequest = await this.UpdateAccessRequestAsync(userId, requestId, secretId, RequestStatus.Rejected);
             await this.TryNotifyAsync(updatedAccessRequest);
+        }
+
+        private async Task<List<RequestRecipient>> GetSubjectsWithGrantRightsAsync(string secretId, string excludeId)
+        {
+            var existingPermissions = await this.permissionsHelper.GetAllPermissionsAsync(secretId);
+            var recipientsList = new List<RequestRecipient>(existingPermissions.Count);
+            foreach (var existingPermission in existingPermissions)
+            {
+                if (!existingPermission.SubjectName.Equals(excludeId, StringComparison.OrdinalIgnoreCase) && existingPermission.CanGrantAccess)
+                {
+                    recipientsList.Add(new RequestRecipient() { Name = existingPermission.SubjectName });
+                }
+            }
+
+            return recipientsList;
         }
 
         private static string GetNewId()
@@ -182,6 +201,11 @@ namespace SpaceOyster.SafeExchange.Core
                 .WithParameter("@secret_id", secretId)
                 .WithParameter("@status", status);
 
+            return await ProcessQueryAsync(query);
+        }
+
+        private async ValueTask<IList<AccessRequest>> ProcessQueryAsync(QueryDefinition query)
+        {
             var result = new List<AccessRequest>();
             using (var resultSetIterator = this.accessRequests.GetItemQueryIterator<AccessRequest>(query))
             {
@@ -197,22 +221,22 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
         {
+            var notifications = Environment.GetEnvironmentVariable("FEATURES-USE-NOTIFICATIONS");
+            if (!("TRUE".Equals(notifications, StringComparison.InvariantCultureIgnoreCase)))
+            {
+                return;
+            }
+
             this.logger.LogInformation($"{nameof(TryNotifyAsync)} called for access request {accessRequest.id}, status: {accessRequest.Status}.");
 
             List<string> userIdsToNotify = null;
             string messageText = null;
             if (accessRequest.Status == RequestStatus.InProgress)
             {
-                var usersWithPermissions = await this.permissionsHelper.GetAllPermissionsAsync(accessRequest.ObjectName);
-                userIdsToNotify = new List<string>(usersWithPermissions.Count);
-                foreach (var user in usersWithPermissions)
+                userIdsToNotify = new List<string>(accessRequest.Recipients.Length);
+                foreach (var requestRecipient in accessRequest.Recipients)
                 {
-                    if (!user.CanGrantAccess || accessRequest.SubjectName.Equals(user.SubjectName, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    userIdsToNotify.Add(user.SubjectName);
+                    userIdsToNotify.Add(requestRecipient.Name);
                 }
                 messageText = $"Access requested ({accessRequest.Permissions}).";
             }

@@ -21,6 +21,12 @@ namespace SpaceOyster.SafeExchange.Core
             this.ObjectName = resource.ObjectName;
             this.Permissions = resource.Permissions;
 
+            this.Recipients = new RequestRecipient[resource.Recipients.Length];
+            for (int i = 0; i < resource.Recipients.Length; i++)
+            {
+                this.Recipients.SetValue(resource.Recipients[i], i);
+            }
+
             this.RequestedAt = resource.RequestedAt;
             this.Status = resource.Status;
             this.FinishedBy = resource.FinishedBy;
@@ -45,6 +51,11 @@ namespace SpaceOyster.SafeExchange.Core
         /// List of permissions, a comma-separated list
         /// </summary>
         public string Permissions { get; set; }
+
+        /// <summary>
+        /// List of potential recipients
+        /// </summary>
+        public RequestRecipient[] Recipients { get; set; }
 
         public DateTime RequestedAt { get; set; }
 
