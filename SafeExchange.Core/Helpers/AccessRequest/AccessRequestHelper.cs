@@ -28,6 +28,13 @@ namespace SpaceOyster.SafeExchange.Core
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        public async ValueTask<IList<AccessRequest>> GetAccessRequestsToHandleAsync(string userId)
+        {
+            // TODO ...
+
+            return await Task.FromResult<IList<AccessRequest>>(null);
+        }
+
         public async ValueTask RequestAccessAsync(string userId, string secretId, IList<PermissionType> permissions)
         {
             var permissionsCsv = PermissionsHelper.PermissionsToString(permissions);
@@ -218,9 +225,9 @@ namespace SpaceOyster.SafeExchange.Core
             var message = new NotificationMessage()
             {
                 From = accessRequest.SubjectName,
-                Topic = accessRequest.ObjectName,
+                Title = accessRequest.ObjectName,
                 MessageText = messageText,
-                Uri = ""
+                Uri = "/accessrequests"
             };
 
             foreach (var userId in userIdsToNotify)

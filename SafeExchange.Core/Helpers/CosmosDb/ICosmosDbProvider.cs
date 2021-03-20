@@ -16,5 +16,7 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
         public ValueTask<Container> GetGroupDictionaryContainerAsync();
 
         public ValueTask<Container> GetNotificationSubscriptionsContainerAsync();
+
+        public ValueTask<Container> GetAccessRequestsContainerAsync();
     }
 }

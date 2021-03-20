@@ -16,6 +16,8 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
         public const string NotificationSubscriptionsContainerName = "NotificationSubscriptions";
 
+        public const string AccessRequestsContainerName = "AccessRequests";
+
         public const string DefaultPartitionKeyName = "PartitionKey";
 
         public string SubscriptionId { get; set; }

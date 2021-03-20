@@ -64,6 +64,12 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             return await this.GetContainerInternalAsync(CosmosDbProviderSettings.NotificationSubscriptionsContainerName);
         }
 
+        public async ValueTask<Container> GetAccessRequestsContainerAsync()
+        {
+            await this.InitializeAsync();
+            return await this.GetContainerInternalAsync(CosmosDbProviderSettings.AccessRequestsContainerName);
+        }
+
         private async ValueTask<Container> GetContainerInternalAsync(string containerName)
         {
             await RetrieveCosmosDbKeysAsync();

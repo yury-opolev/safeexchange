@@ -10,7 +10,7 @@ namespace SpaceOyster.SafeExchange.Core
     {
         public string From { get; set; }
 
-        public string Topic { get; set; }
+        public string Title { get; set; }
 
         public string MessageText { get; set; }
 

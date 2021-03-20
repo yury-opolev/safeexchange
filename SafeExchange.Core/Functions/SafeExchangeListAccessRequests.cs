@@ -1,5 +1,5 @@
 ﻿/// <summary>
-/// SafeExchange
+/// ...
 /// </summary>
 
 namespace SpaceOyster.SafeExchange.Core
@@ -9,22 +9,23 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
     using System;
+    using System.Collections.Generic;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
-    public class SafeExchangeAccessRequest
+    public class SafeExchangeListAccessRequests
     {
         private readonly IGraphClientProvider graphClientProvider;
 
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        public SafeExchangeListAccessRequests(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
         }
 
-        public async Task<IActionResult> Run(HttpRequest req, string secretId, ClaimsPrincipal principal, ILogger log)
+        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
@@ -42,9 +43,19 @@ namespace SpaceOyster.SafeExchange.Core
             var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, log);
 
             var userName = TokenHelper.GetName(principal);
-            await accessRequestHelper.RequestAccessAsync(userName, secretId, null);
+            var existingAccessRequests = await accessRequestHelper.GetAccessRequestsToHandleAsync(userName);
 
-            return new OkObjectResult(new { status = "ok" });
+            return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(existingAccessRequests) });
+        }
+
+        private static IList<OutputAccessRequest> ConvertToOutputAccessRequests(IList<AccessRequest> accessRequests)
+        {
+            var result = new List<OutputAccessRequest>(accessRequests.Count);
+            foreach (var accessRequest in accessRequests)
+            {
+                result.Add(new OutputAccessRequest(accessRequest));
+            }
+            return result;
         }
     }
 }
