@@ -8,6 +8,7 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading.Tasks;
 
     public class AccessRequestHelper
@@ -92,6 +93,20 @@ namespace SpaceOyster.SafeExchange.Core
         {
             this.logger.LogInformation($"{nameof(ApproveAccessRequestAsync)} called by {userId} for access request {requestId} ({secretId}).");
 
+            var existingRequest = await this.GetAccessRequestAsync(requestId, secretId);
+            if (existingRequest == default(AccessRequest))
+            {
+                this.logger.LogWarning($"Cannot find access request '{requestId}' on secret {secretId}.");
+                return;
+            }
+
+            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.Name.Equals(userId, StringComparison.OrdinalIgnoreCase));
+            if (foundRecipient == default(RequestRecipient))
+            {
+                this.logger.LogWarning($"User '{userId}' is not in the list of request '{requestId}' recipients on secret {secretId}.");
+                return;
+            }
+
             var userHasGrantRights = await this.permissionsHelper.HasPermissionAsync(userId, secretId, PermissionType.GrantAccess);
             if (!userHasGrantRights)
             {
@@ -112,6 +127,20 @@ namespace SpaceOyster.SafeExchange.Core
         public async ValueTask DenyAccessRequestAsync(string userId, string requestId, string secretId)
         {
             this.logger.LogInformation($"{nameof(DenyAccessRequestAsync)} called by {userId} for access request {requestId} ({secretId}).");
+
+            var existingRequest = await this.GetAccessRequestAsync(requestId, secretId);
+            if (existingRequest == default(AccessRequest))
+            {
+                this.logger.LogWarning($"Cannot find access request '{requestId}' on secret {secretId}.");
+                return;
+            }
+
+            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.Name.Equals(userId, StringComparison.OrdinalIgnoreCase));
+            if (foundRecipient == default(RequestRecipient))
+            {
+                this.logger.LogWarning($"User '{userId}' is not in the list of request '{requestId}' recipients on secret {secretId}.");
+                return;
+            }
 
             var userHasGrantRights = await this.permissionsHelper.HasPermissionAsync(userId, secretId, PermissionType.GrantAccess);
             if (!userHasGrantRights)
@@ -204,6 +233,13 @@ namespace SpaceOyster.SafeExchange.Core
 
             var updatedItemResponse = await this.accessRequests.UpsertItemAsync(accessRequest);
             return updatedItemResponse.Resource;
+        }
+
+        private async ValueTask<AccessRequest> GetAccessRequestAsync(string requestId, string secretId)
+        {
+            var partitionKey = new PartitionKey(AccessRequestHelper.GetPartitionKey(secretId));
+            var itemResponse = await this.accessRequests.ReadItemAsync<AccessRequest>(requestId, partitionKey);
+            return itemResponse.Resource;
         }
 
         private async ValueTask<IList<AccessRequest>> TryGetAccessRequestsAsync(string userId, string secretId, RequestStatus status)
