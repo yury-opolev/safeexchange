@@ -46,8 +46,13 @@ namespace SpaceOyster.SafeExchange.Core
             var userName = TokenHelper.GetName(principal);
             return await TryCatch(async () =>
             {
-                var existingAccessRequests = await accessRequestHelper.GetAccessRequestsToHandleAsync(userName);
-                return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(existingAccessRequests) });
+                var accessRequestsToHandle = await accessRequestHelper.GetAccessRequestsToHandleAsync(userName);
+                var accessRequestsFrom = await accessRequestHelper.GetAccessRequestsFromAsync(userName);
+                foreach (var accessRequestFrom in accessRequestsFrom)
+                {
+                    accessRequestsToHandle.Add(accessRequestFrom);
+                }
+                return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(accessRequestsToHandle) });
             }, "List-AccessRequests", log);
         }
 

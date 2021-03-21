@@ -30,7 +30,19 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async ValueTask<IList<AccessRequest>> GetAccessRequestsToHandleAsync(string userId)
         {
+            this.logger.LogInformation($"{nameof(GetAccessRequestsToHandleAsync)} called by {userId}.");
+
             var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.Recipients.Name = @user_id")
+                .WithParameter("@user_id", userId);
+
+            return await ProcessQueryAsync(query);
+        }
+         
+        public async ValueTask<IList<AccessRequest>> GetAccessRequestsFromAsync(string userId)
+        {
+            this.logger.LogInformation($"{nameof(GetAccessRequestsFromAsync)} called by {userId}.");
+
+            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.SubjectName = @user_id")
                 .WithParameter("@user_id", userId);
 
             return await ProcessQueryAsync(query);
