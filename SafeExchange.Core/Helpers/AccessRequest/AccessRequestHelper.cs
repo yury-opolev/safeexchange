@@ -9,6 +9,7 @@ namespace SpaceOyster.SafeExchange.Core
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Threading.Tasks;
 
     public class AccessRequestHelper
@@ -187,14 +188,12 @@ namespace SpaceOyster.SafeExchange.Core
         {
             this.logger.LogInformation($"{nameof(AddPermissionsAsync)} called by {userId} for access request {requestId} ({secretId}).");
 
-            var partitionKey = new PartitionKey(AccessRequestHelper.GetPartitionKey(secretId));
-            var itemResponse = await this.accessRequests.ReadItemAsync<AccessRequest>(requestId, partitionKey);
-            if (itemResponse.Resource == default(AccessRequest))
+            var accessRequest = await this.GetAccessRequestAsync(requestId, secretId);
+            if (accessRequest == default(AccessRequest))
             {
                 return false;
             }
 
-            var accessRequest = itemResponse.Resource;
             try
             {
                 PermissionsHelper.TryParsePermissions(accessRequest.Permissions, out var permissions);
@@ -217,14 +216,13 @@ namespace SpaceOyster.SafeExchange.Core
         {
             var now = DateTime.UtcNow;
 
-            var partitionKey = new PartitionKey(AccessRequestHelper.GetPartitionKey(secretId));
-            var itemResponse = await this.accessRequests.ReadItemAsync<AccessRequest>(requestId, partitionKey);
-            if (itemResponse.Resource == default(AccessRequest))
+            var existingAccessRequest = await this.GetAccessRequestAsync(requestId, secretId);
+            if (existingAccessRequest == default(AccessRequest))
             {
                 return default(AccessRequest);
             }
 
-            var accessRequest = new AccessRequest(itemResponse.Resource)
+            var accessRequest = new AccessRequest(existingAccessRequest)
             {
                 Status = newStatus,
                 FinishedBy = userId,
@@ -237,9 +235,16 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async ValueTask<AccessRequest> GetAccessRequestAsync(string requestId, string secretId)
         {
-            var partitionKey = new PartitionKey(AccessRequestHelper.GetPartitionKey(secretId));
-            var itemResponse = await this.accessRequests.ReadItemAsync<AccessRequest>(requestId, partitionKey);
-            return itemResponse.Resource;
+            try
+            {
+                var partitionKey = new PartitionKey(AccessRequestHelper.GetPartitionKey(secretId));
+                var itemResponse = await this.accessRequests.ReadItemAsync<AccessRequest>(requestId, partitionKey);
+                return itemResponse.Resource;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return default(AccessRequest);
+            }
         }
 
         private async ValueTask<IList<AccessRequest>> TryGetAccessRequestsAsync(string userId, string secretId, RequestStatus status)

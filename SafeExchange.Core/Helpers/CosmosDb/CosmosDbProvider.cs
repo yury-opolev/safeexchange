@@ -109,6 +109,7 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.SubjectPermissionsContainerName, "/PartitionKey");
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.GroupDictionaryContainerName, "/PartitionKey");
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.NotificationSubscriptionsContainerName, "/PartitionKey");
+                await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.AccessRequestsContainerName, "/PartitionKey");
             }
             catch (CosmosException cosmosException)
             {
