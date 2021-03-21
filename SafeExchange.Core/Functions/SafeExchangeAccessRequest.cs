@@ -9,6 +9,7 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
     using System;
+    using System.Collections.Generic;
     using System.Linq;
     using System.Security.Claims;
     using System.Threading.Tasks;
@@ -26,12 +27,20 @@ namespace SpaceOyster.SafeExchange.Core
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
         }
 
-        public async Task<IActionResult> Run(HttpRequest req, string secretId, ClaimsPrincipal principal, ILogger log)
+        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;
+            }
+
+            dynamic data = await RequestHelper.GetRequestDataAsync(req);
+            string secretId = data?.secretId;
+            if (string.IsNullOrEmpty(secretId))
+            {
+                log.LogInformation($"{nameof(secretId)} is not set.");
+                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(secretId)} is required" });
             }
 
             if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
@@ -58,9 +67,61 @@ namespace SpaceOyster.SafeExchange.Core
             var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, log);
 
             var userName = TokenHelper.GetName(principal);
+            switch (req.Method.ToLower())
+            {
+                case "post":
+                    return await HandleAccessRequestCreation(data, userName, secretId, accessRequestHelper, log);
+
+                case "patch":
+                    return await HandleAccessRequestUpdate(data, userName, secretId, accessRequestHelper, log);
+
+                default:
+                    return new BadRequestObjectResult(new { status = "error", error = "Request method not recognized" });
+            }
+        }
+
+        private static async Task<IActionResult> HandleAccessRequestCreation(dynamic requestData, string userId, string secretId, AccessRequestHelper accessRequestHelper, ILogger log)
+        {
+            string permission = requestData?.permission;
+            if (!PermissionsHelper.TryParsePermissions(permission, out var permissionList))
+            {
+                log.LogInformation($"Cannot parse {nameof(permission)}.");
+                return new BadRequestObjectResult(new { status = "error", error = $"Valid value of {nameof(permission)} is required" });
+            }
+
             return await TryCatch(async () =>
             {
-                await accessRequestHelper.RequestAccessAsync(userName, secretId, null);
+                await accessRequestHelper.RequestAccessAsync(userId, secretId, permissionList);
+                return new OkObjectResult(new { status = "ok" });
+            }, "Request-Access", log);
+        }
+
+        private static async Task<IActionResult> HandleAccessRequestUpdate(dynamic requestData, string userId, string secretId, AccessRequestHelper accessRequestHelper, ILogger log)
+        {
+            string requestId = requestData?.requestId;
+            if (string.IsNullOrEmpty(requestId))
+            {
+                log.LogInformation($"'{nameof(requestId)}' is not set.");
+                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(requestId)} is required" });
+            }
+
+            bool? grant = requestData?.grant;
+            if (grant == null)
+            {
+                log.LogInformation($"'{nameof(grant)}' is not set.");
+                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(grant)} is required" });
+            }
+
+            return await TryCatch(async () =>
+            {
+                if (grant == true)
+                {
+                    await accessRequestHelper.ApproveAccessRequestAsync(userId, requestId, secretId);
+                }
+                else
+                {
+                    await accessRequestHelper.DenyAccessRequestAsync(userId, requestId, secretId);
+                }
                 return new OkObjectResult(new { status = "ok" });
             }, "Request-Access", log);
         }

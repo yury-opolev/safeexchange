@@ -25,11 +25,11 @@ namespace SpaceOyster.SafeExchange.Functions
 
         [FunctionName("SafeExchange-AccessRequest")]
         public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "accessrequest/{secretId}")]
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", "patch", Route = "accessrequest")]
             HttpRequest req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            ClaimsPrincipal principal, ILogger log)
         {
-            return await this.accessRequestHandler.Run(req, secretId, principal, log);
+            return await this.accessRequestHandler.Run(req, principal, log);
         }
     }
 }
