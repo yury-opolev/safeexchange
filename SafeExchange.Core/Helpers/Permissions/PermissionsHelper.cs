@@ -254,7 +254,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId)
         {
-            return new ObjectResult(new { error = $"Insufficient permissions to do '{permission}' action on '{secretId}'" }) { StatusCode = StatusCodes.Status401Unauthorized };
+            return new ObjectResult(new { status = "unauthorized", error = $"Insufficient permissions to do '{permission}' action on '{secretId}'" }) { StatusCode = StatusCodes.Status401Unauthorized };
         }
 
         private async Task<IList<SubjectPermissions>> GetAllRows(string secretName)

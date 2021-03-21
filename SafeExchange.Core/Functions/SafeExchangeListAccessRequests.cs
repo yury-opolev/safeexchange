@@ -52,7 +52,7 @@ namespace SpaceOyster.SafeExchange.Core
                 {
                     accessRequestsToHandle.Add(accessRequestFrom);
                 }
-                return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(accessRequestsToHandle) });
+                return new OkObjectResult(new { status = "ok", accessRequests = ConvertToOutputAccessRequests(userName, accessRequestsToHandle) });
             }, "List-AccessRequests", log);
         }
 
@@ -69,12 +69,15 @@ namespace SpaceOyster.SafeExchange.Core
             }
         }
 
-        private static IList<OutputAccessRequest> ConvertToOutputAccessRequests(IList<AccessRequest> accessRequests)
+        private static IList<OutputAccessRequest> ConvertToOutputAccessRequests(string userId, IList<AccessRequest> accessRequests)
         {
             var result = new List<OutputAccessRequest>(accessRequests.Count);
             foreach (var accessRequest in accessRequests)
             {
-                result.Add(new OutputAccessRequest(accessRequest));
+                result.Add(new OutputAccessRequest(accessRequest)
+                {
+                    RequestType = accessRequest.SubjectName.Equals(userId, StringComparison.OrdinalIgnoreCase) ? AccessRequestType.Outgoing : AccessRequestType.Incoming
+                });
             }
             return result;
         }

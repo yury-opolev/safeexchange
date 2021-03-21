@@ -22,6 +22,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         public string Permissions { get; set; }
 
+        public AccessRequestType RequestType { get; set; }
+
         public DateTime RequestedAt { get; set; }
     }
 }
