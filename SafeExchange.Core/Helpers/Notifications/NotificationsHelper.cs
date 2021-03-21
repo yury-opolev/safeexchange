@@ -171,7 +171,7 @@ namespace SpaceOyster.SafeExchange.Core
         {
             if (this.options == null)
             {
-                await this.InitVapidOptionsAsync();
+                this.options = await this.InitVapidOptionsAsync();
             }
 
             return this.options;
