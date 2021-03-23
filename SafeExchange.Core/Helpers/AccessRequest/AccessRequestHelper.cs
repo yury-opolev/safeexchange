@@ -34,8 +34,12 @@ namespace SpaceOyster.SafeExchange.Core
         {
             this.logger.LogInformation($"{nameof(GetAccessRequestsToHandleAsync)} called by {userId}.");
 
-            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.Recipients.Name = @user_id")
-                .WithParameter("@user_id", userId);
+            var query = new QueryDefinition(
+                "SELECT AR.id, AR.SubjectName, AR.ObjectName, AR.Permissions, AR.RequestedAt FROM AccessRequests AR " +
+                "JOIN(SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.Name = @user_id) " +
+                "WHERE AR.Status = @status")
+                .WithParameter("@user_id", userId)
+                .WithParameter("@status", RequestStatus.InProgress);
 
             return await ProcessQueryAsync(query);
         }
@@ -44,8 +48,9 @@ namespace SpaceOyster.SafeExchange.Core
         {
             this.logger.LogInformation($"{nameof(GetAccessRequestsFromAsync)} called by {userId}.");
 
-            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.SubjectName = @user_id")
-                .WithParameter("@user_id", userId);
+            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.SubjectName = @user_id AND AR.Status = @status")
+                .WithParameter("@user_id", userId)
+                .WithParameter("@status", RequestStatus.InProgress);
 
             return await ProcessQueryAsync(query);
         }
