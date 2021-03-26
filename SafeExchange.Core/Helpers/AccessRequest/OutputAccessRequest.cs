@@ -10,11 +10,10 @@ namespace SpaceOyster.SafeExchange.Core
     {
         public OutputAccessRequest(AccessRequest source)
         {
-            this.UserName = source.SubjectName;
-            this.SecretName = source.ObjectName;
-            this.Permissions = source.Permissions;
-            this.RequestedAt = source.RequestedAt;
+            this.CopyFrom(source);
         }
+
+        public string RequestId { get; set; }
 
         public string UserName { get; set; }
 
@@ -25,5 +24,14 @@ namespace SpaceOyster.SafeExchange.Core
         public AccessRequestType RequestType { get; set; }
 
         public DateTime RequestedAt { get; set; }
+
+        private void CopyFrom(AccessRequest source)
+        {
+            this.RequestId = source.id;
+            this.UserName = source.SubjectName;
+            this.SecretName = source.ObjectName;
+            this.Permissions = source.Permissions;
+            this.RequestedAt = source.RequestedAt;
+        }
     }
 }

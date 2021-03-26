@@ -39,9 +39,10 @@ namespace SpaceOyster.SafeExchange.Core
             if (existingSubscription != default(NotificationSubscription))
             {
                 this.log.LogInformation($"Subscription with given endpoint already exists for {userId}.");
-                return subscription;
+                return existingSubscription;
             }
 
+            subscription.id = GetNewId();
             subscription.UserId = userId;
             subscription.PartitionKey = NotificationsHelper.GetPartitionKey(userId);
 
@@ -155,6 +156,11 @@ namespace SpaceOyster.SafeExchange.Core
             }
 
             return result;
+        }
+
+        private static string GetNewId()
+        {
+            return $"{Guid.NewGuid()}";
         }
 
         private static string GetPartitionKey(string userId)

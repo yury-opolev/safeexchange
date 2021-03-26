@@ -76,14 +76,14 @@ namespace SpaceOyster.SafeExchange.Core
 
         private static async Task<IActionResult> AddNotificationSubscriptionAsync(string userName, NotificationSubscription subscription, NotificationsHelper notificationsHelper, ILogger log)
         {
-            log.LogInformation($"{nameof(AddNotificationSubscriptionAsync)}: UserId:{userName}, Subscription:{subscription}");
+            log.LogInformation($"{nameof(AddNotificationSubscriptionAsync)}: UserId:{userName}, Subscription: {subscription}");
             var createdSubscription = await notificationsHelper.SubscribeAsync(userName, subscription);
             return new OkObjectResult(new { status = "ok", result = createdSubscription });
         }
 
         private static async Task<IActionResult> RemoveNotificationSubscriptionAsync(string userName, NotificationSubscription subscription, NotificationsHelper notificationsHelper, ILogger log)
         {
-            log.LogInformation($"{nameof(RemoveNotificationSubscriptionAsync)}: UserId:{userName}, Subscription:{subscription}");
+            log.LogInformation($"{nameof(RemoveNotificationSubscriptionAsync)}: UserId:{userName}, Subscription: {subscription}");
             var deleted = await notificationsHelper.UnsubscribeAsync(userName, subscription);
             return new OkObjectResult(new { status = "ok", result = deleted });
         }
