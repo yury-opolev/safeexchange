@@ -62,6 +62,10 @@ namespace SpaceOyster.SafeExchange.Core
                 this.log.LogInformation($"Subscription with given endpoint not exists for {userId}.");
                 return true;
             }
+            else
+            {
+                this.log.LogInformation($"Found corresponding subscription with id {existingSubscription.id}.");
+            }
 
             await this.notificationSubscriptions.DeleteItemAsync<NotificationSubscription>(existingSubscription.id, new PartitionKey(existingSubscription.PartitionKey));
             this.log.LogInformation($"Subscription {subscription} was deleted.");
@@ -123,7 +127,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async ValueTask<NotificationSubscription> TryGetExistingSubscription(string userId, string Url)
         {
-            var query = new QueryDefinition("SELECT NS.id FROM NotificationSubscriptions NS WHERE NS.UserId = @user_id AND NS.Url = @url")
+            var query = new QueryDefinition("SELECT NS.id, NS.PartitionKey FROM NotificationSubscriptions NS WHERE NS.UserId = @user_id AND NS.Url = @url")
                 .WithParameter("@user_id", userId)
                 .WithParameter("@url", Url);
 

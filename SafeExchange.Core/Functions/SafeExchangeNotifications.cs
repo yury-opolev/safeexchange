@@ -78,7 +78,7 @@ namespace SpaceOyster.SafeExchange.Core
         {
             log.LogInformation($"{nameof(AddNotificationSubscriptionAsync)}: UserId:{userName}, Subscription: {subscription}");
             var createdSubscription = await notificationsHelper.SubscribeAsync(userName, subscription);
-            return new OkObjectResult(new { status = "ok", result = createdSubscription });
+            return new OkObjectResult(new { status = "ok", result = new { id = createdSubscription.id } });
         }
 
         private static async Task<IActionResult> RemoveNotificationSubscriptionAsync(string userName, NotificationSubscription subscription, NotificationsHelper notificationsHelper, ILogger log)
