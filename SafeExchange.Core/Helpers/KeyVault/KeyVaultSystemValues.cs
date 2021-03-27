@@ -58,7 +58,7 @@ namespace SpaceOyster.SafeExchange.Core
                 return default(VapidOptions);
             }
 
-            var secretBundle = await keyVaultHelper.GetSecretAsync(TokenProviderSettingsName);
+            var secretBundle = await keyVaultHelper.GetSecretAsync(VapidOptionsSettingsName);
             return JsonSerializer.Deserialize<VapidOptions>(secretBundle.Value);
         }
     }
