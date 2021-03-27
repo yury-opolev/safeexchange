@@ -146,7 +146,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async Task<IList<NotificationSubscription>> TryGetAllExistingSubscriptions(string userId)
         {
-            var query = new QueryDefinition("SELECT NS.id FROM NotificationSubscriptions NS WHERE NS.UserId = @user_id")
+            var query = new QueryDefinition("SELECT * FROM NotificationSubscriptions NS WHERE NS.UserId = @user_id")
                 .WithParameter("@user_id", userId);
 
             var result = new List<NotificationSubscription>();
