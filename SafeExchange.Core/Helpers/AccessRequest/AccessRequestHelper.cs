@@ -289,6 +289,7 @@ namespace SpaceOyster.SafeExchange.Core
 
             List<string> userIdsToNotify = null;
             string messageText = null;
+            string urlString = null;
             if (accessRequest.Status == RequestStatus.InProgress)
             {
                 userIdsToNotify = new List<string>(accessRequest.Recipients.Length);
@@ -296,20 +297,29 @@ namespace SpaceOyster.SafeExchange.Core
                 {
                     userIdsToNotify.Add(requestRecipient.Name);
                 }
-                messageText = $"Access requested ({accessRequest.Permissions}).";
+                messageText = $"{accessRequest.SubjectName} requested access to {accessRequest.ObjectName} ({accessRequest.Permissions}).";
+                urlString = "/accessrequests";
             }
             else
             {
                 userIdsToNotify = new List<string>(1) { accessRequest.SubjectName };
-                messageText = accessRequest.Status == RequestStatus.Approved ? "Access granted." : "Access request rejected.";
+                messageText = accessRequest.Status == RequestStatus.Approved ? $"Access to {accessRequest.ObjectName} granted." : $"Access request to {accessRequest.ObjectName} rejected.";
+                if (accessRequest.Status == RequestStatus.Approved)
+                {
+                    messageText = $"Access to {accessRequest.ObjectName} granted.";
+                    urlString = $"/viewdata/{accessRequest.ObjectName}";
+                }
+                else
+                {
+                    messageText = $"Access request to {accessRequest.ObjectName} rejected.";
+                    urlString = "/accessrequests";
+                }
             }
 
             var message = new NotificationMessage()
             {
-                From = accessRequest.SubjectName,
-                Title = accessRequest.ObjectName,
-                MessageText = messageText,
-                Uri = "/accessrequests"
+                Message = messageText,
+                Url = urlString
             };
 
             foreach (var userId in userIdsToNotify)

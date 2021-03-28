@@ -8,12 +8,8 @@ namespace SpaceOyster.SafeExchange.Core
 
     public class NotificationMessage
     {
-        public string From { get; set; }
+        public string Message { get; set; }
 
-        public string Title { get; set; }
-
-        public string MessageText { get; set; }
-
-        public string Uri { get; set; }
+        public string Url { get; set; }
     }
 }
