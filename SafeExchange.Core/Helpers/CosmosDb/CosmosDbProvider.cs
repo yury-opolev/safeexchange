@@ -58,6 +58,18 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             return await this.GetContainerInternalAsync(CosmosDbProviderSettings.GroupDictionaryContainerName);
         }
 
+        public async ValueTask<Container> GetNotificationSubscriptionsContainerAsync()
+        {
+            await this.InitializeAsync();
+            return await this.GetContainerInternalAsync(CosmosDbProviderSettings.NotificationSubscriptionsContainerName);
+        }
+
+        public async ValueTask<Container> GetAccessRequestsContainerAsync()
+        {
+            await this.InitializeAsync();
+            return await this.GetContainerInternalAsync(CosmosDbProviderSettings.AccessRequestsContainerName);
+        }
+
         private async ValueTask<Container> GetContainerInternalAsync(string containerName)
         {
             await RetrieveCosmosDbKeysAsync();
@@ -96,6 +108,8 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.ObjectMetadataContainerName, "/PartitionKey");
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.SubjectPermissionsContainerName, "/PartitionKey");
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.GroupDictionaryContainerName, "/PartitionKey");
+                await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.NotificationSubscriptionsContainerName, "/PartitionKey");
+                await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.AccessRequestsContainerName, "/PartitionKey");
             }
             catch (CosmosException cosmosException)
             {

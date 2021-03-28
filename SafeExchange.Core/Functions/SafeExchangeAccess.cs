@@ -7,8 +7,6 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
-    using System.IO;
-    using Newtonsoft.Json;
     using System;
     using System.Collections.Generic;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
@@ -46,7 +44,7 @@ namespace SpaceOyster.SafeExchange.Core
 
             if (req.Method.ToLower().Equals("post") || req.Method.ToLower().Equals("delete"))
             {
-                dynamic data = await GetRequestDataAsync(req);
+                dynamic data = await RequestHelper.GetRequestDataAsync(req);
 
                 subject = data?.subject;
                 if (string.IsNullOrEmpty(subject))
@@ -56,7 +54,7 @@ namespace SpaceOyster.SafeExchange.Core
                 }
 
                 string permission = data?.permission;
-                if (!TryParsePermissions(permission, out permissionList))
+                if (!PermissionsHelper.TryParsePermissions(permission, out permissionList))
                 {
                     log.LogInformation($"Cannot parse {nameof(permission)}.");
                     return new BadRequestObjectResult(new { status = "error", error = $"Valid value of {nameof(permission)} is required" });
@@ -138,29 +136,6 @@ namespace SpaceOyster.SafeExchange.Core
                 result.Add(new OutputSubjectPermissions(permission));
             }
             return result;
-        }
-
-        private static async Task<dynamic> GetRequestDataAsync(HttpRequest req)
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            return data;
-        }
-
-        private static bool TryParsePermissions(string permissions, out IList<PermissionType> permissionList)
-        {
-            var chunks = permissions.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            permissionList = new List<PermissionType>(chunks.Length);
-            var permissionType = PermissionType.Read;
-            foreach (var chunk in chunks)
-            {
-                if (!Enum.TryParse(chunk, ignoreCase: true, out permissionType))
-                {
-                    return false;
-                }
-                permissionList.Add(permissionType);
-            }
-            return true;
         }
     }
 }

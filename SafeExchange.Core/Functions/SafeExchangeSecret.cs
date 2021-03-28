@@ -2,7 +2,6 @@
 
 namespace SpaceOyster.SafeExchange.Core
 {
-    using System.IO;
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.AspNetCore.Http;
@@ -74,7 +73,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         private static async Task<IActionResult> HandleSecretCreation(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, ILogger log)
         {
-            dynamic data = await GetRequestDataAsync(req);
+            dynamic data = await RequestHelper.GetRequestDataAsync(req);
 
             string value = data?.value;
             if (string.IsNullOrEmpty(value))
@@ -210,7 +209,7 @@ namespace SpaceOyster.SafeExchange.Core
                 return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
             }
 
-            dynamic data = await GetRequestDataAsync(req);
+            dynamic data = await RequestHelper.GetRequestDataAsync(req);
             
             string value = data?.value;
             if (string.IsNullOrEmpty(value))
@@ -298,13 +297,6 @@ namespace SpaceOyster.SafeExchange.Core
 
                 return new OkObjectResult(new { status = "ok" });
             }, "Delete-Secret", log);
-        }
-
-        private static async Task<dynamic> GetRequestDataAsync(HttpRequest req)
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            return data;
         }
 
         private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
