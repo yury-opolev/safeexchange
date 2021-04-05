@@ -297,7 +297,7 @@ namespace SpaceOyster.SafeExchange.Core
                 {
                     userIdsToNotify.Add(requestRecipient.Name);
                 }
-                messageText = $"{accessRequest.SubjectName} requested access to {accessRequest.ObjectName} ({accessRequest.Permissions}).";
+                messageText = $"Somebody requested access to {accessRequest.ObjectName} ({accessRequest.Permissions}).";
                 urlString = "/accessrequests";
             }
             else
