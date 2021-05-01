@@ -257,6 +257,11 @@ namespace SpaceOyster.SafeExchange.Core
             return new ObjectResult(new { status = "unauthorized", error = $"Insufficient permissions to do '{permission}' action on '{secretId}'" }) { StatusCode = StatusCodes.Status401Unauthorized };
         }
 
+        public static IActionResult InsufficientPermissionsResult(string action, string secretId)
+        {
+            return new ObjectResult(new { status = "unauthorized", error = $"Insufficient permissions to do '{action}' action on '{secretId}'" }) { StatusCode = StatusCodes.Status401Unauthorized };
+        }
+
         private async Task<IList<SubjectPermissions>> GetAllRows(string secretName)
         {
             var query = new QueryDefinition("SELECT * FROM SubjectPermissions SP WHERE SP.SecretName = @secret_name")

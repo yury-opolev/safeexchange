@@ -4,6 +4,8 @@
 
 namespace SpaceOyster.SafeExchange.Core
 {
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Extensions.Logging;
     using System;
@@ -159,6 +161,35 @@ namespace SpaceOyster.SafeExchange.Core
             await this.TryNotifyAsync(updatedAccessRequest);
         }
 
+        public async ValueTask<IActionResult> DeleteAccessRequestAsync(string userId, string requestId, string secretId)
+        {
+            this.logger.LogInformation($"{nameof(DeleteAccessRequestAsync)} called by {userId} for access request {requestId} ({secretId}).");
+
+            var existingRequest = await this.GetAccessRequestAsync(requestId, secretId);
+            if (existingRequest == default(AccessRequest))
+            {
+                this.logger.LogWarning($"Cannot find access request '{requestId}' on secret {secretId}.");
+                return new OkObjectResult(new { status = "ok" });
+            }
+
+            var isRequester = existingRequest.SubjectName.Equals(userId, StringComparison.OrdinalIgnoreCase);
+            if (!isRequester)
+            {
+                this.logger.LogWarning($"User '{userId}' did not created request '{requestId}' for secret {secretId}.");
+                return PermissionsHelper.InsufficientPermissionsResult("AccessRequestCancellation", secretId);
+            }
+
+            var deleted = await this.DeleteAccessRequestInternalAsync(requestId, secretId);
+            if (deleted)
+            {
+                return new OkObjectResult(new { status = "ok" });
+            }
+            else
+            {
+                return new ObjectResult(new { status = "error", error = $"Could not delete access request." }) { StatusCode = StatusCodes.Status500InternalServerError };
+            }
+        }
+
         private async Task<List<RequestRecipient>> GetSubjectsWithGrantRightsAsync(string secretId, string excludeId)
         {
             var existingPermissions = await this.permissionsHelper.GetAllPermissionsAsync(secretId);
@@ -236,6 +267,21 @@ namespace SpaceOyster.SafeExchange.Core
 
             var updatedItemResponse = await this.accessRequests.UpsertItemAsync(accessRequest);
             return updatedItemResponse.Resource;
+        }
+
+        private async ValueTask<bool> DeleteAccessRequestInternalAsync(string requestId, string secretId)
+        {
+            try
+            {
+                var partitionKey = new PartitionKey(AccessRequestHelper.GetPartitionKey(secretId));
+                await this.accessRequests.DeleteItemAsync<AccessRequest>(requestId, partitionKey);
+                return true;
+            }
+            catch (CosmosException ex)
+            {
+                this.logger.LogWarning($"Access request '{requestId}' ({secretId}) cannot be deleted: {ex}");
+                return false;
+            }
         }
 
         private async ValueTask<AccessRequest> GetAccessRequestAsync(string requestId, string secretId)

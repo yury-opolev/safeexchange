@@ -9,7 +9,6 @@ namespace SpaceOyster.SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using SpaceOyster.SafeExchange.Core.CosmosDb;
     using System;
-    using System.Collections.Generic;
     using System.Linq;
     using System.Security.Claims;
     using System.Threading.Tasks;
@@ -51,7 +50,7 @@ namespace SpaceOyster.SafeExchange.Core
 
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
             var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(secretId);
-            if (!existingSecretVersions.Any())
+            if (!existingSecretVersions.Any() && !req.Method.ToLower().Equals("delete"))
             {
                 log.LogInformation($"Cannot request access to secret '{secretId}', as not exists");
                 return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
@@ -74,6 +73,9 @@ namespace SpaceOyster.SafeExchange.Core
 
                 case "patch":
                     return await HandleAccessRequestUpdate(data, userName, secretId, accessRequestHelper, log);
+
+                case "delete":
+                    return await HandleAccessRequestDeletion(data, userName, secretId, accessRequestHelper, log);
 
                 default:
                     return new BadRequestObjectResult(new { status = "error", error = "Request method not recognized" });
@@ -123,6 +125,21 @@ namespace SpaceOyster.SafeExchange.Core
                     await accessRequestHelper.DenyAccessRequestAsync(userId, requestId, secretId);
                 }
                 return new OkObjectResult(new { status = "ok" });
+            }, "Request-Access", log);
+        }
+
+        private static async Task<IActionResult> HandleAccessRequestDeletion(dynamic requestData, string userId, string secretId, AccessRequestHelper accessRequestHelper, ILogger log)
+        {
+            string requestId = requestData?.requestId;
+            if (string.IsNullOrEmpty(requestId))
+            {
+                log.LogInformation($"'{nameof(requestId)}' is not set.");
+                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(requestId)} is required" });
+            }
+
+            return await TryCatch(async () =>
+            {
+                return await accessRequestHelper.DeleteAccessRequestAsync(userId, requestId, secretId);
             }, "Request-Access", log);
         }
 
