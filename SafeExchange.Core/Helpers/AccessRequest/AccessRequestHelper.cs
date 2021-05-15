@@ -28,7 +28,7 @@ namespace SpaceOyster.SafeExchange.Core
         {
             this.accessRequests = accessRequests ?? throw new ArgumentNullException(nameof(accessRequests));
             this.permissionsHelper = permissionsHelper ?? throw new ArgumentNullException(nameof(permissionsHelper));
-            this.notificationsHelper = notificationsHelper ?? throw new ArgumentNullException(nameof(notificationsHelper));
+            this.notificationsHelper = notificationsHelper; // null allowed
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -190,6 +190,17 @@ namespace SpaceOyster.SafeExchange.Core
             }
         }
 
+        public async ValueTask DeleteAllAccessRequestsAsync(string secretId)
+        {
+            this.logger.LogWarning($"{nameof(DeleteAllAccessRequestsAsync)} called for secret {secretId}.");
+
+            var existingRequests = await this.TryGetAllAccessRequestsAsync(secretId);
+            foreach (var existingRequest in existingRequests)
+            {
+                await this.DeleteAccessRequestInternalAsync(existingRequest.id, secretId);
+            }
+        }
+
         private async Task<List<RequestRecipient>> GetSubjectsWithGrantRightsAsync(string secretId, string excludeId)
         {
             var existingPermissions = await this.permissionsHelper.GetAllPermissionsAsync(secretId);
@@ -308,6 +319,14 @@ namespace SpaceOyster.SafeExchange.Core
             return await ProcessQueryAsync(query);
         }
 
+        private async ValueTask<IList<AccessRequest>> TryGetAllAccessRequestsAsync(string secretId)
+        {
+            var query = new QueryDefinition("SELECT * FROM AccessRequests AR WHERE AR.ObjectName = @secret_id")
+                .WithParameter("@secret_id", secretId);
+
+            return await ProcessQueryAsync(query);
+        }
+
         private async ValueTask<IList<AccessRequest>> ProcessQueryAsync(QueryDefinition query)
         {
             var result = new List<AccessRequest>();
@@ -325,6 +344,11 @@ namespace SpaceOyster.SafeExchange.Core
 
         private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
         {
+            if (this.notificationsHelper == default(NotificationsHelper))
+            {
+                return;
+            }
+
             var notifications = Environment.GetEnvironmentVariable("FEATURES-USE-NOTIFICATIONS");
             if (!("TRUE".Equals(notifications, StringComparison.InvariantCultureIgnoreCase)))
             {

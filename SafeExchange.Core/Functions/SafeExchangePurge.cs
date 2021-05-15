@@ -20,13 +20,15 @@ namespace SpaceOyster.SafeExchange.Core
         {
             var subjectPermissions = await this.cosmosDbProvider.GetSubjectPermissionsContainerAsync();
             var objectMetadata = await this.cosmosDbProvider.GetObjectMetadataContainerAsync();
+            var accessRequests = await this.cosmosDbProvider.GetAccessRequestsContainerAsync();
 
             log.LogInformation("SafeExchange-Purge triggered.");
 
             var metadataHelper = new MetadataHelper(objectMetadata);
             var permissionsHelper = new PermissionsHelper(subjectPermissions, null, null);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
-            var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);
+            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, log);
+            var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, accessRequestHelper, log);
 
             var secretNames = await metadataHelper.GetSecretsToPurgeAsync();
             foreach (var secretName in secretNames)

@@ -39,6 +39,7 @@ namespace SpaceOyster.SafeExchange.Core
             var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
             var objectMetadata = await cosmosDbProvider.GetObjectMetadataContainerAsync();
             var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
+            var accessRequests = await cosmosDbProvider.GetAccessRequestsContainerAsync();
 
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-Secret triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
@@ -46,8 +47,9 @@ namespace SpaceOyster.SafeExchange.Core
             var metadataHelper = new MetadataHelper(objectMetadata);
             var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
             var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
+            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, log);
 
-            var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, log);
+            var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, accessRequestHelper, log);
             await purgeHelper.TryPurgeAsync(secretId);
 
             TryGetReplyType(req, out ReplyDataType replyType);
@@ -64,7 +66,7 @@ namespace SpaceOyster.SafeExchange.Core
                     return await HandleSecretUpdate(req, secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, log);
 
                 case "delete":
-                    return await HandleSecretDeletion(req, secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, log);
+                    return await HandleSecretDeletion(req, secretId, principal, permissionsHelper, metadataHelper, keyVaultHelper, purgeHelper, log);
 
                 default:
                     return new BadRequestObjectResult(new { status = "error", error = "Request method not recognized" });
@@ -262,7 +264,7 @@ namespace SpaceOyster.SafeExchange.Core
             }, "Update-Secret", log);
         }
 
-        private static async Task<IActionResult> HandleSecretDeletion(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, ILogger log)
+        private static async Task<IActionResult> HandleSecretDeletion(HttpRequest req, string secretId, ClaimsPrincipal principal, PermissionsHelper permissionsHelper, MetadataHelper metadataHelper, KeyVaultHelper keyVaultHelper, PurgeHelper purgeHelper, ILogger log)
         {
             if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
             {
@@ -286,13 +288,7 @@ namespace SpaceOyster.SafeExchange.Core
                     return PermissionsHelper.InsufficientPermissionsResult(PermissionType.Write, secretId);
                 }
 
-                await permissionsHelper.DeleteAllPermissionsAsync(secretId);
-                log.LogInformation($"All permissions to access secret '{secretId}' deleted");
-
-                await metadataHelper.DeleteSecretMetadataAsync(secretId);
-                log.LogInformation($"Metadata for secret '{secretId}' deleted");
-
-                await keyVaultHelper.DeleteSecretAsync(secretId);
+                await purgeHelper.DestroyAsync(secretId);
                 log.LogInformation($"User '{userName}' deleted secret '{secretId}'");
 
                 return new OkObjectResult(new { status = "ok" });
