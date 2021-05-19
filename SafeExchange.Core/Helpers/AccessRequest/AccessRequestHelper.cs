@@ -94,7 +94,7 @@ namespace SpaceOyster.SafeExchange.Core
             await this.accessRequests.UpsertItemAsync(accessRequest);
             this.logger.LogInformation($"Created access request {accessRequest.id} from {userId} for secret {secretId}.");
 
-            await this.TryNotifyAsync(accessRequest);
+            await this.TryNotifyAsync(accessRequest, RequestStatus.InProgress);
         }
 
         public async ValueTask ApproveAccessRequestAsync(string userId, string requestId, string secretId)
@@ -128,8 +128,8 @@ namespace SpaceOyster.SafeExchange.Core
                 return;
             }
 
-            var updatedAccessRequest = await this.UpdateAccessRequestAsync(userId, requestId, secretId, RequestStatus.Approved);
-            await this.TryNotifyAsync(updatedAccessRequest);
+            await this.UpdateAccessRequestAsync(userId, requestId, secretId, RequestStatus.Approved);
+            await this.TryNotifyAsync(existingRequest, RequestStatus.Approved);
         }
 
         public async ValueTask DenyAccessRequestAsync(string userId, string requestId, string secretId)
@@ -157,8 +157,8 @@ namespace SpaceOyster.SafeExchange.Core
                 return;
             }
 
-            var updatedAccessRequest = await this.UpdateAccessRequestAsync(userId, requestId, secretId, RequestStatus.Rejected);
-            await this.TryNotifyAsync(updatedAccessRequest);
+            await this.UpdateAccessRequestAsync(userId, requestId, secretId, RequestStatus.Rejected);
+            await this.TryNotifyAsync(existingRequest, RequestStatus.Rejected);
         }
 
         public async ValueTask<IActionResult> DeleteAccessRequestAsync(string userId, string requestId, string secretId)
@@ -342,7 +342,7 @@ namespace SpaceOyster.SafeExchange.Core
             return result;
         }
 
-        private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
+        private async ValueTask TryNotifyAsync(AccessRequest accessRequest, RequestStatus currentStatus)
         {
             if (this.notificationsHelper == default(NotificationsHelper))
             {
@@ -355,12 +355,12 @@ namespace SpaceOyster.SafeExchange.Core
                 return;
             }
 
-            this.logger.LogInformation($"{nameof(TryNotifyAsync)} called for access request {accessRequest.id}, status: {accessRequest.Status}.");
+            this.logger.LogInformation($"{nameof(TryNotifyAsync)} called for access request {accessRequest.id}, status: {currentStatus}.");
 
             List<string> userIdsToNotify = null;
             string messageText = null;
             string urlString = null;
-            if (accessRequest.Status == RequestStatus.InProgress)
+            if (currentStatus == RequestStatus.InProgress)
             {
                 userIdsToNotify = new List<string>(accessRequest.Recipients.Length);
                 foreach (var requestRecipient in accessRequest.Recipients)
@@ -373,8 +373,8 @@ namespace SpaceOyster.SafeExchange.Core
             else
             {
                 userIdsToNotify = new List<string>(1) { accessRequest.SubjectName };
-                messageText = accessRequest.Status == RequestStatus.Approved ? $"Access to {accessRequest.ObjectName} granted." : $"Access request to {accessRequest.ObjectName} rejected.";
-                if (accessRequest.Status == RequestStatus.Approved)
+                messageText = currentStatus == RequestStatus.Approved ? $"Access to {accessRequest.ObjectName} granted." : $"Access request to {accessRequest.ObjectName} rejected.";
+                if (currentStatus == RequestStatus.Approved)
                 {
                     messageText = $"Access to {accessRequest.ObjectName} granted.";
                     urlString = $"/viewdata/{accessRequest.ObjectName}";

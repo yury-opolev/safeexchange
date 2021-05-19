@@ -151,7 +151,7 @@ namespace SpaceOyster.SafeExchange.Core
             }
             catch (Exception ex)
             {
-                log.LogError($"{actionName} had exception {ex.GetType()}: {ex.Message}");
+                log.LogError(ex, $"{actionName} had exception {ex.GetType()}: {ex.Message}");
                 return new ExceptionResult(ex, true);
             }
         }
