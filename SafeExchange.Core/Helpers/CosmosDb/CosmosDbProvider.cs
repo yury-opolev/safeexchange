@@ -13,9 +13,13 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
     using System.Text.Json;
     using System.Threading.Tasks;
 
-    public class CosmosDbProvider : ICosmosDbProvider
+    public class CosmosDbProvider : ICosmosDbProvider, IDisposable
     {
         private bool initialized;
+
+        private bool disposed;
+
+        private CosmosClient cosmosClient;
 
         private readonly ILogger log;
 
@@ -38,6 +42,17 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             this.settings = JsonSerializer.Deserialize<CosmosDbProviderSettings>(settingsJson);
 
             this.log.LogInformation($"{nameof(CosmosDbProvider)} instantiated with settings: {settingsJson}");
+        }
+
+        ~CosmosDbProvider()
+        {
+            this.Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            this.Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         public async ValueTask<Container> GetObjectMetadataContainerAsync()
@@ -73,11 +88,11 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
         private async ValueTask<Container> GetContainerInternalAsync(string containerName)
         {
             await RetrieveCosmosDbKeysAsync();
+            this.CreateCosmosClient();
 
             try
             {
-                var client = new CosmosClient(this.settings.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
-                return client.GetContainer(this.settings.DatabaseName, containerName);
+                return this.cosmosClient.GetContainer(this.settings.DatabaseName, containerName);
             }
             catch (CosmosException cosmosException)
             {
@@ -89,6 +104,27 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             }
 
             return null;
+        }
+
+        private void CreateCosmosClient()
+        {
+            if (this.cosmosClient != null)
+            {
+                return;
+            }
+
+            try
+            {
+                this.cosmosClient = new CosmosClient(this.settings.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
+            }
+            catch (CosmosException cosmosException)
+            {
+                log.LogError($"{nameof(CreateCosmosClient)} threw {nameof(CosmosException)}: [{cosmosException.StatusCode}.{cosmosException.SubStatusCode}], {cosmosException.Message}", cosmosException);
+            }
+            catch (Exception exception)
+            {
+                log.LogError($"{nameof(CreateCosmosClient)} threw {exception.GetType()}: {exception.Message}", exception);
+            }
         }
 
         private async ValueTask InitializeAsync()
@@ -147,6 +183,23 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             {
                 log.LogError($"{nameof(RetrieveCosmosDbKeysAsync)} threw {exception.GetType()}: {exception.Message}", exception);
             }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (this.disposed)
+            {
+                return;
+            }
+
+            if (disposing)
+            {
+                // dispose managed resources
+            }
+
+            this.cosmosClient?.Dispose();
+
+            this.disposed = true;
         }
     }
 }
