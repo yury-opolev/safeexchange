@@ -18,18 +18,18 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangeSecret secretHandler;
 
-        public SafeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        public SafeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration)
         {
-            this.secretHandler = new SafeExchangeSecret(cosmosDbProvider, graphClientProvider);
+            this.secretHandler = new SafeExchangeSecret(cosmosDbProvider, graphClientProvider, configuration);
         }
 
         [FunctionName("SafeExchange-Secret")]
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "patch", "delete", Route = "secrets/{secretId}")]
             HttpRequest req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            string secretId, ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
         {
-            return await this.secretHandler.Run(req, secretId, principal, log);
+            return await this.secretHandler.Run(req, secretId, principal, globalFilters, log);
         }
     }
 }

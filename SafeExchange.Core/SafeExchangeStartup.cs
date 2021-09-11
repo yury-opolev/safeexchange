@@ -12,6 +12,8 @@ namespace SpaceOyster.SafeExchange.Core
         {
             builder.Services.AddSingleton<IGraphClientProvider, GraphClientProvider>();
             builder.Services.AddSingleton<ICosmosDbProvider, CosmosDbProvider>();
+            builder.Services.AddSingleton<ConfigurationSettings>();
+            builder.Services.AddSingleton<GlobalFilters>();
         }
     }
 }

@@ -21,15 +21,14 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly string[] graphScopes = new string[] { "User.Read" };
 
-        public GlobalAccessFilter(IGraphClientProvider graphClientProvider)
+        public GlobalAccessFilter(ConfigurationSettings configuration, IGraphClientProvider graphClientProvider)
         {
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
 
             this.accessGroupIds = new List<string>();
-            var globalGroupsList = Environment.GetEnvironmentVariable("GLOBAL_GROUPS_WHITELIST");
-            if (!string.IsNullOrEmpty(globalGroupsList))
+            if (!string.IsNullOrEmpty(configuration.WhitelistedGroups))
             {
-                var groupArray = globalGroupsList.Split(",", StringSplitOptions.RemoveEmptyEntries);
+                var groupArray = configuration.WhitelistedGroups.Split(",", StringSplitOptions.RemoveEmptyEntries);
                 foreach (var group in groupArray)
                 {
                     this.accessGroupIds.Add(group);

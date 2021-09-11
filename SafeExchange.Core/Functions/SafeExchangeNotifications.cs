@@ -21,9 +21,9 @@ namespace SpaceOyster.SafeExchange.Core
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
         }
 
-        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
+        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
         {
-            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;

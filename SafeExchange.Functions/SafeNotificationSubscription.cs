@@ -27,9 +27,9 @@ namespace SpaceOyster.SafeExchange.Functions
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "delete", Route = "notifications")]
             HttpRequest req,
-            ClaimsPrincipal principal, ILogger log)
+            ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
         {
-            return await this.notificationSubscriptionsHandler.Run(req, principal, log);
+            return await this.notificationSubscriptionsHandler.Run(req, principal, globalFilters, log);
         }
     }
 }

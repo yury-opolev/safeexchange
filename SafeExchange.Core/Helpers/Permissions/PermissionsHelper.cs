@@ -20,10 +20,13 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly IGraphClientProvider graphClientProvider;
 
+        private readonly ConfigurationSettings configuration;
+
         private readonly string[] graphScopes = new string[] { "User.Read" };
 
-        public PermissionsHelper(Container subjectPermissions, Container groupDictionary, IGraphClientProvider graphClientProvider)
+        public PermissionsHelper(ConfigurationSettings configuration, Container subjectPermissions, Container groupDictionary, IGraphClientProvider graphClientProvider)
         {
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             this.subjectPermissions = subjectPermissions ?? throw new ArgumentNullException(nameof(subjectPermissions));
             this.groupDictionary = groupDictionary; // null allowed
             this.graphClientProvider = graphClientProvider; // null allowed
@@ -191,14 +194,12 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<bool> IsGroupAuthorizedAsync(TokenResult tokenResult, string userName, string secretName, PermissionType permission, ILogger log)
         {
-            userName = Normalize(userName);
-
-            var groupAuthorization = Environment.GetEnvironmentVariable("FEATURES-USE-GROUP-AUTHORIZATION");
-            if (!("TRUE".Equals(groupAuthorization, StringComparison.InvariantCultureIgnoreCase)))
+            if (!this.configuration.Features.UseGroupsAuthorization)
             {
                 return false;
             }
 
+            userName = Normalize(userName);
             var userGroupIds = await this.GetUserGroups(tokenResult, log);
             var existingPermissions = await this.GetAllPermissionsAsync(secretName);
             foreach (var existingPermission in existingPermissions)

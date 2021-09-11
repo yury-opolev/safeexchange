@@ -14,9 +14,9 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangePurge purgeHandler;
 
-        public SafePurge(ICosmosDbProvider cosmosDbProvider)
+        public SafePurge(ICosmosDbProvider cosmosDbProvider, ConfigurationSettings configuration)
         {
-            this.purgeHandler = new SafeExchangePurge(cosmosDbProvider);
+            this.purgeHandler = new SafeExchangePurge(cosmosDbProvider, configuration);
         }
 
         [FunctionName("SafeExchange-Purge")]

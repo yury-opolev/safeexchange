@@ -27,21 +27,17 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
         private DatabaseAccountListKeysResult databaseKeys;
 
-        public CosmosDbProvider(ILogger<CosmosDbProvider> log)
+        public CosmosDbProvider(ConfigurationSettings configuration, ILogger<CosmosDbProvider> log)
         {
-            this.log = log ?? throw new ArgumentNullException(nameof(log));
-
-            var settingsEnvironmentVariableName = "COSMOS_DB_SETTINGS";
-            var settingsJson = Environment.GetEnvironmentVariable(settingsEnvironmentVariableName);
-
-            if (string.IsNullOrEmpty(settingsJson))
+            if (configuration is null)
             {
-                throw new ArgumentException($"{nameof(settingsJson)} is empty, check configuration value for '{settingsEnvironmentVariableName}'.");
+                throw new ArgumentNullException(nameof(configuration));
             }
 
-            this.settings = JsonSerializer.Deserialize<CosmosDbProviderSettings>(settingsJson);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
 
-            this.log.LogInformation($"{nameof(CosmosDbProvider)} instantiated with settings: {settingsJson}");
+            this.settings = configuration.CosmosDb;
+            this.log.LogInformation($"{nameof(CosmosDbProvider)} instantiated with configuration settings: {JsonSerializer.Serialize(this.settings)}");
         }
 
         ~CosmosDbProvider()

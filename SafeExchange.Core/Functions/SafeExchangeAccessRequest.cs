@@ -20,15 +20,18 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        private readonly ConfigurationSettings configuration;
+
+        public SafeExchangeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
-        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
+        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
         {
-            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;
@@ -61,9 +64,9 @@ namespace SpaceOyster.SafeExchange.Core
             var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
             var notificationSubscriptions = await cosmosDbProvider.GetNotificationSubscriptionsContainerAsync();
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
+            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, groupDictionary, this.graphClientProvider);
             var notificationsHelper = new NotificationsHelper(notificationSubscriptions, log);
-            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, log);
+            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, this.configuration, log);
 
             var userName = TokenHelper.GetName(principal);
             switch (req.Method.ToLower())
