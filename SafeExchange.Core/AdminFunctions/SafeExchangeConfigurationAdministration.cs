@@ -57,7 +57,25 @@ namespace SpaceOyster.SafeExchange.Core
                 var configurationData = await this.configuration.GetDataAsync();
                 dynamic requestData = await RequestHelper.GetRequestDataAsync(req);
 
-                // TODO ...
+                dynamic features = requestData?.features;
+                if (features != null)
+                {
+                    configurationData.Features.UseNotifications = (bool?)features.useNotifications ?? configurationData.Features.UseNotifications;
+                    configurationData.Features.UseGroupsAuthorization = (bool?)features.useGroupsAuthorization ?? configurationData.Features.UseGroupsAuthorization;
+                }
+
+                configurationData.WhitelistedGroups = (string)requestData?.whitelistedGroups ?? configurationData.WhitelistedGroups;
+                dynamic cosmosDb = requestData?.cosmosDb;
+                if (cosmosDb != null)
+                {
+                    configurationData.CosmosDb.SubscriptionId = (string)cosmosDb.subscriptionId ?? configurationData.CosmosDb.SubscriptionId;
+                    configurationData.CosmosDb.ResourceGroupName = (string)cosmosDb.resourceGroupName ?? configurationData.CosmosDb.ResourceGroupName;
+                    configurationData.CosmosDb.AccountName = (string)cosmosDb.accountName ?? configurationData.CosmosDb.AccountName;
+                    configurationData.CosmosDb.CosmosDbEndpoint = (string)cosmosDb.cosmosDbEndpoint ?? configurationData.CosmosDb.CosmosDbEndpoint;
+                    configurationData.CosmosDb.DatabaseName = (string)cosmosDb.databaseName ?? configurationData.CosmosDb.DatabaseName;
+                }
+
+                configurationData.AdminGroups = (string?)requestData?.adminGroups ?? configurationData.AdminGroups;
 
                 await this.configuration.PersistSettingsAsync();
                 return new OkObjectResult(new { status = "ok" });
