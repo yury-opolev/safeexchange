@@ -20,8 +20,4 @@
   <ItemGroup>
     <EmbeddedResource Include="Templates\GetSecret.template.html" />
   </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="ConfigurationSettings\" />
-  </ItemGroup>
 </Project>
