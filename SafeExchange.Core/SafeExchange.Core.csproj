@@ -24,7 +24,4 @@
   <ItemGroup>
     <None Remove="ConfigurationSettings\" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Configuration\" />
-  </ItemGroup>
 </Project>

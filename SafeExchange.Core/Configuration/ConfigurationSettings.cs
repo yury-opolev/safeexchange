@@ -12,69 +12,77 @@ namespace SpaceOyster.SafeExchange.Core
 
     public class ConfigurationSettings
     {
-        public Features Features { get; set; }
+        private bool isInitialized;
 
-        public string WhitelistedGroups { get; set; }
-
-        public CosmosDbProviderSettings CosmosDb { get; set; }
-
-        public string AdminGroups { get; set; }
+        private ConfigurationData data;
 
         private ILogger logger;
 
         private KeyVaultSystemSettings systemSettings;
 
-        public ConfigurationSettings(ILogger logger)
+        public ConfigurationSettings(ILogger<ConfigurationSettings> logger)
         {
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
             this.systemSettings = new KeyVaultSystemSettings(logger);
-            this.RestoreSettingsAsync().GetAwaiter().GetResult();
+        }
+
+        public async ValueTask<ConfigurationData> GetDataAsync()
+        {
+            await this.InitializeAsync();
+            return this.data;
         }
 
         public async Task RestoreSettingsAsync()
         {
-            var settings = await systemSettings.GetConfigurationSettingsAsync();
-            if (settings is default(ConfigurationSettings))
+            var configurationData = await systemSettings.GetConfigurationSettingsAsync();
+            if (configurationData is default(ConfigurationData))
             {
                 this.RestoreFromEnvironment();
                 await this.PersistSettingsAsync();
                 return;
             }
 
-            this.logger.Log(LogLevel.Information, "Restoring settings from keyvault.");
-
-            this.Features = settings.Features;
-            this.WhitelistedGroups = settings.WhitelistedGroups;
-            this.CosmosDb = settings.CosmosDb;
+            this.logger.Log(LogLevel.Information, "Restoring configuration from keyvault.");
+            this.data = configurationData;
         }
 
         public async Task PersistSettingsAsync()
         {
-            this.logger.Log(LogLevel.Information, "Persisting settings to keyvault.");
-
-            await systemSettings.SetConfigurationSettingsAsync(this);
+            this.logger.Log(LogLevel.Information, "Persisting configuration to keyvault.");
+            await systemSettings.SetConfigurationSettingsAsync(this.data);
         }
 
         private void RestoreFromEnvironment()
         {
-            this.logger.Log(LogLevel.Information, "Restoring settings from environment.");
-
+            this.logger.Log(LogLevel.Information, "Restoring configuration from environment.");
             var useNotifications = Environment.GetEnvironmentVariable("FEATURES-USE-NOTIFICATIONS") ?? "False";
             var useGroupsAuthorization = Environment.GetEnvironmentVariable("FEATURES-USE-GROUP-AUTHORIZATION") ?? "False";
 
-            this.Features = new Features()
+            this.data = new ConfigurationData()
             {
-                UseNotifications = bool.Parse(useNotifications),
-                UseGroupsAuthorization = bool.Parse(useGroupsAuthorization)
+                Features = new Features()
+                {
+                    UseNotifications = bool.Parse(useNotifications),
+                    UseGroupsAuthorization = bool.Parse(useGroupsAuthorization)
+                },
+                WhitelistedGroups = Environment.GetEnvironmentVariable("GLOBAL_GROUPS_WHITELIST") ?? string.Empty,
+                CosmosDb =
+                    string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COSMOS_DB_SETTINGS")) ?
+                        throw new ArgumentException("Cosmos DB configuration is not set, check environment value for 'COSMOS_DB_SETTINGS'.") :
+                        JsonSerializer.Deserialize<CosmosDbProviderSettings>(Environment.GetEnvironmentVariable("COSMOS_DB_SETTINGS")),
+                AdminGroups = string.Empty
             };
+        }
 
-            this.WhitelistedGroups = Environment.GetEnvironmentVariable("GLOBAL_GROUPS_WHITELIST") ?? string.Empty;
-            var cosmosDbSettingsJson = Environment.GetEnvironmentVariable("COSMOS_DB_SETTINGS");
-            this.CosmosDb = string.IsNullOrEmpty(cosmosDbSettingsJson) ?
-                throw new ArgumentException("Cosmos DB configuration is not set, check environment value for 'COSMOS_DB_SETTINGS'.") :
-                JsonSerializer.Deserialize<CosmosDbProviderSettings>(cosmosDbSettingsJson);
+        private async ValueTask InitializeAsync()
+        {
+            if (this.isInitialized)
+            {
+                return;
+            }
 
-            this.AdminGroups = string.Empty;
+            await this.RestoreSettingsAsync();
+            this.isInitialized = true;
         }
     }
 }

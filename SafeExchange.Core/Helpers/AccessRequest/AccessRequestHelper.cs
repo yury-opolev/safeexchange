@@ -352,7 +352,8 @@ namespace SpaceOyster.SafeExchange.Core
                 return;
             }
 
-            if (!this.configuration.Features.UseNotifications)
+            var configuration = await this.configuration.GetDataAsync();
+            if (!configuration.Features.UseNotifications)
             {
                 return;
             }

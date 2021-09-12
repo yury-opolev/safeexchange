@@ -29,7 +29,7 @@ namespace SpaceOyster.SafeExchange.Core
 
             var metadataHelper = new MetadataHelper(objectMetadata);
             var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, null, null);
-            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
+            var keyVaultHelper = KeyVaultSystemSettings.GetKeyVaultHelper(log);
             var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, this.configuration, log);
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, accessRequestHelper, log);
 

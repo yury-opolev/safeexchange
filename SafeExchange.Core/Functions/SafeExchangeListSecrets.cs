@@ -18,17 +18,20 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ConfigurationSettings configuration;
 
-        public SafeExchangeListSecrets(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration)
+        private readonly GlobalFilters globalFilters;
+
+        public SafeExchangeListSecrets(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
         }
 
         public async Task<IActionResult> Run(
             HttpRequest req,
-            ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
+            ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await globalFilters.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;

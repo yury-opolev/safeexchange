@@ -15,29 +15,26 @@ namespace SpaceOyster.SafeExchange.Core
 
     public class GlobalAccessFilter : IRequestFilter
     {
+        private bool isInitialized;
+
+        private IList<string> accessGroupIds;
+
         private readonly IGraphClientProvider graphClientProvider;
 
-        private readonly IList<string> accessGroupIds;
+        private readonly ConfigurationSettings configuration;
 
         private readonly string[] graphScopes = new string[] { "User.Read" };
 
         public GlobalAccessFilter(ConfigurationSettings configuration, IGraphClientProvider graphClientProvider)
         {
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
-
-            this.accessGroupIds = new List<string>();
-            if (!string.IsNullOrEmpty(configuration.WhitelistedGroups))
-            {
-                var groupArray = configuration.WhitelistedGroups.Split(",", StringSplitOptions.RemoveEmptyEntries);
-                foreach (var group in groupArray)
-                {
-                    this.accessGroupIds.Add(group);
-                }
-            }
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
          
         public async ValueTask<(bool shouldReturn, IActionResult actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
+            await this.InitializeAsync();
+
             (bool shouldReturn, IActionResult actionResult) result = (shouldReturn: false, actionResult: null);
 
             if (!accessGroupIds.Any())
@@ -62,6 +59,25 @@ namespace SpaceOyster.SafeExchange.Core
             result.shouldReturn = true;
             result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not a member of a global group." }) { StatusCode = StatusCodes.Status401Unauthorized };
             return result;
+        }
+
+        private async ValueTask InitializeAsync()
+        {
+            if (this.isInitialized)
+            {
+                return;
+            }
+
+            var configurationData = await this.configuration.GetDataAsync();
+            this.accessGroupIds = new List<string>();
+            if (!string.IsNullOrEmpty(configurationData.WhitelistedGroups))
+            {
+                var groupArray = configurationData.WhitelistedGroups.Split(",", StringSplitOptions.RemoveEmptyEntries);
+                foreach (var group in groupArray)
+                {
+                    this.accessGroupIds.Add(group);
+                }
+            }
         }
     }
 }

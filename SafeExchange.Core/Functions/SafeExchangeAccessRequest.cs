@@ -22,16 +22,19 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ConfigurationSettings configuration;
 
-        public SafeExchangeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration)
+        private readonly GlobalFilters globalFilters;
+
+        public SafeExchangeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
             this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
         }
 
-        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
+        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await globalFilters.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;
@@ -51,7 +54,7 @@ namespace SpaceOyster.SafeExchange.Core
                 return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
             }
 
-            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
+            var keyVaultHelper = KeyVaultSystemSettings.GetKeyVaultHelper(log);
             var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(secretId);
             if (!existingSecretVersions.Any() && !req.Method.ToLower().Equals("delete"))
             {

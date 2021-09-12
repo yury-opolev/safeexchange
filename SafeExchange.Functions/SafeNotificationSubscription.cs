@@ -18,18 +18,18 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangeNotifications notificationSubscriptionsHandler;
 
-        public SafeNotificationSubscription(ICosmosDbProvider cosmosDbProvider)
+        public SafeNotificationSubscription(ICosmosDbProvider cosmosDbProvider, GlobalFilters globalFilters)
         {
-            this.notificationSubscriptionsHandler = new SafeExchangeNotifications(cosmosDbProvider);
+            this.notificationSubscriptionsHandler = new SafeExchangeNotifications(cosmosDbProvider, globalFilters);
         }
 
         [FunctionName("SafeExchange-Notifications")]
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "delete", Route = "notifications")]
             HttpRequest req,
-            ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
+            ClaimsPrincipal principal, ILogger log)
         {
-            return await this.notificationSubscriptionsHandler.Run(req, principal, globalFilters, log);
+            return await this.notificationSubscriptionsHandler.Run(req, principal, log);
         }
     }
 }

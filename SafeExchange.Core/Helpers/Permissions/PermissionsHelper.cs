@@ -194,7 +194,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<bool> IsGroupAuthorizedAsync(TokenResult tokenResult, string userName, string secretName, PermissionType permission, ILogger log)
         {
-            if (!this.configuration.Features.UseGroupsAuthorization)
+            var configurationData = await this.configuration.GetDataAsync();
+            if (!configurationData.Features.UseGroupsAuthorization)
             {
                 return false;
             }

@@ -18,18 +18,18 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangeListAccessRequests accessRequestsListHandler;
 
-        public SafeListAccessRequests(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration)
+        public SafeListAccessRequests(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
-            this.accessRequestsListHandler = new SafeExchangeListAccessRequests(cosmosDbProvider, graphClientProvider, configuration);
+            this.accessRequestsListHandler = new SafeExchangeListAccessRequests(cosmosDbProvider, graphClientProvider, configuration, globalFilters);
         }
 
         [FunctionName("SafeExchange-ListAccessRequests")]
         public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "accessrequests")]
             HttpRequest req,
-            ClaimsPrincipal principal, GlobalFilters globalFilters, ILogger log)
+            ClaimsPrincipal principal, ILogger log)
         {
-            return await this.accessRequestsListHandler.Run(req, principal, globalFilters, log);
+            return await this.accessRequestsListHandler.Run(req, principal, log);
         }
     }
 }
