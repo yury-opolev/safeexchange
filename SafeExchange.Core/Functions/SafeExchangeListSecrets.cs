@@ -16,16 +16,22 @@ namespace SpaceOyster.SafeExchange.Core
     {
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangeListSecrets(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        private readonly ConfigurationSettings configuration;
+
+        private readonly GlobalFilters globalFilters;
+
+        public SafeExchangeListSecrets(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
         }
 
         public async Task<IActionResult> Run(
             HttpRequest req,
             ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;
@@ -36,7 +42,7 @@ namespace SpaceOyster.SafeExchange.Core
             var userName = TokenHelper.GetName(principal);
             log.LogInformation($"SafeExchange-ListSecrets triggered by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissions, null, null);
+            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, null, null);
             return await HandleReadSecretsList(userName, permissionsHelper, log);
         }
 

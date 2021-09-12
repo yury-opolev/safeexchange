@@ -23,25 +23,16 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
         private readonly ILogger log;
 
-        private readonly CosmosDbProviderSettings settings;
+        private readonly ConfigurationSettings configuration;
 
         private DatabaseAccountListKeysResult databaseKeys;
 
-        public CosmosDbProvider(ILogger<CosmosDbProvider> log)
+        public CosmosDbProvider(ConfigurationSettings configuration, ILogger<CosmosDbProvider> log)
         {
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
 
-            var settingsEnvironmentVariableName = "COSMOS_DB_SETTINGS";
-            var settingsJson = Environment.GetEnvironmentVariable(settingsEnvironmentVariableName);
-
-            if (string.IsNullOrEmpty(settingsJson))
-            {
-                throw new ArgumentException($"{nameof(settingsJson)} is empty, check configuration value for '{settingsEnvironmentVariableName}'.");
-            }
-
-            this.settings = JsonSerializer.Deserialize<CosmosDbProviderSettings>(settingsJson);
-
-            this.log.LogInformation($"{nameof(CosmosDbProvider)} instantiated with settings: {settingsJson}");
+            this.log.LogInformation($"{nameof(CosmosDbProvider)} instantiated.");
         }
 
         ~CosmosDbProvider()
@@ -88,11 +79,12 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
         private async ValueTask<Container> GetContainerInternalAsync(string containerName)
         {
             await RetrieveCosmosDbKeysAsync();
-            this.CreateCosmosClient();
+            await this.CreateCosmosClientAsync();
 
             try
             {
-                return this.cosmosClient.GetContainer(this.settings.DatabaseName, containerName);
+                var configurationData = await this.configuration.GetDataAsync();
+                return this.cosmosClient.GetContainer(configurationData.CosmosDb.DatabaseName, containerName);
             }
             catch (CosmosException cosmosException)
             {
@@ -106,7 +98,7 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
             return null;
         }
 
-        private void CreateCosmosClient()
+        private async ValueTask CreateCosmosClientAsync()
         {
             if (this.cosmosClient != null)
             {
@@ -115,15 +107,16 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
             try
             {
-                this.cosmosClient = new CosmosClient(this.settings.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
+                var configurationData = await this.configuration.GetDataAsync();
+                this.cosmosClient = new CosmosClient(configurationData.CosmosDb.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
             }
             catch (CosmosException cosmosException)
             {
-                log.LogError($"{nameof(CreateCosmosClient)} threw {nameof(CosmosException)}: [{cosmosException.StatusCode}.{cosmosException.SubStatusCode}], {cosmosException.Message}", cosmosException);
+                log.LogError($"{nameof(CreateCosmosClientAsync)} threw {nameof(CosmosException)}: [{cosmosException.StatusCode}.{cosmosException.SubStatusCode}], {cosmosException.Message}", cosmosException);
             }
             catch (Exception exception)
             {
-                log.LogError($"{nameof(CreateCosmosClient)} threw {exception.GetType()}: {exception.Message}", exception);
+                log.LogError($"{nameof(CreateCosmosClientAsync)} threw {exception.GetType()}: {exception.Message}", exception);
             }
         }
 
@@ -138,8 +131,9 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
             try
             {
-                var client = new CosmosClient(this.settings.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
-                var databaseResponse = await client.CreateDatabaseIfNotExistsAsync(this.settings.DatabaseName);
+                var configurationData = await this.configuration.GetDataAsync();
+                var client = new CosmosClient(configurationData.CosmosDb.CosmosDbEndpoint, this.databaseKeys.primaryMasterKey);
+                var databaseResponse = await client.CreateDatabaseIfNotExistsAsync(configurationData.CosmosDb.DatabaseName);
 
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.ObjectMetadataContainerName, "/PartitionKey");
                 await databaseResponse.Database.CreateContainerIfNotExistsAsync(CosmosDbProviderSettings.SubjectPermissionsContainerName, "/PartitionKey");
@@ -170,9 +164,11 @@ namespace SpaceOyster.SafeExchange.Core.CosmosDb
 
             try
             {
+                var configurationData = await this.configuration.GetDataAsync();
+
                 var azureServiceTokenProvider = new AzureServiceTokenProvider();
                 string accessToken = await azureServiceTokenProvider.GetAccessTokenAsync("https://management.azure.com/");
-                string endpoint = $"https://management.azure.com/subscriptions/{this.settings.SubscriptionId}/resourceGroups/{this.settings.ResourceGroupName}/providers/Microsoft.DocumentDB/databaseAccounts/{this.settings.AccountName}/listKeys?api-version=2019-12-12";
+                string endpoint = $"https://management.azure.com/subscriptions/{configurationData.CosmosDb.SubscriptionId}/resourceGroups/{configurationData.CosmosDb.ResourceGroupName}/providers/Microsoft.DocumentDB/databaseAccounts/{configurationData.CosmosDb.AccountName}/listKeys?api-version=2019-12-12";
 
                 HttpClient httpClient = new HttpClient();
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);

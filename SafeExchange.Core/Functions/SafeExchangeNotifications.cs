@@ -16,14 +16,17 @@ namespace SpaceOyster.SafeExchange.Core
     {
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangeNotifications(ICosmosDbProvider cosmosDbProvider)
+        private readonly GlobalFilters globalFilters;
+
+        public SafeExchangeNotifications(ICosmosDbProvider cosmosDbProvider, GlobalFilters globalFilters)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
+            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
         }
 
         public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;

@@ -18,9 +18,9 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangeNotifications notificationSubscriptionsHandler;
 
-        public SafeNotificationSubscription(ICosmosDbProvider cosmosDbProvider)
+        public SafeNotificationSubscription(ICosmosDbProvider cosmosDbProvider, GlobalFilters globalFilters)
         {
-            this.notificationSubscriptionsHandler = new SafeExchangeNotifications(cosmosDbProvider);
+            this.notificationSubscriptionsHandler = new SafeExchangeNotifications(cosmosDbProvider, globalFilters);
         }
 
         [FunctionName("SafeExchange-Notifications")]

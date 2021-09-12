@@ -18,9 +18,9 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangeSecret secretHandler;
 
-        public SafeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        public SafeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
-            this.secretHandler = new SafeExchangeSecret(cosmosDbProvider, graphClientProvider);
+            this.secretHandler = new SafeExchangeSecret(cosmosDbProvider, graphClientProvider, configuration, globalFilters);
         }
 
         [FunctionName("SafeExchange-Secret")]

@@ -18,9 +18,9 @@ namespace SpaceOyster.SafeExchange.Functions
     {
         private SafeExchangeAccessRequest accessRequestHandler;
 
-        public SafeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        public SafeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
-            this.accessRequestHandler = new SafeExchangeAccessRequest(cosmosDbProvider, graphClientProvider);
+            this.accessRequestHandler = new SafeExchangeAccessRequest(cosmosDbProvider, graphClientProvider, configuration, globalFilters);
         }
 
         [FunctionName("SafeExchange-AccessRequest")]

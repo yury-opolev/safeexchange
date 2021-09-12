@@ -16,6 +16,8 @@ namespace SpaceOyster.SafeExchange.Core
 
     public class AccessRequestHelper
     {
+        private readonly ConfigurationSettings configuration;
+
         private readonly Container accessRequests;
 
         private readonly PermissionsHelper permissionsHelper;
@@ -24,8 +26,9 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ILogger logger;
 
-        public AccessRequestHelper(Container accessRequests, PermissionsHelper permissionsHelper, NotificationsHelper notificationsHelper, ILogger logger)
+        public AccessRequestHelper(Container accessRequests, PermissionsHelper permissionsHelper, NotificationsHelper notificationsHelper, ConfigurationSettings configuration, ILogger logger)
         {
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             this.accessRequests = accessRequests ?? throw new ArgumentNullException(nameof(accessRequests));
             this.permissionsHelper = permissionsHelper ?? throw new ArgumentNullException(nameof(permissionsHelper));
             this.notificationsHelper = notificationsHelper; // null allowed
@@ -349,8 +352,8 @@ namespace SpaceOyster.SafeExchange.Core
                 return;
             }
 
-            var notifications = Environment.GetEnvironmentVariable("FEATURES-USE-NOTIFICATIONS");
-            if (!("TRUE".Equals(notifications, StringComparison.InvariantCultureIgnoreCase)))
+            var configuration = await this.configuration.GetDataAsync();
+            if (!configuration.Features.UseNotifications)
             {
                 return;
             }

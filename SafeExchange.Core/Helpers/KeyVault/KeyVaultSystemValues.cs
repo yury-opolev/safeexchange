@@ -19,6 +19,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         private const string VapidOptionsSettingsName = "system-setting-000002";
 
+        private const string ConfigurationSettingsName = "system-setting-000003";
+
         private ILogger log;
 
         public KeyVaultSystemSettings(ILogger log)
@@ -32,10 +34,14 @@ namespace SpaceOyster.SafeExchange.Core
             return regex.IsMatch(name);
         }
 
+        public static KeyVaultHelper GetKeyVaultHelper(ILogger logger)
+        {
+            return new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), logger);
+        }
+
         public async Task<TokenProviderSettings> GetTokenProviderSettingsAsync()
         {
-            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), this.log);
-
+            var keyVaultHelper = GetKeyVaultHelper(this.log);
             var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(TokenProviderSettingsName);
             if (!existingSecretVersions.Any())
             {
@@ -49,8 +55,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<VapidOptions> GetVapidOptionsAsync()
         {
-            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), this.log);
-
+            var keyVaultHelper = GetKeyVaultHelper(this.log);
             var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(VapidOptionsSettingsName);
             if (!existingSecretVersions.Any())
             {
@@ -60,6 +65,26 @@ namespace SpaceOyster.SafeExchange.Core
 
             var secretBundle = await keyVaultHelper.GetSecretAsync(VapidOptionsSettingsName);
             return JsonSerializer.Deserialize<VapidOptions>(secretBundle.Value);
+        }
+
+        public async Task<ConfigurationData> GetConfigurationSettingsAsync()
+        {
+            var keyVaultHelper = GetKeyVaultHelper(this.log);
+            var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(ConfigurationSettingsName);
+            if (!existingSecretVersions.Any())
+            {
+                log.LogInformation($"Cannot get {nameof(ConfigurationSettings)}, as not exists.");
+                return default(ConfigurationData);
+            }
+
+            var secretBundle = await keyVaultHelper.GetSecretAsync(ConfigurationSettingsName);
+            return JsonSerializer.Deserialize<ConfigurationData>(secretBundle.Value);
+        }
+
+        public async Task SetConfigurationSettingsAsync(ConfigurationData data)
+        {
+            var keyVaultHelper = GetKeyVaultHelper(this.log);
+            await keyVaultHelper.SetSecretAsync(ConfigurationSettingsName, JsonSerializer.Serialize(data));
         }
     }
 }

@@ -20,5 +20,4 @@
   <ItemGroup>
     <EmbeddedResource Include="Templates\GetSecret.template.html" />
   </ItemGroup>
-
 </Project>

@@ -11,9 +11,12 @@ namespace SpaceOyster.SafeExchange.Core
     {
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangePurge(ICosmosDbProvider cosmosDbProvider)
+        private readonly ConfigurationSettings configuration;
+
+        public SafeExchangePurge(ICosmosDbProvider cosmosDbProvider, ConfigurationSettings configuration)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
         public async Task Run(ILogger log)
@@ -25,9 +28,9 @@ namespace SpaceOyster.SafeExchange.Core
             log.LogInformation("SafeExchange-Purge triggered.");
 
             var metadataHelper = new MetadataHelper(objectMetadata);
-            var permissionsHelper = new PermissionsHelper(subjectPermissions, null, null);
-            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
-            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, log);
+            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, null, null);
+            var keyVaultHelper = KeyVaultSystemSettings.GetKeyVaultHelper(log);
+            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, this.configuration, log);
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, accessRequestHelper, log);
 
             var secretNames = await metadataHelper.GetSecretsToPurgeAsync();

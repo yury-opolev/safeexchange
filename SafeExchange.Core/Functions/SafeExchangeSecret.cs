@@ -20,17 +20,23 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        private readonly ConfigurationSettings configuration;
+
+        private readonly GlobalFilters globalFilters;
+
+        public SafeExchangeSecret(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
         }
 
         public async Task<IActionResult> Run(
             HttpRequest req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;
@@ -45,9 +51,9 @@ namespace SpaceOyster.SafeExchange.Core
             log.LogInformation($"SafeExchange-Secret triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
 
             var metadataHelper = new MetadataHelper(objectMetadata);
-            var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
-            var keyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), log);
-            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, log);
+            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, groupDictionary, this.graphClientProvider);
+            var keyVaultHelper = KeyVaultSystemSettings.GetKeyVaultHelper(log);
+            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, null, this.configuration, log);
 
             var purgeHelper = new PurgeHelper(keyVaultHelper, permissionsHelper, metadataHelper, accessRequestHelper, log);
             await purgeHelper.TryPurgeAsync(secretId);

@@ -17,17 +17,23 @@ namespace SpaceOyster.SafeExchange.Core
 
         private readonly ICosmosDbProvider cosmosDbProvider;
 
-        public SafeExchangeAccess(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider)
+        private readonly ConfigurationSettings configuration;
+
+        private readonly GlobalFilters globalFilters;
+
+        public SafeExchangeAccess(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
         {
             this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
             this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
+            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
         }
 
         public async Task<IActionResult> Run(
             HttpRequest req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await GlobalFilters.Instance.Value.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;
@@ -61,7 +67,7 @@ namespace SpaceOyster.SafeExchange.Core
                 }
             }
 
-            var permissionsHelper = new PermissionsHelper(subjectPermissions, groupDictionary, this.graphClientProvider);
+            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, groupDictionary, this.graphClientProvider);
             var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
             if (existingPermissions.Count == 0)
             {
