@@ -63,6 +63,7 @@ namespace SpaceOyster.SafeExchange.Core
                 }
 
                 configurationData.WhitelistedGroups = (string)requestData?.whitelistedGroups ?? configurationData.WhitelistedGroups;
+                
                 dynamic cosmosDb = requestData?.cosmosDb;
                 if (cosmosDb != null)
                 {
