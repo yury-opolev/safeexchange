@@ -23,9 +23,9 @@ namespace SpaceOyster.SafeExchange.Functions.AdminFunctions
             this.configurationHandler = new SafeExchangeConfigurationAdministration(graphClientProvider, configuration, globalFilters);
         }
 
-        [FunctionName("SafeExchange-Access")]
+        [FunctionName("SafeExchange-AdminConfiguration")]
         public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", Route = "admin/configuration")]
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", Route = "adm/configuration")]
             HttpRequest req,
             ClaimsPrincipal principal, ILogger log)
         {
