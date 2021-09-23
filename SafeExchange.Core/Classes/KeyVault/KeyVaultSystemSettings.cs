@@ -23,6 +23,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         private ILogger log;
 
+        private static KeyVaultHelper KeyVaultHelper;
+
         public KeyVaultSystemSettings(ILogger log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
@@ -36,7 +38,12 @@ namespace SpaceOyster.SafeExchange.Core
 
         public static KeyVaultHelper GetKeyVaultHelper(ILogger logger)
         {
-            return new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), logger);
+            if (KeyVaultSystemSettings.KeyVaultHelper is null)
+            {
+                KeyVaultSystemSettings.KeyVaultHelper = new KeyVaultHelper(Environment.GetEnvironmentVariable("STORAGE_KEYVAULT_BASEURI"), logger);
+            }
+
+            return KeyVaultSystemSettings.KeyVaultHelper;
         }
 
         public async Task<TokenProviderSettings> GetTokenProviderSettingsAsync()
@@ -65,6 +72,12 @@ namespace SpaceOyster.SafeExchange.Core
 
             var secretBundle = await keyVaultHelper.GetSecretAsync(VapidOptionsSettingsName);
             return JsonSerializer.Deserialize<VapidOptions>(secretBundle.Value);
+        }
+
+        public async Task SetVapidOptionsAsync(VapidOptions vapidOptions)
+        {
+            var keyVaultHelper = GetKeyVaultHelper(this.log);
+            await keyVaultHelper.SetSecretAsync(VapidOptionsSettingsName, JsonSerializer.Serialize(vapidOptions));
         }
 
         public async Task<ConfigurationData> GetConfigurationSettingsAsync()

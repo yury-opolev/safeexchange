@@ -53,30 +53,41 @@ namespace SpaceOyster.SafeExchange.Core
             return await TryCatch(async () =>
             {
                 var configurationData = await this.configuration.GetDataAsync();
-                dynamic requestData = await RequestHelper.GetRequestDataAsync(req);
 
+                dynamic data = await RequestHelper.GetRequestDataAsync(req);
+                dynamic requestData = data?.configurationData;
                 dynamic features = requestData?.features;
-                if (features != null)
-                {
-                    configurationData.Features.UseNotifications = (bool?)features.useNotifications ?? configurationData.Features.UseNotifications;
-                    configurationData.Features.UseGroupsAuthorization = (bool?)features.useGroupsAuthorization ?? configurationData.Features.UseGroupsAuthorization;
-                }
+                configurationData.Features.UseNotifications = (bool?)features?.useNotifications ?? configurationData.Features.UseNotifications;
+                configurationData.Features.UseGroupsAuthorization = (bool?)features?.useGroupsAuthorization ?? configurationData.Features.UseGroupsAuthorization;
 
                 configurationData.WhitelistedGroups = (string)requestData?.whitelistedGroups ?? configurationData.WhitelistedGroups;
                 
                 dynamic cosmosDb = requestData?.cosmosDb;
-                if (cosmosDb != null)
-                {
-                    configurationData.CosmosDb.SubscriptionId = (string)cosmosDb.subscriptionId ?? configurationData.CosmosDb.SubscriptionId;
-                    configurationData.CosmosDb.ResourceGroupName = (string)cosmosDb.resourceGroupName ?? configurationData.CosmosDb.ResourceGroupName;
-                    configurationData.CosmosDb.AccountName = (string)cosmosDb.accountName ?? configurationData.CosmosDb.AccountName;
-                    configurationData.CosmosDb.CosmosDbEndpoint = (string)cosmosDb.cosmosDbEndpoint ?? configurationData.CosmosDb.CosmosDbEndpoint;
-                    configurationData.CosmosDb.DatabaseName = (string)cosmosDb.databaseName ?? configurationData.CosmosDb.DatabaseName;
-                }
+                configurationData.CosmosDb.SubscriptionId = (string)cosmosDb?.subscriptionId ?? configurationData.CosmosDb.SubscriptionId;
+                configurationData.CosmosDb.ResourceGroupName = (string)cosmosDb?.resourceGroupName ?? configurationData.CosmosDb.ResourceGroupName;
+                configurationData.CosmosDb.AccountName = (string)cosmosDb?.accountName ?? configurationData.CosmosDb.AccountName;
+                configurationData.CosmosDb.CosmosDbEndpoint = (string)cosmosDb?.cosmosDbEndpoint ?? configurationData.CosmosDb.CosmosDbEndpoint;
+                configurationData.CosmosDb.DatabaseName = (string)cosmosDb?.databaseName ?? configurationData.CosmosDb.DatabaseName;
 
                 configurationData.AdminGroups = (string?)requestData?.adminGroups ?? configurationData.AdminGroups;
+                configurationData.AdminUsers = (string?)requestData?.adminUsers ?? configurationData.AdminUsers;
 
                 await this.configuration.PersistSettingsAsync();
+
+                dynamic vapidOptions = data?.vapidOptions;
+                if (vapidOptions != null)
+                {
+                    var existingVapidOptions = await this.configuration.SystemSettings.GetVapidOptionsAsync();
+                    var newVapidOptions = new VapidOptions()
+                    {
+                        Subject = (string?)vapidOptions?.subject ?? existingVapidOptions.Subject,
+                        PublicKey = (string?)vapidOptions?.publicKey ?? existingVapidOptions.PublicKey,
+                        PrivateKey = (string?)vapidOptions?.privateKey ?? existingVapidOptions.PrivateKey
+                    };
+
+                    await this.configuration.SystemSettings.SetVapidOptionsAsync(newVapidOptions);
+                }
+
                 return new OkObjectResult(new { status = "ok" });
             }, "Set-Configuration", log);
         }
@@ -85,8 +96,13 @@ namespace SpaceOyster.SafeExchange.Core
         {
             return await TryCatch(async () =>
             {
-                var data = await this.configuration.GetDataAsync();
-                return new OkObjectResult(new { status = "ok", result = data });
+                var configurationData = await this.configuration.GetDataAsync();
+                var vapidOptions = await this.configuration.SystemSettings.GetVapidOptionsAsync();
+                return new OkObjectResult(new
+                {
+                    status = "ok",
+                    result = new OutputConfiguration(configurationData, vapidOptions)
+                });
             }, "Get-Configuration", log);
         }
 

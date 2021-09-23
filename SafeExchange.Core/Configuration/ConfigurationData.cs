@@ -12,5 +12,7 @@ namespace SpaceOyster.SafeExchange.Core
         public CosmosDbProviderSettings CosmosDb { get; set; }
 
         public string AdminGroups { get; set; }
+
+        public string AdminUsers { get; set; }
     }
 }
