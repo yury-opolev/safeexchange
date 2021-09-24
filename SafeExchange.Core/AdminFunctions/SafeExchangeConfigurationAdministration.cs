@@ -40,7 +40,7 @@ namespace SpaceOyster.SafeExchange.Core
                 case "get":
                     return await HandleConfigurationGet(req, log);
 
-                case "put":
+                case "post":
                     return await HandleConfigurationSet(req, log);
 
                 default:
