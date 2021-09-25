@@ -19,6 +19,8 @@ namespace SpaceOyster.SafeExchange.Core
 
         private IList<string> adminGroupIds;
 
+        private IList<string> adminUserIds;
+
         private readonly IGraphClientProvider graphClientProvider;
 
         private readonly ConfigurationSettings configuration;
@@ -37,15 +39,22 @@ namespace SpaceOyster.SafeExchange.Core
 
             (bool shouldReturn, IActionResult actionResult) result = (shouldReturn: false, actionResult: null);
 
-            if (!adminGroupIds.Any())
+            if (!this.adminGroupIds.Any() && !this.adminUserIds.Any())
             {
-                log.LogInformation($"No admin groups configured, unauthorized.");
+                log.LogInformation($"No admin groups or users configured, unauthorized.");
                 result.shouldReturn = true;
-                result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+                result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not an admin or a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
                 return result;
             }
 
             var userName = TokenHelper.GetName(principal);
+            var userId = TokenHelper.GetId(principal);
+            if (adminUserIds.Contains(userId, StringComparer.OrdinalIgnoreCase))
+            {
+                log.LogInformation($"{userName} is configured as an admin '{userId}', authorized.");
+                return result;
+            }
+            
             var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
             var graphClient = await this.graphClientProvider.GetGraphClientAsync(tokenResult, this.graphScopes, log);
             var userGroups = await GroupsHelper.TryGetMemberOfAsync(graphClient, log);
@@ -58,9 +67,9 @@ namespace SpaceOyster.SafeExchange.Core
                 }
             }
 
-            log.LogInformation($"{userName} is not a member of any admin group, unauthorized.");
+            log.LogInformation($"{userName} is not an admin or a member of any admin group, unauthorized.");
             result.shouldReturn = true;
-            result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+            result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not an admin or a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
             return result;
         }
 
@@ -79,6 +88,16 @@ namespace SpaceOyster.SafeExchange.Core
                 foreach (var group in groupArray)
                 {
                     this.adminGroupIds.Add(group);
+                }
+            }
+
+            this.adminUserIds = new List<string>();
+            if (!string.IsNullOrEmpty(configurationData.AdminUsers))
+            {
+                var groupArray = configurationData.AdminUsers.Split(",", StringSplitOptions.RemoveEmptyEntries);
+                foreach (var group in groupArray)
+                {
+                    this.adminUserIds.Add(group);
                 }
             }
 

@@ -18,12 +18,12 @@ namespace SpaceOyster.SafeExchange.Core
 
         private ILogger logger;
 
-        private KeyVaultSystemSettings systemSettings;
+        public KeyVaultSystemSettings SystemSettings { get; private set; }
 
         public ConfigurationSettings(ILogger<ConfigurationSettings> logger)
         {
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            this.systemSettings = new KeyVaultSystemSettings(logger);
+            this.SystemSettings = new KeyVaultSystemSettings(logger);
         }
 
         public async ValueTask<ConfigurationData> GetDataAsync()
@@ -34,7 +34,7 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task RestoreSettingsAsync()
         {
-            var configurationData = await systemSettings.GetConfigurationSettingsAsync();
+            var configurationData = await SystemSettings.GetConfigurationSettingsAsync();
             if (configurationData is default(ConfigurationData))
             {
                 this.RestoreFromEnvironment();
@@ -49,7 +49,7 @@ namespace SpaceOyster.SafeExchange.Core
         public async Task PersistSettingsAsync()
         {
             this.logger.Log(LogLevel.Information, "Persisting configuration to keyvault.");
-            await systemSettings.SetConfigurationSettingsAsync(this.data);
+            await SystemSettings.SetConfigurationSettingsAsync(this.data);
         }
 
         private void RestoreFromEnvironment()
@@ -70,7 +70,8 @@ namespace SpaceOyster.SafeExchange.Core
                     string.IsNullOrEmpty(Environment.GetEnvironmentVariable("COSMOS_DB_SETTINGS")) ?
                         throw new ArgumentException("Cosmos DB configuration is not set, check environment value for 'COSMOS_DB_SETTINGS'.") :
                         JsonSerializer.Deserialize<CosmosDbProviderSettings>(Environment.GetEnvironmentVariable("COSMOS_DB_SETTINGS")),
-                AdminGroups = string.Empty
+                AdminGroups = string.Empty,
+                AdminUsers = string.Empty
             };
         }
 
