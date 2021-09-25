@@ -26,7 +26,13 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
+            if (shouldReturn)
+            {
+                return filterResult;
+            }
+
+            (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, log);
             if (shouldReturn)
             {
                 return filterResult;

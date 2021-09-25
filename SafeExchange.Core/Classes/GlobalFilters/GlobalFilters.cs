@@ -42,15 +42,6 @@ namespace SpaceOyster.SafeExchange.Core
 
         public async ValueTask<(bool shouldReturn, IActionResult actionResult)> GetAdminFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
-            foreach (var filter in this.currentFilters)
-            {
-                var filterResult = await filter.GetFilterResultAsync(req, principal, log);
-                if (filterResult.shouldReturn)
-                {
-                    return filterResult;
-                }
-            }
-
             foreach (var filter in this.currentAdminFilters)
             {
                 var filterResult = await filter.GetFilterResultAsync(req, principal, log);
