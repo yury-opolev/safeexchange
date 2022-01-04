@@ -1,147 +1,188 @@
-/// SafeExchange
+﻿/// <summary>
+/// SafeExchangeAccess
+/// </summary>
 
-namespace SpaceOyster.SafeExchange.Core
+namespace SafeExchange.Core.Functions
 {
-    using System.Threading.Tasks;
-    using Microsoft.AspNetCore.Mvc;
     using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
-    using System.Security.Claims;
+    using SafeExchange.Core.Filters;
+    using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Purger;
     using System;
-    using System.Collections.Generic;
-    using SpaceOyster.SafeExchange.Core.CosmosDb;
+    using System.Security.Claims;
+    using System.Text.Json;
+    using System.Web.Http;
 
     public class SafeExchangeAccess
     {
-        private readonly IGraphClientProvider graphClientProvider;
+        private readonly SafeExchangeDbContext dbContext;
 
-        private readonly ICosmosDbProvider cosmosDbProvider;
-
-        private readonly ConfigurationSettings configuration;
+        private readonly ITokenHelper tokenHelper;
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeAccess(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
+        private readonly IPurger purger;
+
+        private readonly IPermissionsManager permissionsManager;
+
+        public SafeExchangeAccess(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
         {
-            this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
-            this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
-            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
+            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
+            this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
         public async Task<IActionResult> Run(
-            HttpRequest req,
+            HttpRequest request,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult;
+                return filterResult ?? new EmptyResult();
             }
 
-            var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
-            var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
+            var userUpn = this.tokenHelper.GetUpn(principal);
+            log.LogInformation($"{nameof(SafeExchangeAccess)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
 
-            var userName = TokenHelper.GetName(principal);
-            log.LogInformation($"SafeExchange-Access triggered for '{secretId}' by {userName}, ID {TokenHelper.GetId(principal)} [{req.Method}].");
-
-            string subject = null;
-            IList<PermissionType> permissionList = null;
-
-            if (req.Method.ToLower().Equals("post") || req.Method.ToLower().Equals("delete"))
+            var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
+            if (existingMetadata == null)
             {
-                dynamic data = await RequestHelper.GetRequestDataAsync(req);
-
-                subject = data?.subject;
-                if (string.IsNullOrEmpty(subject))
-                {
-                    log.LogInformation($"{nameof(subject)} is not set.");
-                    return new BadRequestObjectResult(new { status = "error", error = $"{nameof(subject)} is required" });
-                }
-
-                string permission = data?.permission;
-                if (!PermissionsHelper.TryParsePermissions(permission, out permissionList))
-                {
-                    log.LogInformation($"Cannot parse {nameof(permission)}.");
-                    return new BadRequestObjectResult(new { status = "error", error = $"Valid value of {nameof(permission)} is required" });
-                }
+                log.LogInformation($"Cannot handle permissions for secret '{secretId}', as it not exists.");
+                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists" });
             }
 
-            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, groupDictionary, this.graphClientProvider);
-            var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
-            if (existingPermissions.Count == 0)
-            {
-                log.LogInformation($"Cannot handle permissions for secret '{secretId}', as not exists");
-                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
-            }
-
-            var tokenResult = TokenHelper.GetTokenResult(req, principal, log);
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "post":
-                {
-                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.GrantAccess, tokenResult, log)))
                     {
-                        return PermissionsHelper.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId);
+                        if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.GrantAccess))
+                        {
+                            return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId);
+                        }
+
+                        var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.RevokeAccess);
+                        return await this.GrantAccessAsync(existingMetadata.ObjectName, request, userCanRevokeAccess, log);
                     }
-                    return await GrantAccess(subject, permissionList, secretId, permissionsHelper, log);
-                }
 
                 case "get":
-                {
-                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.Read, tokenResult, log)))
                     {
-                        return PermissionsHelper.InsufficientPermissionsResult(PermissionType.Read, secretId);
+                        if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read))
+                        {
+                            return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId);
+                        }
+
+                        return await this.GetAccessListAsync(existingMetadata.ObjectName, log);
                     }
-                    return await GetAccessList(secretId, permissionsHelper, log);
-                }
 
                 case "delete":
-                {
-                    if (!(await permissionsHelper.IsAuthorizedAsync(userName, secretId, PermissionType.RevokeAccess, tokenResult, log)))
                     {
-                        return PermissionsHelper.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId);
+                        if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.RevokeAccess))
+                        {
+                            return ActionResults.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId);
+                        }
+
+                        return await this.RevokeAccessAsync(existingMetadata.ObjectName, request, log);
                     }
-                    return await RevokeAccess(subject, permissionList, secretId, permissionsHelper, log);
-                }
 
                 default:
-                    return new BadRequestObjectResult(new { status = "error", error = "Request method not recognized" });
+                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        private static async Task<IActionResult> GrantAccess(string userName, IList<PermissionType> permissionList, string secretId, PermissionsHelper permissionsHelper, ILogger log)
+        private async Task<IActionResult> GrantAccessAsync(string secretId, HttpRequest request, bool userCanRevokeAccess, ILogger log)
+            => await TryCatch(async () =>
         {
-            foreach (var permission in permissionList)
+            var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
+            if ((permissionsInput?.Count ?? 0) == 0)
             {
-                await permissionsHelper.SetPermissionAsync(userName, secretId, permission);
+                log.LogInformation($"Permissions data for '{secretId}' not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access settings are not provided." });
             }
-            return new OkObjectResult(new { status = "ok" });
-        }
 
-        private static async Task<IActionResult> GetAccessList(string secretId, PermissionsHelper permissionsHelper, ILogger log)
-        {
-            var existingPermissions = await permissionsHelper.GetAllPermissionsAsync(secretId);
-            return new OkObjectResult(new { status = "ok", accessList = ConvertToOutputPermissions(existingPermissions) });
-        }
-
-        private static async Task<IActionResult> RevokeAccess(string userName, IList<PermissionType> permissionList, string secretId, PermissionsHelper permissionsHelper, ILogger log)
-        {
-            foreach (var permission in permissionList)
+            foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
             {
-                await permissionsHelper.DeletePermissionAsync(userName, secretId, permission);
+                var permission = permissionInput.GetPermissionType();
+                if (!userCanRevokeAccess)
+                {
+                    permission &= ~PermissionType.RevokeAccess;
+                }
+
+                await this.permissionsManager.SetPermissionAsync(permissionInput.SubjectName, secretId, permission);
             }
-            return new OkObjectResult(new { status = "ok" });
+
+            await this.dbContext.SaveChangesAsync();
+
+            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(GrantAccessAsync), log);
+
+        private async Task<IActionResult> GetAccessListAsync(string secretId, ILogger log)
+            => await TryCatch(async () =>
+        {
+            var existingPermissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretId)).ToListAsync();
+
+            return new OkObjectResult(new BaseResponseObject<List<SubjectPermissionsOutput>>
+            {
+                Status = "ok",
+                Result = existingPermissions.Select(p => p.ToDto()).ToList()
+            });
+
+        }, nameof(GetAccessListAsync), log);
+
+        private async Task<IActionResult> RevokeAccessAsync(string secretId, HttpRequest request, ILogger log)
+            => await TryCatch(async () =>
+        {
+            var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
+            if ((permissionsInput?.Count ?? 0) == 0)
+            {
+                log.LogInformation($"Permissions data for '{secretId}' not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access settings are not provided." });
+            }
+
+            foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
+            {
+                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectName, secretId, permissionInput.GetPermissionType());
+            }
+
+            await this.dbContext.SaveChangesAsync();
+
+            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(RevokeAccessAsync), log);
+
+        private async Task<List<SubjectPermissionsInput>?> TryGetPermissionsInputAsync(HttpRequest request, ILogger log)
+        {
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            try
+            {
+                return DefaultJsonSerializer.Deserialize<List<SubjectPermissionsInput>>(requestBody);
+            }
+            catch (Exception exception)
+            {
+                log.LogWarning(exception, "Could not parse input data for permissions input.");
+                return null;
+            }
         }
 
-        private static IList<OutputSubjectPermissions> ConvertToOutputPermissions(IList<SubjectPermissions> permissions)
+        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
         {
-            var result = new List<OutputSubjectPermissions>(permissions.Count);
-            foreach (var permission in permissions)
+            try
             {
-                result.Add(new OutputSubjectPermissions(permission));
+                return await action();
             }
-            return result;
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
+                return new ExceptionResult(ex, true);
+            }
         }
     }
 }

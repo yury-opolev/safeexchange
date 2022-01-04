@@ -1,152 +1,316 @@
 ﻿/// <summary>
-/// SafeExchange
+/// SafeExchangeAccessRequest
 /// </summary>
 
-namespace SpaceOyster.SafeExchange.Core
+namespace SafeExchange.Core.Functions
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
-    using SpaceOyster.SafeExchange.Core.CosmosDb;
+    using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Filters;
+    using SafeExchange.Core.Model;
+    using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Purger;
     using System;
-    using System.Linq;
     using System.Security.Claims;
-    using System.Threading.Tasks;
     using System.Web.Http;
 
     public class SafeExchangeAccessRequest
     {
-        private readonly IGraphClientProvider graphClientProvider;
+        private readonly Features features;
 
-        private readonly ICosmosDbProvider cosmosDbProvider;
-
-        private readonly ConfigurationSettings configuration;
+        private readonly SafeExchangeDbContext dbContext;
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeAccessRequest(ICosmosDbProvider cosmosDbProvider, IGraphClientProvider graphClientProvider, ConfigurationSettings configuration, GlobalFilters globalFilters)
+        private readonly ITokenHelper tokenHelper;
+
+        private readonly IPurger purger;
+
+        private readonly IPermissionsManager permissionsManager;
+
+        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager)
         {
-            this.cosmosDbProvider = cosmosDbProvider ?? throw new ArgumentNullException(nameof(cosmosDbProvider));
-            this.graphClientProvider = graphClientProvider ?? throw new ArgumentNullException(nameof(graphClientProvider));
-            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            if (configuration == null)
+            {
+                throw new ArgumentNullException(nameof(configuration));
+            }
+
+            this.features = new Features();
+            configuration.GetSection("Features").Bind(this.features);
+
+            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
+            this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
+            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
+            this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
-        public async Task<IActionResult> Run(HttpRequest req, ClaimsPrincipal principal, ILogger log)
+        public async Task<IActionResult> Run(HttpRequest request, string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, log);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult;
+                return filterResult ?? new EmptyResult();
             }
 
-            dynamic data = await RequestHelper.GetRequestDataAsync(req);
-            string secretId = data?.secretId;
-            if (string.IsNullOrEmpty(secretId))
+            var userUpn = this.tokenHelper.GetUpn(principal);
+            log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+
+            var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
+            if (existingMetadata == null)
             {
-                log.LogInformation($"{nameof(secretId)} is not set.");
-                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(secretId)} is required" });
+                log.LogInformation($"Cannot request access to secret '{secretId}', because it not exists.");
+                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
             }
 
-            if (KeyVaultSystemSettings.IsSystemSettingName(secretId))
-            {
-                log.LogInformation($"Cannot request access to secret '{secretId}', as not allowed for system reserved names");
-                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
-            }
-
-            var keyVaultHelper = KeyVaultSystemSettings.GetKeyVaultHelper(log);
-            var existingSecretVersions = await keyVaultHelper.GetSecretVersionsAsync(secretId);
-            if (!existingSecretVersions.Any() && !req.Method.ToLower().Equals("delete"))
-            {
-                log.LogInformation($"Cannot request access to secret '{secretId}', as not exists");
-                return new NotFoundObjectResult(new { status = "not_found", error = $"Secret '{secretId}' not exists" });
-            }
-
-            var accessRequests = await cosmosDbProvider.GetAccessRequestsContainerAsync();
-            var subjectPermissions = await cosmosDbProvider.GetSubjectPermissionsContainerAsync();
-            var groupDictionary = await cosmosDbProvider.GetGroupDictionaryContainerAsync();
-            var notificationSubscriptions = await cosmosDbProvider.GetNotificationSubscriptionsContainerAsync();
-
-            var permissionsHelper = new PermissionsHelper(this.configuration, subjectPermissions, groupDictionary, this.graphClientProvider);
-            var notificationsHelper = new NotificationsHelper(notificationSubscriptions, log);
-            var accessRequestHelper = new AccessRequestHelper(accessRequests, permissionsHelper, notificationsHelper, this.configuration, log);
-
-            var userName = TokenHelper.GetName(principal);
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "post":
-                    return await HandleAccessRequestCreation(data, userName, secretId, accessRequestHelper, log);
+                    return await this.HandleAccessRequestCreation(request, secretId, userUpn, log);
 
                 case "patch":
-                    return await HandleAccessRequestUpdate(data, userName, secretId, accessRequestHelper, log);
+                    return await this.HandleAccessRequestUpdate(request, secretId, userUpn, log);
 
                 case "delete":
-                    return await HandleAccessRequestDeletion(data, userName, secretId, accessRequestHelper, log);
+                    return await this.HandleAccessRequestDeletion(request, secretId, userUpn, log);
 
                 default:
-                    return new BadRequestObjectResult(new { status = "error", error = "Request method not recognized" });
+                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        private static async Task<IActionResult> HandleAccessRequestCreation(dynamic requestData, string userId, string secretId, AccessRequestHelper accessRequestHelper, ILogger log)
+        public async Task<IActionResult> RunList(HttpRequest request, ClaimsPrincipal principal, ILogger log)
         {
-            string permission = requestData?.permission;
-            if (!PermissionsHelper.TryParsePermissions(permission, out var permissionList))
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
+            if (shouldReturn)
             {
-                log.LogInformation($"Cannot parse {nameof(permission)}.");
-                return new BadRequestObjectResult(new { status = "error", error = $"Valid value of {nameof(permission)} is required" });
+                return filterResult ?? new EmptyResult();
             }
 
-            return await TryCatch(async () =>
+            var userUpn = this.tokenHelper.GetUpn(principal);
+            log.LogInformation($"{nameof(SafeExchangeAccessRequest)}-{nameof(RunList)} triggered by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+
+            switch (request.Method.ToLower())
             {
-                await accessRequestHelper.RequestAccessAsync(userId, secretId, permissionList);
-                return new OkObjectResult(new { status = "ok" });
-            }, "Request-Access", log);
+                case "get":
+                    return await this.HandleAccessRequestList(request, userUpn, log);
+
+                default:
+                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+            }
         }
 
-        private static async Task<IActionResult> HandleAccessRequestUpdate(dynamic requestData, string userId, string secretId, AccessRequestHelper accessRequestHelper, ILogger log)
+        private async Task<IActionResult> HandleAccessRequestCreation(HttpRequest request, string secretId, string userUpn, ILogger log)
+            => await TryCatch(async () =>
         {
-            string requestId = requestData?.requestId;
-            if (string.IsNullOrEmpty(requestId))
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            SubjectPermissionsInput? accessRequestInput;
+            try
             {
-                log.LogInformation($"'{nameof(requestId)}' is not set.");
-                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(requestId)} is required" });
+                accessRequestInput = DefaultJsonSerializer.Deserialize<SubjectPermissionsInput>(requestBody);
+            }
+            catch
+            {
+                log.LogInformation($"Could not parse input data for access request.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
-            bool? grant = requestData?.grant;
-            if (grant == null)
+            if (accessRequestInput == null)
             {
-                log.LogInformation($"'{nameof(grant)}' is not set.");
-                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(grant)} is required" });
+                log.LogInformation($"Input data for access request is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
-            return await TryCatch(async () =>
-            {
-                if (grant == true)
-                {
-                    await accessRequestHelper.ApproveAccessRequestAsync(userId, requestId, secretId);
-                }
-                else
-                {
-                    await accessRequestHelper.DenyAccessRequestAsync(userId, requestId, secretId);
-                }
-                return new OkObjectResult(new { status = "ok" });
-            }, "Request-Access", log);
-        }
+            var utcNow = DateTimeProvider.UtcNow;
+            var requestedPermission = accessRequestInput.GetPermissionType();
+            var existingRequest = await this.dbContext.AccessRequests
+                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(userUpn) && ar.SubjectName.Equals(secretId));
 
-        private static async Task<IActionResult> HandleAccessRequestDeletion(dynamic requestData, string userId, string secretId, AccessRequestHelper accessRequestHelper, ILogger log)
+            if (existingRequest != null && existingRequest.Permission == requestedPermission)
+            {
+                log.LogInformation($"Found identical access request {existingRequest.Id} from {userUpn} for secret '{secretId}', skipping duplicate.");
+                return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            }
+
+            var accessRequest = new AccessRequest(secretId, userUpn, accessRequestInput);
+
+            var subjectPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !p.SubjectName.Equals(userUpn))
+                .ToListAsync();
+            var recipients = subjectPermissions.Select(p => new RequestRecipient() { SubjectName = p.SubjectName }).ToList();
+            accessRequest.Recipients = recipients;
+
+            await this.dbContext.AccessRequests.AddAsync(accessRequest);
+            await this.dbContext.SaveChangesAsync();
+
+            log.LogInformation($"Created access request {accessRequest.Id} from {userUpn} for secret '{secretId}'.");
+
+            await this.TryNotifyAsync(accessRequest, RequestStatus.InProgress);
+
+            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(HandleAccessRequestCreation), log);
+
+        private async Task<IActionResult> HandleAccessRequestList(HttpRequest request, string userUpn, ILogger log)
+            => await TryCatch(async () =>
         {
-            string requestId = requestData?.requestId;
-            if (string.IsNullOrEmpty(requestId))
+            var outgoingRequests = await this.dbContext.AccessRequests.Where(
+                ar =>
+                    ar.SubjectName.Equals(userUpn) &&
+                    ar.Status == RequestStatus.InProgress)
+                .ToListAsync();
+
+            var incomingRequests = await this.dbContext.AccessRequests
+                .FromSqlRaw(
+                    " SELECT " +
+                    "  AR.Id," +
+                    "  AR.PartitionKey," +
+                    "  AR.SubjectName," +
+                    "  AR.ObjectName," +
+                    "  AR.Permission," +
+                    "  AR.Recipients," +
+                    "  AR.RequestedAt," +
+                    "  AR.Status," +
+                    "  AR.FinishedBy," +
+                    "  AR.FinishedAt" +
+                    " FROM AccessRequests AR" +
+                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectName = {0})" +
+                    " WHERE AR.Status = {1}", userUpn, RequestStatus.InProgress)
+                .ToListAsync();
+
+            var requests = new List<AccessRequestOutput>(outgoingRequests.Count + incomingRequests.Count);
+            requests.AddRange(outgoingRequests.Select(ar => ar.ToDto()));
+            requests.AddRange(incomingRequests.Select(ar => ar.ToDto()));
+
+            return new OkObjectResult(new BaseResponseObject<List<AccessRequestOutput>> { Status = "ok", Result = requests });
+
+        }, nameof(HandleAccessRequestList), log);
+
+        private async Task<IActionResult> HandleAccessRequestUpdate(HttpRequest request, string secretId, string userUpn, ILogger log)
+            => await TryCatch(async () =>
+        {
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            AccessRequestUpdateInput? accessRequestInput;
+            try
             {
-                log.LogInformation($"'{nameof(requestId)}' is not set.");
-                return new BadRequestObjectResult(new { status = "error", error = $"{nameof(requestId)} is required" });
+                accessRequestInput = DefaultJsonSerializer.Deserialize<AccessRequestUpdateInput>(requestBody);
+            }
+            catch
+            {
+                log.LogInformation($"Could not parse input data for access request.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
-            return await TryCatch(async () =>
+            if (string.IsNullOrEmpty(accessRequestInput?.RequestId))
             {
-                return await accessRequestHelper.DeleteAccessRequestAsync(userId, requestId, secretId);
-            }, "Request-Access", log);
+                log.LogInformation($"Input data for access request is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+            }
+
+            var existingRequest = await this.dbContext.AccessRequests.FindAsync(accessRequestInput.RequestId);
+            if (existingRequest == null || !existingRequest.ObjectName.Equals(secretId))
+            {
+                log.LogWarning($"Cannot find access request '{accessRequestInput.RequestId}' for secret '{secretId}'.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or for different secret." });
+            }
+
+            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectName.Equals(userUpn, StringComparison.OrdinalIgnoreCase));
+            if (foundRecipient == null)
+            {
+                log.LogWarning($"User '{userUpn}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "User is not a recipient." });
+            }
+
+            var userHasGrantRights = await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.GrantAccess);
+            if (!userHasGrantRights)
+            {
+                log.LogWarning($"User {userUpn} does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
+                return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId);
+            }
+
+            if (accessRequestInput.Approve)
+            {
+                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectName, secretId, existingRequest.Permission);
+                existingRequest.Status = RequestStatus.Approved;
+            }
+            else
+            {
+                existingRequest.Status = RequestStatus.Rejected;
+            }
+
+            existingRequest.FinishedBy = userUpn;
+            existingRequest.FinishedAt = DateTimeProvider.UtcNow;
+
+            await this.dbContext.SaveChangesAsync();
+
+            await this.TryNotifyAsync(existingRequest, RequestStatus.Approved);
+
+            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(HandleAccessRequestUpdate), log);
+
+        private async Task<IActionResult> HandleAccessRequestDeletion(HttpRequest request, string secretId, string userUpn, ILogger log)
+            => await TryCatch(async () =>
+        {
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            AccessRequestDeletionInput? accessRequestInput;
+            try
+            {
+                accessRequestInput = DefaultJsonSerializer.Deserialize<AccessRequestDeletionInput>(requestBody);
+            }
+            catch
+            {
+                log.LogInformation($"Could not parse input data for access request.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+            }
+
+            if (string.IsNullOrEmpty(accessRequestInput?.RequestId))
+            {
+                log.LogInformation($"Input data for access request is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+            }
+
+            var existingRequest = await this.dbContext.AccessRequests.FindAsync(accessRequestInput.RequestId);
+            if (existingRequest == null || !existingRequest.ObjectName.Equals(secretId))
+            {
+                log.LogWarning($"Cannot find access request '{accessRequestInput.RequestId}' for secret '{secretId}'.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or for different secret." });
+            }
+
+            if (!existingRequest.SubjectName.Equals(userUpn, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogWarning($"User '{userUpn}' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
+                return ActionResults.InsufficientPermissionsResult("AccessRequestCancellation", secretId);
+            }
+
+            this.dbContext.AccessRequests.Remove(existingRequest);
+            await this.dbContext.SaveChangesAsync();
+
+            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(HandleAccessRequestDeletion), log);
+
+        private async ValueTask TryNotifyAsync(AccessRequest accessRequest, RequestStatus currentStatus)
+        {
+            if (!this.features.UseNotifications)
+            {
+                return;
+            }
+
+            foreach (var recipient in accessRequest.Recipients)
+            {
+                // TODO ...
+            }
+
+            await Task.CompletedTask;
         }
 
         private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
@@ -157,7 +321,7 @@ namespace SpaceOyster.SafeExchange.Core
             }
             catch (Exception ex)
             {
-                log.LogError(ex, $"{actionName} had exception {ex.GetType()}: {ex.Message}");
+                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
                 return new ExceptionResult(ex, true);
             }
         }
