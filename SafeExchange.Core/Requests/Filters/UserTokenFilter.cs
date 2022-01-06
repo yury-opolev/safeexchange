@@ -96,7 +96,7 @@ namespace SafeExchange.Core.Filters
             }
 
             var utcNow = DateTimeProvider.UtcNow;
-            if (utcNow <= (user.LastGroupSync + GroupSyncDelay))
+            if (utcNow >= (user.LastGroupSync + GroupSyncDelay))
             {
                 return;
             }
