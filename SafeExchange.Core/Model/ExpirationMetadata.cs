@@ -14,22 +14,26 @@ namespace SafeExchange.Core.Model
 
         public ExpirationMetadata(ExpirationSettingsInput expirationSettings)
         {
-            this.ExpireAfterRead = expirationSettings.ExpireAfterRead;
             this.ScheduleExpiration = expirationSettings.ScheduleExpiration;
             this.ExpireAt = expirationSettings.ExpireAt;
+            this.ExpireOnIdleTime = expirationSettings.ExpireOnIdleTime;
+            this.IdleTimeToExpire = expirationSettings.IdleTimeToExpire;
         }
-
-        public bool ExpireAfterRead { get; set; }
 
         public bool ScheduleExpiration { get; set; }
 
         public DateTime ExpireAt { get; set; }
 
+        public bool ExpireOnIdleTime { get; set; }
+
+        public TimeSpan IdleTimeToExpire { get; set; }
+
         internal ExpirationSettingsOutput ToDto() => new ExpirationSettingsOutput()
         {
-            ExpireAfterRead = this.ExpireAfterRead,
             ScheduleExpiration = this.ScheduleExpiration,
-            ExpireAt = this.ExpireAt
+            ExpireAt = this.ExpireAt,
+            ExpireOnIdleTime = this.ExpireOnIdleTime,
+            IdleTimeToExpire = this.IdleTimeToExpire
         };
     }
 }

@@ -189,6 +189,9 @@ namespace SafeExchange.Core.Functions
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId);
             }
 
+            metadata.LastAccessedAt = DateTimeProvider.UtcNow;
+            await this.dbContext.SaveChangesAsync();
+
             return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = metadata.ToDto() });
 
         }, nameof(HandleSecretMetaRead), log);
@@ -291,6 +294,7 @@ namespace SafeExchange.Core.Functions
         {
             var updatedExpirationMetadata = new ExpirationMetadata(metadataInput.ExpirationSettings);
             existingMetadata.ExpirationMetadata = updatedExpirationMetadata;
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
 
             await this.dbContext.SaveChangesAsync();
 

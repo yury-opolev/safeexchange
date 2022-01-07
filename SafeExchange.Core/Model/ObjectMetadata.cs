@@ -27,6 +27,8 @@ namespace SafeExchange.Core.Model
             this.CreatedAt = DateTimeProvider.UtcNow;
             this.ModifiedBy = string.Empty;
             this.ModifiedAt = DateTime.MinValue;
+
+            this.LastAccessedAt = DateTimeProvider.UtcNow;
         }
 
         private static List<ContentMetadata> CreateContent(bool isStarter)
@@ -70,6 +72,8 @@ namespace SafeExchange.Core.Model
         public DateTime ModifiedAt { get; set; }
 
         public string ModifiedBy { get; set; }
+
+        public DateTime LastAccessedAt { get; set; }
 
         internal ObjectMetadataOutput ToDto() => new ()
         {

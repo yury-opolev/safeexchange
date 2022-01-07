@@ -480,9 +480,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -554,9 +555,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 

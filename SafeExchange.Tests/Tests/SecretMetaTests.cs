@@ -214,9 +214,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -269,9 +270,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -333,9 +335,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -375,9 +378,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -399,9 +403,10 @@ namespace SafeExchange.Tests
             Assert.IsNotNull(metadata);
             Assert.AreEqual("sunshine", metadata?.ObjectName);
 
-            Assert.AreEqual(creationInput.ExpirationSettings.ExpireAfterRead, metadata?.ExpirationSettings?.ExpireAfterRead);
             Assert.AreEqual(creationInput.ExpirationSettings.ScheduleExpiration, metadata?.ExpirationSettings?.ScheduleExpiration);
             Assert.AreEqual(creationInput.ExpirationSettings.ExpireAt, metadata?.ExpirationSettings?.ExpireAt);
+            Assert.AreEqual(creationInput.ExpirationSettings.ExpireOnIdleTime, metadata?.ExpirationSettings?.ExpireOnIdleTime);
+            Assert.AreEqual(creationInput.ExpirationSettings.IdleTimeToExpire, metadata?.ExpirationSettings?.IdleTimeToExpire);
 
             var contentList = metadata?.Content;
             Assert.IsNotNull(contentList);
@@ -430,9 +435,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -479,9 +485,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -522,9 +529,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -556,9 +564,10 @@ namespace SafeExchange.Tests
             Assert.IsNotNull(metadata);
             Assert.AreEqual("sunshine2", metadata?.ObjectName);
 
-            Assert.AreEqual(creationInput.ExpirationSettings.ExpireAfterRead, metadata?.ExpirationSettings?.ExpireAfterRead);
             Assert.AreEqual(creationInput.ExpirationSettings.ScheduleExpiration, metadata?.ExpirationSettings?.ScheduleExpiration);
             Assert.AreEqual(creationInput.ExpirationSettings.ExpireAt, metadata?.ExpirationSettings?.ExpireAt);
+            Assert.AreEqual(creationInput.ExpirationSettings.ExpireOnIdleTime, metadata?.ExpirationSettings?.ExpireOnIdleTime);
+            Assert.AreEqual(creationInput.ExpirationSettings.IdleTimeToExpire, metadata?.ExpirationSettings?.IdleTimeToExpire);
 
             var contentList = metadata?.Content;
             Assert.IsNotNull(contentList);
@@ -583,9 +592,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -606,9 +616,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = true,
                     ScheduleExpiration = true,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 
@@ -628,9 +639,10 @@ namespace SafeExchange.Tests
             Assert.IsNotNull(metadata);
             Assert.AreEqual("sunshine3", metadata?.ObjectName);
 
-            Assert.AreEqual(updateInput.ExpirationSettings.ExpireAfterRead, metadata?.ExpirationSettings?.ExpireAfterRead);
             Assert.AreEqual(updateInput.ExpirationSettings.ScheduleExpiration, metadata?.ExpirationSettings?.ScheduleExpiration);
             Assert.AreEqual(updateInput.ExpirationSettings.ExpireAt, metadata?.ExpirationSettings?.ExpireAt);
+            Assert.AreEqual(updateInput.ExpirationSettings.ExpireOnIdleTime, metadata?.ExpirationSettings?.ExpireOnIdleTime);
+            Assert.AreEqual(updateInput.ExpirationSettings.IdleTimeToExpire, metadata?.ExpirationSettings?.IdleTimeToExpire);
 
             var contentList = metadata?.Content;
             Assert.IsNotNull(contentList);
@@ -655,9 +667,10 @@ namespace SafeExchange.Tests
             {
                 ExpirationSettings = new ExpirationSettingsInput()
                 {
-                    ExpireAfterRead = false,
                     ScheduleExpiration = false,
-                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180)
+                    ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180)
                 }
             };
 

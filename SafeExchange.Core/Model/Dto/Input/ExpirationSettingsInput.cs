@@ -8,10 +8,12 @@ namespace SafeExchange.Core.Model.Dto.Input
 
     public class ExpirationSettingsInput
     {
-        public bool ExpireAfterRead { get; set; }
-
         public bool ScheduleExpiration { get; set; }
 
         public DateTime ExpireAt { get; set; }
+
+        public bool ExpireOnIdleTime { get; set; }
+
+        public TimeSpan IdleTimeToExpire { get; set; }
     }
 }

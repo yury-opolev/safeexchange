@@ -72,6 +72,13 @@ namespace SafeExchange.Core.Purger
                 return true;
             }
 
+            var idleTime = now - objectMetadata.LastAccessedAt;
+            if ((objectMetadata.ExpirationMetadata.ExpireOnIdleTime == true) && idleTime >= objectMetadata.ExpirationMetadata.IdleTimeToExpire)
+            {
+                await this.PurgeAsync(secretId, dbContext);
+                return true;
+            }
+
             return false;
         }
 

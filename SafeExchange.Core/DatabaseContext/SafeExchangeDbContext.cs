@@ -52,9 +52,10 @@ namespace SafeExchange.Core
                         om => om.ExpirationMetadata,
                         exmb =>
                         {
-                            exmb.Property(exm => exm.ExpireAfterRead).IsRequired();
                             exmb.Property(exm => exm.ScheduleExpiration).IsRequired();
                             exmb.Property(exm => exm.ExpireAt).IsRequired();
+                            exmb.Property(exm => exm.ExpireOnIdleTime).IsRequired();
+                            exmb.Property(exm => exm.IdleTimeToExpire).IsRequired();
                         });
 
                     omb.Navigation(o => o.ExpirationMetadata).IsRequired();

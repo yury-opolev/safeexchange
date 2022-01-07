@@ -220,6 +220,7 @@ namespace SafeExchange.Core.Functions
                     existingContent.AccessTicketSetAt = DateTime.MinValue;
                 }
 
+                existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
                 await this.dbContext.SaveChangesAsync();
 
                 return new OkObjectResult(new BaseResponseObject<ChunkCreationOutput> { Status = "ok", Result = newChunk.ToCreationDto(accessTicket) });
@@ -285,6 +286,10 @@ namespace SafeExchange.Core.Functions
 
                 var contentType = string.IsNullOrEmpty(existingContent.ContentType) ? DefaultContentType : existingContent.ContentType;
                 var dataStream = await this.blobHelper.DownloadAndDecryptBlobAsync(existingChunk.ChunkName);
+
+                existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+                await this.dbContext.SaveChangesAsync();
+
                 return new FileStreamResult(dataStream, contentType);
 
             }, nameof(HandleSecretStreamDownload), log);
@@ -350,6 +355,9 @@ namespace SafeExchange.Core.Functions
                     var chunkStream = await this.blobHelper.DownloadAndDecryptBlobAsync(chunk.ChunkName);
                     await chunkStream.CopyToAsync(response.Body);
                 }
+
+                existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+                await this.dbContext.SaveChangesAsync();
 
                 return new EmptyResult();
 

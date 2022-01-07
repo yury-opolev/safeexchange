@@ -156,6 +156,7 @@ namespace SafeExchange.Core.Functions
 
             var newContent = new ContentMetadata(contentMetadataInput);
             existingMetadata.Content.Add(newContent);
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
             return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = newContent.ToDto() });
@@ -212,6 +213,7 @@ namespace SafeExchange.Core.Functions
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
             existingContent.ContentType = contentMetadataInput.ContentType;
             existingContent.FileName = contentMetadataInput.FileName ?? string.Empty;
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
             return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
@@ -256,6 +258,9 @@ namespace SafeExchange.Core.Functions
             }
 
             await this.DeleteAllChunksAsync(existingContent, log);
+
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+            await this.dbContext.SaveChangesAsync();
 
             return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
 
@@ -307,6 +312,7 @@ namespace SafeExchange.Core.Functions
 
             await this.DeleteAllChunksAsync(existingContent, log);
             existingMetadata.Content.Remove(existingContent);
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
             return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
