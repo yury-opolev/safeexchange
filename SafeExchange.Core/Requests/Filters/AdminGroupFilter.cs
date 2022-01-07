@@ -6,6 +6,7 @@ namespace SafeExchange.Core.Filters
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
@@ -25,16 +26,13 @@ namespace SafeExchange.Core.Filters
 
         private readonly ILogger log;
 
-        public AdminGroupFilter(IConfiguration configuration, ITokenHelper tokenHelper, ILogger log)
+        public AdminGroupFilter(AdminConfiguration adminConfiguration, ITokenHelper tokenHelper, ILogger log)
         {
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
 
-            var adminConfiguration = new AdminConfiguration();
-            configuration.GetSection("AdminConfiguration").Bind(adminConfiguration);
-
             this.adminGroupIds = new List<string>();
-            if (!string.IsNullOrEmpty(adminConfiguration.AdminGroups))
+            if (!string.IsNullOrEmpty(adminConfiguration?.AdminGroups))
             {
                 var groupArray = adminConfiguration.AdminGroups.Split(",", StringSplitOptions.RemoveEmptyEntries);
                 foreach (var group in groupArray)
@@ -44,7 +42,7 @@ namespace SafeExchange.Core.Filters
             }
 
             this.adminUserIds = new List<string>();
-            if (!string.IsNullOrEmpty(adminConfiguration.AdminUsers))
+            if (!string.IsNullOrEmpty(adminConfiguration?.AdminUsers))
             {
                 var groupArray = adminConfiguration.AdminUsers.Split(",", StringSplitOptions.RemoveEmptyEntries);
                 foreach (var group in groupArray)
@@ -74,7 +72,7 @@ namespace SafeExchange.Core.Filters
                 return result;
             }
 
-            var existingUser = dbContext.Users.SingleOrDefault(u => u.AadUpn.Equals(userUpn));
+            var existingUser = await dbContext.Users.SingleOrDefaultAsync(u => u.AadUpn.Equals(userUpn));
             if (existingUser is null)
             {
                 result.shouldReturn = true;

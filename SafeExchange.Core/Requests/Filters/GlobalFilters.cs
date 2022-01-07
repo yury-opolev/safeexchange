@@ -25,13 +25,24 @@ namespace SafeExchange.Core.Filters
             var features = new Features();
             configuration.GetSection("Features").Bind(features);
 
+            var groupsConfiguration = new GloballyAllowedGroupsConfiguration();
+            configuration.GetSection("GlobalAllowLists").Bind(groupsConfiguration);
+
+            var adminConfiguration = new AdminConfiguration();
+            configuration.GetSection("AdminConfiguration").Bind(adminConfiguration);
+
+            var useGroups =
+                features.UseGroupsAuthorization ||
+                !string.IsNullOrWhiteSpace(groupsConfiguration.AllowedGroups) ||
+                !string.IsNullOrWhiteSpace(adminConfiguration.AdminGroups);
+
             this.currentFilters = new List<IRequestFilter>();
-            currentFilters.Add(new UserTokenFilter(tokenHelper, features.UseGroupsAuthorization, graphDataProvider, log));
-            currentFilters.Add(new GlobalAccessFilter(configuration, tokenHelper, graphDataProvider, log));
+            currentFilters.Add(new UserTokenFilter(tokenHelper, useGroups, graphDataProvider, log));
+            currentFilters.Add(new GlobalAccessFilter(groupsConfiguration, tokenHelper, log));
 
             this.currentAdminFilters = new List<IRequestFilter>();
-            currentAdminFilters.Add(new UserTokenFilter(tokenHelper, features.UseGroupsAuthorization, graphDataProvider, log));
-            currentAdminFilters.Add(new AdminGroupFilter(configuration, tokenHelper, log));
+            currentAdminFilters.Add(new UserTokenFilter(tokenHelper, useGroups, graphDataProvider, log));
+            currentAdminFilters.Add(new AdminGroupFilter(adminConfiguration, tokenHelper, log));
         }
 
         public async ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
