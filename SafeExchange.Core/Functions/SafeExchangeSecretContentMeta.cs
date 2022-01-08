@@ -257,10 +257,7 @@ namespace SafeExchange.Core.Functions
                 return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
             }
 
-            await this.DeleteAllChunksAsync(existingContent, log);
-
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync();
+            await this.DeleteAllChunksAsync(existingMetadata, existingContent, false, log);
 
             return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
 
@@ -310,22 +307,22 @@ namespace SafeExchange.Core.Functions
                 return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
             }
 
-            await this.DeleteAllChunksAsync(existingContent, log);
-            existingMetadata.Content.Remove(existingContent);
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync();
+            await this.DeleteAllChunksAsync(existingMetadata, existingContent, true, log);
 
             return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
 
         }, nameof(HandleSecretContentMetaDeletion), log);
 
-        private async Task DeleteAllChunksAsync(ContentMetadata content, ILogger log)
+        private async Task DeleteAllChunksAsync(ObjectMetadata metadata, ContentMetadata content, bool removeContent, ILogger log)
         {
             try
             {
                 content.Status = ContentStatus.Updating;
+
+                log.LogInformation($"Setting access ticket to '{content.ContentName}'.");
                 content.AccessTicket = $"{Guid.NewGuid()}-{Random.Shared.NextInt64():00000000}";
                 content.AccessTicketSetAt = DateTimeProvider.UtcNow;
+
                 await this.dbContext.SaveChangesAsync();
 
                 await this.purger.DeleteContentDataAsync(content);
@@ -338,8 +335,17 @@ namespace SafeExchange.Core.Functions
             {
                 content.Chunks.Clear();
                 content.Status = ContentStatus.Blank;
+
+                log.LogInformation($"Clearing access ticket from '{content.ContentName}'.");
                 content.AccessTicket = string.Empty;
                 content.AccessTicketSetAt = DateTime.MinValue;
+
+                if (removeContent)
+                {
+                    metadata.Content.Remove(content);
+                }
+
+                metadata.LastAccessedAt = DateTimeProvider.UtcNow;
 
                 await this.dbContext.SaveChangesAsync();
             }

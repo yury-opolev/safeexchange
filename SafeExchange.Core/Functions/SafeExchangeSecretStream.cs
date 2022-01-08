@@ -176,6 +176,7 @@ namespace SafeExchange.Core.Functions
 
                 if (string.IsNullOrEmpty(accessTicket))
                 {
+                    log.LogInformation($"Setting access ticket to '{existingContent.ContentName}'.");
                     accessTicket = $"{Guid.NewGuid()}-{Random.Shared.NextInt64():00000000}";
 
                     existingContent.Status = ContentStatus.Updating;
@@ -214,6 +215,7 @@ namespace SafeExchange.Core.Functions
                 }
                 else
                 {
+                    log.LogInformation($"Clearing access ticket from '{existingContent.ContentName}'.");
                     accessTicket = string.Empty;
                     existingContent.Status = ContentStatus.Ready;
                     existingContent.AccessTicket = string.Empty;
