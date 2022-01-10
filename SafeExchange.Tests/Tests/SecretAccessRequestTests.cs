@@ -22,7 +22,6 @@ namespace SafeExchange.Tests
     using System.Linq;
     using System.Net.Http;
     using System.Security.Claims;
-    using System.Text.Json;
     using System.Threading.Tasks;
 
     [TestFixture]
@@ -62,7 +61,7 @@ namespace SafeExchange.Tests
             var builder = new ConfigurationBuilder().AddUserSecrets<SecretAccessRequestTests>();
             var secretConfiguration = builder.Build();
 
-            this.logger = TestFactory.CreateLogger();
+            this.logger = TestFactory.CreateLogger(LoggerTypes.Console);
 
             var configurationValues = new Dictionary<string, string>
                 {

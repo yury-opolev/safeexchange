@@ -6,6 +6,7 @@ namespace SafeExchange.Core.Filters
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
@@ -68,7 +69,7 @@ namespace SafeExchange.Core.Filters
                 return default;
             }
 
-            var user = dbContext.Users.SingleOrDefault(u => u.AadObjectId.Equals(aadObjectId));
+            var user = await dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadObjectId.Equals(aadObjectId));
             return user ?? await this.CreateUserAsync(principal, dbContext);
         }
 

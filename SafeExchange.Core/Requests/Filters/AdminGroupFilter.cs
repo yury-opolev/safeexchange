@@ -72,7 +72,7 @@ namespace SafeExchange.Core.Filters
                 return result;
             }
 
-            var existingUser = await dbContext.Users.SingleOrDefaultAsync(u => u.AadUpn.Equals(userUpn));
+            var existingUser = await dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(userUpn));
             if (existingUser is null)
             {
                 result.shouldReturn = true;

@@ -7,16 +7,18 @@ namespace SafeExchange.Core.Model
     using Microsoft.EntityFrameworkCore;
     using System;
 
-    [Index(nameof(AadObjectId), IsUnique = true)]
+    [Index(nameof(AadTenantId), nameof(AadObjectId), IsUnique = true)]
     [Index(nameof(AadUpn), IsUnique = true)]
     public class User
     {
+        public const string DefaultPartitionKey = "USER";
+
         public User() { }
 
         public User(string displayName, string aadObjectId, string aadTenantId, string aadUpn, string contactEmail)
         {
             this.Id = Guid.NewGuid().ToString();
-            this.PartitionKey = this.GetPartitionKey();
+            this.PartitionKey = User.DefaultPartitionKey;
             this.Enabled = true;
 
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
@@ -56,7 +58,5 @@ namespace SafeExchange.Core.Model
         public DateTime CreatedAt { get; set; }
 
         public DateTime ModifiedAt { get; set; }
-
-        private string GetPartitionKey() => "USER";
     }
 }

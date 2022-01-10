@@ -26,7 +26,7 @@ namespace SafeExchange.Core.Model
             this.Permission = source.GetPermissionType();
 
             var utcNow = DateTimeProvider.UtcNow;
-            this.RequestedAt = utcNow;
+            this.RequestedAt = DateTime.SpecifyKind(utcNow, DateTimeKind.Utc);
             this.Status = RequestStatus.InProgress;
             this.FinishedBy = string.Empty;
             this.FinishedAt = DateTime.MinValue;
@@ -81,7 +81,7 @@ namespace SafeExchange.Core.Model
             CanGrantAccess = (this.Permission & PermissionType.GrantAccess) == PermissionType.GrantAccess,
             CanRevokeAccess = (this.Permission & PermissionType.RevokeAccess) == PermissionType.RevokeAccess,
 
-            RequestedAt = this.RequestedAt
+            RequestedAt = this.RequestedAt.ToUniversalTime()
         };
 
         private string GetPartitionKey()

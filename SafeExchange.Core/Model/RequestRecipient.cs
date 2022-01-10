@@ -8,6 +8,8 @@ namespace SafeExchange.Core.Model
 
     public class RequestRecipient
     {
+        public string AccessRequestId { get; set; }
+
         public string SubjectName { get; set; }
     }
 }

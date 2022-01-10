@@ -129,7 +129,6 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
-            var utcNow = DateTimeProvider.UtcNow;
             var requestedPermission = accessRequestInput.GetPermissionType();
             var existingRequest = await this.dbContext.AccessRequests
                 .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(userUpn) && ar.SubjectName.Equals(secretId));
@@ -145,7 +144,7 @@ namespace SafeExchange.Core.Functions
             var subjectPermissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !p.SubjectName.Equals(userUpn))
                 .ToListAsync();
-            var recipients = subjectPermissions.Select(p => new RequestRecipient() { SubjectName = p.SubjectName }).ToList();
+            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectName = p.SubjectName }).ToList();
             accessRequest.Recipients = recipients;
 
             await this.dbContext.AccessRequests.AddAsync(accessRequest);
@@ -166,7 +165,7 @@ namespace SafeExchange.Core.Functions
                 ar =>
                     ar.SubjectName.Equals(userUpn) &&
                     ar.Status == RequestStatus.InProgress)
-                .ToListAsync();
+                .AsNoTracking().ToListAsync();
 
             var incomingRequests = await this.dbContext.AccessRequests
                 .FromSqlRaw(
@@ -184,7 +183,7 @@ namespace SafeExchange.Core.Functions
                     " FROM AccessRequests AR" +
                     "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectName = {0})" +
                     " WHERE AR.Status = {1}", userUpn, RequestStatus.InProgress)
-                .ToListAsync();
+                .AsNoTracking().ToListAsync();
 
             var requests = new List<AccessRequestOutput>(outgoingRequests.Count + incomingRequests.Count);
             requests.AddRange(outgoingRequests.Select(ar => ar.ToDto()));
