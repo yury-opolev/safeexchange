@@ -416,6 +416,9 @@ namespace SafeExchange.Core.Functions
             var lengthBefore = content.Length;
 
             var sanitizer = new HtmlSanitizer();
+            sanitizer.AllowedSchemes.Add("data");
+            sanitizer.AllowedAttributes.Add("class");
+
             content = sanitizer.Sanitize(content);
 
             log.LogInformation($"Lenght before sanitizing: {lengthBefore}, after sanitizing: {content.Length}.");
