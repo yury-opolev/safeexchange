@@ -19,6 +19,8 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
     using System.Net.Mime;
+    using Ganss.XSS;
+    using System.Text;
 
     public class SafeExchangeSecretStream
     {
@@ -188,16 +190,24 @@ namespace SafeExchange.Core.Functions
 
                 var dataStream = request.Body;
                 var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
-                await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, dataStream);
 
                 var dataLength = 0L;
-                try
+                if (existingContent.IsMain)
                 {
-                    dataLength = dataStream.Length;
+                    dataLength = await this.UploadMainContentAsync(newChunkName, dataStream, log);
                 }
-                catch (NotSupportedException exception)
+                else
                 {
-                    log.LogWarning(exception, $"Cannot get content length for '{secretId}': '{newChunkName}'.");
+                    await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, dataStream);
+
+                    try
+                    {
+                        dataLength = dataStream.Length;
+                    }
+                    catch (NotSupportedException exception)
+                    {
+                        log.LogWarning(exception, $"Cannot get content length for '{secretId}': '{newChunkName}'.");
+                    }
                 }
 
                 var newChunk = new ChunkMetadata()
@@ -391,6 +401,30 @@ namespace SafeExchange.Core.Functions
             }
 
             return content.AccessTicket;
+        }
+
+        private async Task<long> UploadMainContentAsync(string chunkName, Stream inputStream, ILogger log)
+        {
+            log.LogInformation("Sanitizing main content.");
+
+            string content;
+            using (var reader = new StreamReader(inputStream))
+            {
+                content = await reader.ReadToEndAsync();
+            }
+
+            var lengthBefore = content.Length;
+
+            var sanitizer = new HtmlSanitizer();
+            content = sanitizer.Sanitize(content);
+
+            log.LogInformation($"Lenght before sanitizing: {lengthBefore}, after sanitizing: {content.Length}.");
+
+            using (var dataStream = new MemoryStream(Encoding.UTF8.GetBytes(content)))
+            {
+                await this.blobHelper.EncryptAndUploadBlobAsync(chunkName, dataStream);
+                return dataStream.Length;
+            }
         }
 
         private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
