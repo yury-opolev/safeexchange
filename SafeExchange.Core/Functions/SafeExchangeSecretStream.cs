@@ -419,6 +419,9 @@ namespace SafeExchange.Core.Functions
             sanitizer.AllowedSchemes.Add("data");
             sanitizer.AllowedAttributes.Add("class");
             sanitizer.AllowedAttributes.Add("data-value");
+            sanitizer.AllowedAttributes.Add("data-bs-toggle");
+            sanitizer.AllowedAttributes.Add("data-bs-placement");
+            sanitizer.AllowedAttributes.Add("title");
 
             content = sanitizer.Sanitize(content);
 
