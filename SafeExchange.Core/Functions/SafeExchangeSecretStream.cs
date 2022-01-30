@@ -418,6 +418,7 @@ namespace SafeExchange.Core.Functions
             var sanitizer = new HtmlSanitizer();
             sanitizer.AllowedSchemes.Add("data");
             sanitizer.AllowedAttributes.Add("class");
+            sanitizer.AllowedAttributes.Add("data-value");
 
             content = sanitizer.Sanitize(content);
 
