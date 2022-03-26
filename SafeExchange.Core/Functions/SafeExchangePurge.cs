@@ -40,7 +40,7 @@ namespace SafeExchange.Core.Functions
             return await this.dbContext.Objects.Where(o =>
                 o.KeepInStorage &&
                 o.ExpirationMetadata.ScheduleExpiration &&
-                o.ExpirationMetadata.ExpireAt >= utcNow)
+                o.ExpirationMetadata.ExpireAt <= utcNow)
                 .ToListAsync();
         }
     }
