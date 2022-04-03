@@ -6,7 +6,6 @@ namespace SafeExchange.Core.Blob
 {
     using Azure.Core;
     using Azure.Identity;
-    using Azure.Security.KeyVault.Keys;
     using Azure.Security.KeyVault.Keys.Cryptography;
     using Azure.Storage;
     using Azure.Storage.Blobs;
@@ -14,24 +13,21 @@ namespace SafeExchange.Core.Blob
     using Azure.Storage.Blobs.Specialized;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
-    using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Crypto;
     using System;
-    using System.Collections.Generic;
     using System.IO;
     using System.Threading.Tasks;
 
     public class BlobHelper : IBlobHelper
     {
-        private readonly IConfiguration configuration;
-
         private readonly ILogger<BlobHelper> log;
+
+        private readonly ICryptoHelper cryptoHelper;
 
         private string containerName;
         private string cryptoKeyName;
 
         private TokenCredential credential;
-
-        private KeyClient keyClient;
 
         private BlobContainerClient blobContainerClient;
 
@@ -39,10 +35,10 @@ namespace SafeExchange.Core.Blob
 
         public Uri KeyVaultUri { get; private set; }
 
-        public BlobHelper(IConfiguration configuration, ILogger<BlobHelper> log)
+        public BlobHelper(ICryptoHelper cryptoHelper, ILogger<BlobHelper> log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
-            this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.cryptoHelper = cryptoHelper ?? throw new ArgumentNullException(nameof(cryptoHelper));
             this.credential = new ChainedTokenCredential(new ManagedIdentityCredential(), new EnvironmentCredential());
         }
 
@@ -85,7 +81,7 @@ namespace SafeExchange.Core.Blob
                 return;
             }
 
-            this.InitializeKeyClient();
+            this.InitializeCryptoConfig();
 
             var encryptionAlgorithm = "RSA-OAEP-256";
             this.log.LogInformation($"Initializing blob container client ('{this.BlobServiceUri}', '{this.containerName}') with encryption (key '{this.cryptoKeyName}', {encryptionAlgorithm}).");
@@ -101,7 +97,7 @@ namespace SafeExchange.Core.Blob
                 }
             };
 
-            var key = await this.GetOrCreateCryptoKeyAsync();
+            var key = await this.cryptoHelper.GetOrCreateCryptoKeyAsync(this.cryptoKeyName);
 
             var cryptoClient = new CryptographyClient(key.Id, this.credential, cryptoClientOptions);
             var cryptoKeyResolver = new KeyResolver(this.credential, cryptoClientOptions);
@@ -128,71 +124,13 @@ namespace SafeExchange.Core.Blob
             this.log.LogInformation($"Blob cointainer client initialized.");
         }
 
-        private void InitializeKeyClient()
+        private void InitializeCryptoConfig()
         {
-            if (this.keyClient is not null)
-            {
-                return;
-            }
-
-            var cryptoConfig = new CryptoConfiguration();
-            this.configuration.GetSection("Crypto").Bind(cryptoConfig);
+            var cryptoConfig = this.cryptoHelper.CryptoConfiguration;
 
             this.BlobServiceUri = new Uri(cryptoConfig.BlobServiceUri);
             this.cryptoKeyName = cryptoConfig.KeyName ?? throw new ArgumentNullException(nameof(cryptoConfig.KeyName));
             this.containerName = cryptoConfig.ContainerName ?? throw new ArgumentNullException(nameof(cryptoConfig.ContainerName));
-
-            var keyClientOptions = new KeyClientOptions()
-            {
-                Retry =
-                {
-                    Delay= TimeSpan.FromSeconds(1),
-                    MaxDelay = TimeSpan.FromSeconds(8),
-                    MaxRetries = 5,
-                    Mode = RetryMode.Exponential
-                }
-            };
-
-            this.KeyVaultUri = new Uri(this.configuration["KEYVAULT_BASEURI"]);
-            this.keyClient = new KeyClient(this.KeyVaultUri, this.credential, keyClientOptions);
-        }
-
-        private async Task<KeyVaultKey> GetOrCreateCryptoKeyAsync()
-        {
-            var cryptoKeyVersions = await this.GetCryptoKeyVersionsAsync();
-            if (cryptoKeyVersions.Count == 0)
-            {
-                await this.CreateCryptoKeyAsync();
-                cryptoKeyVersions = await this.GetCryptoKeyVersionsAsync();
-            }
-
-            this.log.LogInformation($"Retrieved key '{this.cryptoKeyName}' versions count {cryptoKeyVersions.Count}");
-
-            return await this.keyClient.GetKeyAsync(this.cryptoKeyName);
-        }
-
-        private async Task<IList<KeyProperties>> GetCryptoKeyVersionsAsync()
-        {
-            var result = new List<KeyProperties>();
-            await foreach (var keyProperties in this.keyClient.GetPropertiesOfKeyVersionsAsync(this.cryptoKeyName))
-            {
-                result.Add(keyProperties);
-            }
-
-            return result;
-        }
-
-        private async Task<KeyVaultKey> CreateCryptoKeyAsync()
-        {
-            var options = new CreateRsaKeyOptions(this.cryptoKeyName)
-            {
-                KeySize = 4096
-            };
-
-            var key = await this.keyClient.CreateRsaKeyAsync(options);
-            this.log.LogInformation($"Created RSA key '{this.cryptoKeyName}', size {options.KeySize}, (version: {key.Value.Properties.Version}");
-
-            return key;
         }
     }
 }

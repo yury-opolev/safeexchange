@@ -8,9 +8,9 @@ namespace SafeExchange.Functions
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.Http;
-    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
+    using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions.Admin;
     using SafeExchange.Core.Permissions;
@@ -24,9 +24,9 @@ namespace SafeExchange.Functions
 
         private SafeExchangeAdminOperations adminOperationsHandler;
 
-        public SafeAdminOperations(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        public SafeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
         {
-            this.adminOperationsHandler = new SafeExchangeAdminOperations(dbContext, tokenHelper, globalFilters);
+            this.adminOperationsHandler = new SafeExchangeAdminOperations(dbContext, tokenHelper, cryptoHelper, globalFilters);
         }
 
         [FunctionName("SafeExchange-AdminOperations")]

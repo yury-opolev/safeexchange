@@ -7,6 +7,7 @@ namespace SafeExchange.Core.Functions.Admin
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using System;
     using System.Security.Claims;
@@ -18,12 +19,15 @@ namespace SafeExchange.Core.Functions.Admin
 
         private readonly ITokenHelper tokenHelper;
 
+        private readonly ICryptoHelper cryptoHelper;
+
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        public SafeExchangeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
+            this.cryptoHelper = cryptoHelper ?? throw new ArgumentNullException(nameof(cryptoHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
@@ -57,6 +61,11 @@ namespace SafeExchange.Core.Functions.Admin
             {
                 case "ensure_dbcreated":
                     await this.dbContext.Database.EnsureCreatedAsync();
+                    break;
+
+                case "add_kek_version":
+                    var cryptoConfiguration = this.cryptoHelper.CryptoConfiguration;
+                    await this.cryptoHelper.CreateNewCryptoKeyVersionAsync(cryptoConfiguration.KeyName);
                     break;
             }
 

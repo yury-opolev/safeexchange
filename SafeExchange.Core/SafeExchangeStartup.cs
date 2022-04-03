@@ -21,6 +21,7 @@ namespace SafeExchange.Core
     using System;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Crypto;
 
     public class SafeExchangeStartup : FunctionsStartup
     {
@@ -56,6 +57,7 @@ namespace SafeExchange.Core
                     cosmosDbConfig.DatabaseName));
 
             builder.Services.AddSingleton<ITokenHelper, TokenHelper>();
+            builder.Services.AddSingleton<ICryptoHelper, CryptoHelper>();
             builder.Services.AddSingleton<IBlobHelper, BlobHelper>();
             builder.Services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
             builder.Services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
