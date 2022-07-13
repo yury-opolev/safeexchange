@@ -101,7 +101,7 @@ namespace SafeExchange.Core.Blob
 
             var cryptoClient = new CryptographyClient(key.Id, this.credential, cryptoClientOptions);
             var cryptoKeyResolver = new KeyResolver(this.credential, cryptoClientOptions);
-            var encryptionOptions = new ClientSideEncryptionOptions(ClientSideEncryptionVersion.V1_0)
+            var encryptionOptions = new ClientSideEncryptionOptions(ClientSideEncryptionVersion.V2_0)
             {
                 KeyEncryptionKey = cryptoClient,
                 KeyResolver = cryptoKeyResolver,
