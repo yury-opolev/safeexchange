@@ -78,10 +78,11 @@ namespace SafeExchange.Core.Graph
                     ExpiresOn = cacheResult.ExpiresOn
                 };
             }
-            catch (MsalUiRequiredException)
+            catch (MsalUiRequiredException msalUiRequiredException)
             {
-                this.logger.LogInformation($"Cannot acquire token for [{string.Join(',', this.scopes)}] silently, UI required.");
-                return new OnBehalfOfTokenProviderResult() { ConsentRequired = true };
+                this.logger.LogInformation($"Cannot acquire token for [{string.Join(',', this.scopes)}] silently, UI required. Error code: {msalUiRequiredException.ErrorCode}.");
+                var consentRequired = msalUiRequiredException.ErrorCode.Contains("AADSTS65001", StringComparison.OrdinalIgnoreCase);
+                return new OnBehalfOfTokenProviderResult() { ConsentRequired = consentRequired };
             }
             catch (Exception exception)
             {
@@ -108,10 +109,11 @@ namespace SafeExchange.Core.Graph
                     ExpiresOn = result.ExpiresOn
                 };
             }
-            catch (MsalUiRequiredException exception)
+            catch (MsalUiRequiredException msalUiRequiredException)
             {
-                this.logger.LogError(exception, $"{exception.GetType()} getting access token in {nameof(OnBehalfOfAuthProvider)}, on-behalf, UI required.");
-                return new OnBehalfOfTokenProviderResult() { ConsentRequired = true };
+                this.logger.LogError(msalUiRequiredException, $"{msalUiRequiredException.GetType()} getting access token in {nameof(OnBehalfOfAuthProvider)}, on-behalf, UI required. Error code: {msalUiRequiredException.ErrorCode}.");
+                var consentRequired = msalUiRequiredException.ErrorCode.Contains("AADSTS65001", StringComparison.OrdinalIgnoreCase);
+                return new OnBehalfOfTokenProviderResult() { ConsentRequired = consentRequired };
             }
             catch (Exception exception)
             {
