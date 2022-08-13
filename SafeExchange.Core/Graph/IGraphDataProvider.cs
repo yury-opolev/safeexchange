@@ -13,6 +13,6 @@ namespace SafeExchange.Core.Graph
         /// </summary>
         /// <param name="accountIdAndToken">Account Id and token for a user, to query Azure Graph 'on behalf of'.</param>
         /// <returns>A list of groups which user is a member of.</returns>
-        public Task<IList<string>> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken);
+        public Task<GroupListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken);
     }
 }

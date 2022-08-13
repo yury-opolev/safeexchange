@@ -29,7 +29,7 @@ namespace SafeExchange.Core.Model
             this.ContactEmail = contactEmail ?? string.Empty;
 
             this.Groups = new List<UserGroup>();
-            this.LastGroupSync = DateTime.MinValue;
+            this.GroupSyncNotBefore = DateTime.MinValue;
 
             this.CreatedAt = DateTimeProvider.UtcNow;
             this.ModifiedAt = DateTime.MinValue;
@@ -53,7 +53,12 @@ namespace SafeExchange.Core.Model
 
         public List<UserGroup> Groups { get; set; }
 
-        public DateTime LastGroupSync { get; set; }
+        public DateTime GroupSyncNotBefore { get; set; }
+
+        /// <summary>
+        /// User is required to consent in AAD to the application to allow synchronization of user group memberships in Graph.
+        /// </summary>
+        public bool ConsentRequired { get; set; }
 
         public DateTime CreatedAt { get; set; }
 

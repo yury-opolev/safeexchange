@@ -232,7 +232,7 @@ namespace SafeExchange.Core.Functions
             if (!userHasGrantRights)
             {
                 log.LogWarning($"User {userUpn} does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
-                return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId, string.Empty);
             }
 
             if (accessRequestInput.Approve)
@@ -287,7 +287,7 @@ namespace SafeExchange.Core.Functions
             if (!existingRequest.SubjectName.Equals(userUpn, StringComparison.OrdinalIgnoreCase))
             {
                 log.LogWarning($"User '{userUpn}' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
-                return ActionResults.InsufficientPermissionsResult("AccessRequestCancellation", secretId);
+                return ActionResults.InsufficientPermissionsResult("AccessRequestCancellation", secretId, string.Empty);
             }
 
             this.dbContext.AccessRequests.Remove(existingRequest);

@@ -24,13 +24,27 @@ namespace SafeExchange.Core.Graph
         }
 
         /// <inheritdoc />
-        public async Task<IList<string>> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
+        public async Task<GroupListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
         {
             var totalGroups = new List<string>();
 
             try
             {
-                var graphClient = this.CreateGraphClient(accountIdAndToken);
+                var aadClient = this.aadClientProvider.GetConfidentialClient();
+                var authProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GraphScopes, this.log);
+                var graphClient = new GraphServiceClient(authProvider);
+
+                var tokenResult = await authProvider.TryGetAccessTokenAsync();
+                if (tokenResult.ConsentRequired)
+                {
+                    return new GroupListResult() { ConsentRequired = true };
+                }
+
+                if (!tokenResult.Success)
+                {
+                    return new GroupListResult();
+                }
+
                 var memberOf = await graphClient.Me.MemberOf.Request().Select("id").GetAsync();
                 while (memberOf.Count > 0)
                 {
@@ -52,16 +66,10 @@ namespace SafeExchange.Core.Graph
             catch (Exception exception)
             {
                 this.log.LogWarning($"Cannot retrieve user groups, {exception.GetType()}: {exception.Message}");
+                return new GroupListResult();
             }
 
-            return totalGroups;
-        }
-
-        private GraphServiceClient CreateGraphClient(AccountIdAndToken accountIdAndToken)
-        {
-            var aadClient = this.aadClientProvider.GetConfidentialClient();
-            var authProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GraphScopes, this.log);
-            return new GraphServiceClient(authProvider);
+            return new GroupListResult() { Success = true, Groups = totalGroups };
         }
     }
 }

@@ -151,7 +151,7 @@ namespace SafeExchange.Core.Functions
                 var userUpn = this.tokenHelper.GetUpn(principal);
                 if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
                 {
-                    return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                    return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
                 }
 
                 var existingContent = existingMetadata.Content.FirstOrDefault(c => c.ContentName.Equals(contentId));
@@ -260,7 +260,7 @@ namespace SafeExchange.Core.Functions
                 var userUpn = this.tokenHelper.GetUpn(principal);
                 if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read)))
                 {
-                    return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId);
+                    return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
                 }
 
                 var existingContent = existingMetadata.Content.FirstOrDefault(c => c.ContentName.Equals(contentId));
@@ -327,7 +327,7 @@ namespace SafeExchange.Core.Functions
                 var userUpn = this.tokenHelper.GetUpn(principal);
                 if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read)))
                 {
-                    return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId);
+                    return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
                 }
 
                 var existingContent = existingMetadata.Content.FirstOrDefault(c => c.ContentName.Equals(contentId));

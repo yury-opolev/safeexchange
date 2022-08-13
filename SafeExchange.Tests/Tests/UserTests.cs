@@ -140,7 +140,7 @@ namespace SafeExchange.Tests
 
             Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, createdUser?.CreatedAt);
             Assert.AreEqual(DateTime.MinValue, createdUser?.ModifiedAt);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, createdUser?.LastGroupSync);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, createdUser?.GroupSyncNotBefore);
 
             // [THEN] User has his 'memberOf' groups persisted
             var userGroups = createdUser?.Groups;
@@ -188,7 +188,7 @@ namespace SafeExchange.Tests
             Assert.AreEqual("00000000-0000-0000-0000-000000000001", createdUser?.AadObjectId);
 
             Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, createdUser?.CreatedAt);
-            Assert.AreEqual(DateTime.MinValue, createdUser?.LastGroupSync);
+            Assert.AreEqual(DateTime.MinValue, createdUser?.GroupSyncNotBefore);
 
             // [THEN] User has 0 groups, LastGroupSync value is not set.
             var userGroups = createdUser?.Groups;
@@ -213,9 +213,9 @@ namespace SafeExchange.Tests
             // [GIVEN] User is created in the database with groups
             var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, user?.LastGroupSync);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, user?.GroupSyncNotBefore);
 
-            var lastGroupSync = user?.LastGroupSync;
+            var groupSyncNotBefore = user?.GroupSyncNotBefore;
 
             var userGroups = user?.Groups;
             Assert.IsNotNull(userGroups);
@@ -235,7 +235,7 @@ namespace SafeExchange.Tests
             // [THEN] Groups are not refreshed
             user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(lastGroupSync, user?.LastGroupSync);
+            Assert.AreEqual(groupSyncNotBefore, user?.GroupSyncNotBefore);
 
             userGroups = user?.Groups;
             Assert.IsNotNull(userGroups);
@@ -261,9 +261,9 @@ namespace SafeExchange.Tests
             // [GIVEN] User is created in the database with groups
             var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, user?.LastGroupSync);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, user?.GroupSyncNotBefore);
 
-            var lastGroupSync = user?.LastGroupSync;
+            var groupSyncNotBefore = user?.GroupSyncNotBefore;
 
             var userGroups = user?.Groups;
             Assert.IsNotNull(userGroups);
@@ -283,7 +283,7 @@ namespace SafeExchange.Tests
             // [THEN] Groups are refreshed
             user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, user?.LastGroupSync);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, user?.GroupSyncNotBefore);
 
             userGroups = user?.Groups;
             Assert.IsNotNull(userGroups);

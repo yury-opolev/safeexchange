@@ -40,6 +40,12 @@ namespace SafeExchange.Core.Permissions
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        public async Task<bool> IsConsentRequiredAsync(string userId)
+        {
+            var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(userId));
+            return existingUser?.ConsentRequired ?? false;
+        }
+
         public async Task<bool> IsAuthorizedAsync(string userUpn, string secretId, PermissionType permission)
         {
             userUpn = Normalize(userUpn);
@@ -183,7 +189,19 @@ namespace SafeExchange.Core.Permissions
                 return false;
             }
 
+            if (existingUser.ConsentRequired)
+            {
+                this.logger.LogInformation($"User '{userName}' has not consented to the AAD application to get group memberships, cannot authorize via groups.");
+                return false;
+            }
+
             var userGroups = existingUser.Groups;
+            if (userGroups == default || userGroups.Count == 0)
+            {
+                this.logger.LogInformation($"User '{userName}' does not have any group memberships, cannot authorize via groups.");
+                return false;
+            }
+
             var existingPermissions = await this.GetAllPermissionsAsync(secretName);
             foreach (var existingPermission in existingPermissions)
             { 

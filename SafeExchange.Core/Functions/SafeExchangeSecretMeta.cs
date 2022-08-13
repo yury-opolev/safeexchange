@@ -186,7 +186,7 @@ namespace SafeExchange.Core.Functions
 
             if (!(await this.permissionsManager.IsAuthorizedAsync(userName, secretId, PermissionType.Read)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
             }
 
             metadata.LastAccessedAt = DateTimeProvider.UtcNow;
@@ -216,7 +216,7 @@ namespace SafeExchange.Core.Functions
 
             if (!(await this.permissionsManager.IsAuthorizedAsync(userName, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -269,7 +269,7 @@ namespace SafeExchange.Core.Functions
 
             if (!(await this.permissionsManager.IsAuthorizedAsync(userName, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             await this.purger.PurgeAsync(secretId, this.dbContext);

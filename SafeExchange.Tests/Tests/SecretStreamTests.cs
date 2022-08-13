@@ -22,7 +22,6 @@ namespace SafeExchange.Tests
     using System.Linq;
     using System.Net.Http;
     using System.Security.Claims;
-    using System.Text.Json;
     using System.Threading.Tasks;
 
     [TestFixture]
@@ -57,6 +56,12 @@ namespace SafeExchange.Tests
 
         private string imageContentFileName = "testimage_small.jpg";
         private byte[] imageContent;
+
+        private string mainContentFileName = "main_content.txt";
+        private byte[] mainContent;
+
+        private byte[] mainContent_part_1;
+        private byte[] mainContent_part_2;
 
         private byte[] imageContent_part_1;
         private byte[] imageContent_part_2;
@@ -127,6 +132,17 @@ namespace SafeExchange.Tests
 
             this.imageContent_part_2 = new byte[imageContentLengthPart2];
             Buffer.BlockCopy(this.imageContent, imageContentLengthPart1, this.imageContent_part_2, 0, imageContentLengthPart2);
+
+            this.mainContent = File.ReadAllBytes(Path.Combine("Resources", this.mainContentFileName));
+
+            var mainContentLengthPart1 = this.mainContent.Length / 2;
+            var mainContentLengthPart2 = this.mainContent.Length - mainContentLengthPart1;
+
+            this.mainContent_part_1 = new byte[mainContentLengthPart1];
+            Buffer.BlockCopy(this.mainContent, 0, this.mainContent_part_1, 0, mainContentLengthPart1);
+
+            this.mainContent_part_2 = new byte[mainContentLengthPart2];
+            Buffer.BlockCopy(this.mainContent, mainContentLengthPart1, this.mainContent_part_2, 0, mainContentLengthPart2);
         }
 
         [OneTimeTearDown]
@@ -239,7 +255,7 @@ namespace SafeExchange.Tests
 
             // [WHEN] A request is made to upload data to main content.
             var request = TestFactory.CreateHttpRequest("post");
-            request.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            request.Body = new ByteArrayContent(this.mainContent).ReadAsStream();
 
             var response = await this.secretStream.Run(request, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as OkObjectResult;
@@ -255,19 +271,19 @@ namespace SafeExchange.Tests
             var chunkMetadata = responseResult?.Result;
             Assert.IsNotNull(chunkMetadata);
             Assert.AreEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata?.ChunkName);
-            Assert.AreEqual(this.imageContent.Length, chunkMetadata?.Length);
+            Assert.AreEqual(this.mainContent.Length, chunkMetadata?.Length);
             Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata?.AccessTicket));
 
             // [THEN] A chunk is created with uploaded data.
             var existingChunkData = await this.blobHelper.DownloadAndDecryptBlobAsync(chunkMetadata?.ChunkName);
-            Assert.AreEqual(this.imageContent.Length, existingChunkData.Length);
+            Assert.AreEqual(this.mainContent.Length, existingChunkData.Length);
 
             var existingChunkBytes = new byte[existingChunkData.Length];
             existingChunkData.Read(existingChunkBytes, 0, (int)existingChunkData.Length);
 
             for (var pos = 0; pos < existingChunkBytes.Length; pos++)
             {
-                Assert.AreEqual(this.imageContent[pos], existingChunkBytes[pos]);
+                Assert.AreEqual(this.mainContent[pos], existingChunkBytes[pos]);
             }
         }
 
@@ -299,9 +315,32 @@ namespace SafeExchange.Tests
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
 
-            var chunkMetadata = responseResult?.Result;
+            // [GIVEN] An attachment is uploaded.
+            var request2 = TestFactory.CreateHttpRequest("post");
+            var creationInput = new ContentMetadataCreationInput()
+            {
+                ContentType = "image/jpeg",
+                FileName = this.imageContentFileName
+            };
+
+            request2.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+
+            var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
+            var okObjectResult2 = response2 as OkObjectResult;
+
+            Assert.IsNotNull(okObjectResult2);
+            Assert.AreEqual(200, okObjectResult2?.StatusCode);
+
+            var attachmentContent = objectMetadata.Content.FirstOrDefault(c => !c.IsMain);
+            if (attachmentContent == null)
+            {
+                throw new AssertionException($"Attachment content for secret is null.");
+            }
+
+            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
+
             Assert.IsNotNull(chunkMetadata);
-            Assert.AreEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata?.ChunkName);
+            Assert.AreNotEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata?.ChunkName);
             Assert.AreEqual(this.imageContent.Length, chunkMetadata?.Length);
 
             var ticketResponseHeader = request.HttpContext.Response.Headers[SafeExchangeSecretStream.AccessTicketHeaderName];
@@ -330,8 +369,8 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Content is null.");
             }
 
-            var firstContent = content.First();
-            var chunks = firstContent.Chunks;
+            var secondContent = content.FirstOrDefault(c => !c.IsMain);
+            var chunks = secondContent.Chunks;
             if (chunks == null || chunks.Count == 0)
             {
                 throw new AssertionException("Chunks is null.");
@@ -339,10 +378,10 @@ namespace SafeExchange.Tests
 
             Assert.AreEqual(1, chunks.Count);
             var firstChunk = chunks.First();
-            Assert.AreEqual($"{firstContent.ContentName}-{0:00000000}", firstChunk.ChunkName);
+            Assert.AreEqual($"{secondContent.ContentName}-{0:00000000}", firstChunk.ChunkName);
             Assert.AreEqual(this.imageContent.Length, firstChunk.Length);
 
-            var existingChunkData = await this.blobHelper.DownloadAndDecryptBlobAsync($"{firstContent.ContentName}-{"00000000"}");
+            var existingChunkData = await this.blobHelper.DownloadAndDecryptBlobAsync($"{secondContent.ContentName}-{"00000000"}");
             Assert.AreEqual(this.imageContent.Length, existingChunkData.Length);
 
             var existingChunkBytes = new byte[existingChunkData.Length];
@@ -357,7 +396,7 @@ namespace SafeExchange.Tests
         [Test]
         public async Task AddChunkAndGetDataSunshine()
         {
-            // [GIVEN] A secret with name 'x' and uploaded main content.
+            // [GIVEN] A secret with name 'x' and some main content.
             var objectMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
             if (objectMetadata == null)
             {
@@ -370,14 +409,36 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Main content for secret is null.");
             }
 
-            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName);
+            // [GIVEN] An attachment is uploaded.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var request2 = TestFactory.CreateHttpRequest("post");
+            var creationInput = new ContentMetadataCreationInput()
+            {
+                ContentType = "image/jpeg",
+                FileName = this.imageContentFileName
+            };
+
+            request2.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+
+            var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
+            var okObjectResult2 = response2 as OkObjectResult;
+
+            Assert.IsNotNull(okObjectResult2);
+            Assert.AreEqual(200, okObjectResult2?.StatusCode);
+
+            var attachmentContent = objectMetadata.Content.FirstOrDefault(c => !c.IsMain);
+            if (attachmentContent == null)
+            {
+                throw new AssertionException($"Attachment content for secret is null.");
+            }
+
+            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
 
             // [WHEN] A request is made to download secret data.
-            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var getRequest = TestFactory.CreateHttpRequest("get");
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            var getResponse = await this.secretStream.Run(getRequest, DefaultSecretName, mainContent.ContentName, chunkMetadata.ChunkName, claimsPrincipal, this.logger);
+            var getResponse = await this.secretStream.Run(getRequest, DefaultSecretName, attachmentContent.ContentName, chunkMetadata.ChunkName, claimsPrincipal, this.logger);
             var fileStreamResult = getResponse as FileStreamResult;
 
             var dataStream = fileStreamResult?.FileStream;
@@ -468,7 +529,7 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Main content for secret is null.");
             }
 
-            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName);
+            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName, 1950);
 
             // [WHEN] A request is made to drop secret content.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
@@ -490,7 +551,7 @@ namespace SafeExchange.Tests
             Assert.AreEqual(0, metadata?.Chunks.Count);
         }
 
-        private async Task<ChunkCreationOutput> UploadDataAsync(string secretName, string contentName)
+        private async Task<ChunkCreationOutput> UploadDataAsync(string secretName, string contentName, int expectedContentLength)
         {
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var request = TestFactory.CreateHttpRequest("post");
@@ -514,7 +575,7 @@ namespace SafeExchange.Tests
             }
 
             Assert.AreEqual($"{contentName}-{0:00000000}", chunkMetadata.ChunkName);
-            Assert.AreEqual(this.imageContent.Length, chunkMetadata.Length);
+            Assert.AreEqual(expectedContentLength, chunkMetadata.Length);
             Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata.AccessTicket));
 
             return chunkMetadata;
@@ -536,7 +597,7 @@ namespace SafeExchange.Tests
             // [GIVEN] First part of main content data was uploaded.
             var request1 = TestFactory.CreateHttpRequest("post");
             request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            request1.Body = new ByteArrayContent(this.mainContent_part_1).ReadAsStream();
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as OkObjectResult;
@@ -552,7 +613,7 @@ namespace SafeExchange.Tests
             var chunkMetadata1 = responseResult1?.Result;
             Assert.IsNotNull(chunkMetadata1);
             Assert.AreEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata1?.ChunkName);
-            Assert.AreEqual(this.imageContent_part_1.Length, chunkMetadata1?.Length);
+            Assert.AreEqual(this.mainContent_part_1.Length, chunkMetadata1?.Length);
 
             // [GIVEN] After first upload an access ticket was returned.
             var accessTicket1 = chunkMetadata1?.AccessTicket;
@@ -564,7 +625,7 @@ namespace SafeExchange.Tests
             var request2 = TestFactory.CreateHttpRequest("post");
             request2.Headers[SafeExchangeSecretStream.AccessTicketHeaderName] = accessTicket1;
 
-            request2.Body = new ByteArrayContent(this.imageContent_part_2).ReadAsStream();
+            request2.Body = new ByteArrayContent(this.mainContent_part_2).ReadAsStream();
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
@@ -585,7 +646,7 @@ namespace SafeExchange.Tests
             var chunkMetadata2 = responseResult2?.Result;
             Assert.IsNotNull(chunkMetadata2);
             Assert.AreEqual($"{mainContent.ContentName}-{1:00000000}", chunkMetadata2?.ChunkName);
-            Assert.AreEqual(this.imageContent_part_2.Length, chunkMetadata2?.Length);
+            Assert.AreEqual(this.mainContent_part_2.Length, chunkMetadata2?.Length);
             Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata2?.AccessTicket));
 
             // [THEN] Two blobs are created with uploaded data

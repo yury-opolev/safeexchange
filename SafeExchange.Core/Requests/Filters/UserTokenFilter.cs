@@ -97,16 +97,25 @@ namespace SafeExchange.Core.Filters
             }
 
             var utcNow = DateTimeProvider.UtcNow;
-            if (utcNow <= (user.LastGroupSync + GroupSyncDelay))
+            if (utcNow <= user.GroupSyncNotBefore)
             {
                 return;
             }
 
             var accountIdAndToken = this.tokenHelper.GetAccountIdAndToken(request, principal);
-            var userGroups = (await this.graphDataProvider.TryGetMemberOfAsync(accountIdAndToken)) ?? Array.Empty<string>();
+            var userGroupsResult = await this.graphDataProvider.TryGetMemberOfAsync(accountIdAndToken);
 
-            user.LastGroupSync = utcNow;
-            user.Groups = userGroups.Select(g => new UserGroup() { AadGroupId = g }).ToList();
+            if (!userGroupsResult.Success)
+            {
+                user.GroupSyncNotBefore = utcNow + TimeSpan.FromSeconds(10);
+                user.ConsentRequired = userGroupsResult.ConsentRequired;
+            }
+            else
+            {
+                user.ConsentRequired = userGroupsResult.ConsentRequired;
+                user.GroupSyncNotBefore = utcNow + GroupSyncDelay;
+                user.Groups = userGroupsResult.Groups.Select(g => new UserGroup() { AadGroupId = g }).ToList();
+            }
 
             await dbContext.SaveChangesAsync();
             this.log.LogInformation($"User '{user.AadUpn}' ({user.AadObjectId}) groups synced from graph.");
