@@ -133,7 +133,7 @@ namespace SafeExchange.Core.Functions
             var userUpn = this.tokenHelper.GetUpn(principal);
             if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -189,7 +189,7 @@ namespace SafeExchange.Core.Functions
             var userUpn = this.tokenHelper.GetUpn(principal);
             if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -246,7 +246,7 @@ namespace SafeExchange.Core.Functions
             var userUpn = this.tokenHelper.GetUpn(principal);
             if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
@@ -289,7 +289,7 @@ namespace SafeExchange.Core.Functions
             var userUpn = this.tokenHelper.GetUpn(principal);
             if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId);
+                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));

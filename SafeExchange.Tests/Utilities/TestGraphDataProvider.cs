@@ -15,14 +15,14 @@ namespace SafeExchange.Tests
     {
         public readonly Dictionary<string, IList<string>> GroupMemberships = new();
 
-        public async Task<IList<string>> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
+        public async Task<GroupListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
         {
             if (this.GroupMemberships.TryGetValue(accountIdAndToken.AccountId, out var result))
             {
-                return result ?? Array.Empty<string>().ToList();
+                return await Task.FromResult(new GroupListResult() { Success = true, Groups = result ?? Array.Empty<string>().ToList() });
             }
 
-            return await Task.FromResult(Array.Empty<string>().ToList());
+            return await Task.FromResult(new GroupListResult() { Success = true, Groups = Array.Empty<string>().ToList() });
         }
     }
 }

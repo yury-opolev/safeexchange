@@ -21,6 +21,8 @@ namespace SafeExchange.Core.Graph
 
         private ILogger logger;
 
+        private OnBehalfOfTokenProviderResult lastResult;
+
         public OnBehalfOfAuthProvider(IConfidentialClientApplication msalClient, AccountIdAndToken accountIdAndToken, string[] scopes, ILogger logger)
         {
             this.scopes = scopes;
@@ -30,24 +32,38 @@ namespace SafeExchange.Core.Graph
             this.msalClient = msalClient;
         }
 
-        public async Task<string> GetAccessToken()
+        public async Task<OnBehalfOfTokenProviderResult> TryGetAccessTokenAsync()
         {
+            if (lastResult?.Success == true && lastResult?.ExpiresOn > (DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5)))
+            {
+                return lastResult;
+            }
+
             var account = await this.msalClient.GetAccountAsync(this.accountIdAndToken.AccountId);
             if (account != null)
             {
-                return await this.GetTokenSilentlyAsync(account);
+                lastResult = await this.GetTokenSilentlyAsync(account);
+            }
+            else
+            {
+                lastResult = await this.GetOnBehalfTokenAsync();
             }
 
-            return await this.GetOnBehalfTokenAsync();
+            return lastResult;
         }
 
         public async Task AuthenticateRequestAsync(HttpRequestMessage requestMessage)
         {
-            var token = await GetAccessToken();
-            requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (!lastResult.Success)
+            {
+                throw new InvalidOperationException("Cannot authenticate without access token.");
+            }
+
+            var accessTokenResult = await this.TryGetAccessTokenAsync();
+            requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessTokenResult.Token);
         }
 
-        private async Task<string> GetTokenSilentlyAsync(IAccount account)
+        private async Task<OnBehalfOfTokenProviderResult> GetTokenSilentlyAsync(IAccount account)
         {
             try
             {
@@ -55,22 +71,28 @@ namespace SafeExchange.Core.Graph
                     .AcquireTokenSilent(this.scopes, account).ExecuteAsync();
 
                 this.logger.LogInformation($"Token for [{string.Join(',', this.scopes)}] on behalf of '{this.accountIdAndToken.AccountId}' acquired silently.");
-                return cacheResult.AccessToken;
+                return new OnBehalfOfTokenProviderResult()
+                {
+                    Success = true,
+                    Token = cacheResult.AccessToken,
+                    ExpiresOn = cacheResult.ExpiresOn
+                };
             }
-            catch (MsalUiRequiredException)
+            catch (MsalUiRequiredException msalUiRequiredException)
             {
-                this.logger.LogInformation($"Cannot acquire token for [{string.Join(',', this.scopes)}] silently, UI required.");
+                this.logger.LogInformation($"Cannot acquire token for [{string.Join(',', this.scopes)}] silently, UI required. Error code: {msalUiRequiredException.ErrorCode}.");
+                var consentRequired = msalUiRequiredException.Classification == UiRequiredExceptionClassification.ConsentRequired;
+                return new OnBehalfOfTokenProviderResult() { ConsentRequired = consentRequired };
             }
             catch (Exception exception)
             {
                 this.logger.LogError(exception, $"{exception.GetType()} getting access token in {nameof(OnBehalfOfAuthProvider)}, silently.");
-                return string.Empty;
             }
 
-            return string.Empty;
+            return new OnBehalfOfTokenProviderResult();
         }
 
-        private async Task<string> GetOnBehalfTokenAsync()
+        private async Task<OnBehalfOfTokenProviderResult> GetOnBehalfTokenAsync()
         {
             try
             {
@@ -80,13 +102,25 @@ namespace SafeExchange.Core.Graph
                     .AcquireTokenOnBehalfOf(this.scopes, userAssertion).ExecuteAsync();
 
                 this.logger.LogInformation($"Acquired on-behalf of '{this.accountIdAndToken.AccountId}' access token for: [{string.Join(',', this.scopes)}]");
-                return result.AccessToken;
+                return new OnBehalfOfTokenProviderResult()
+                {
+                    Success = true,
+                    Token = result.AccessToken,
+                    ExpiresOn = result.ExpiresOn
+                };
+            }
+            catch (MsalUiRequiredException msalUiRequiredException)
+            {
+                this.logger.LogError(msalUiRequiredException, $"{msalUiRequiredException.GetType()} getting access token in {nameof(OnBehalfOfAuthProvider)}, on-behalf, UI required. Error code: {msalUiRequiredException.ErrorCode}.");
+                var consentRequired = msalUiRequiredException.Classification == UiRequiredExceptionClassification.ConsentRequired;
+                return new OnBehalfOfTokenProviderResult() { ConsentRequired = consentRequired };
             }
             catch (Exception exception)
             {
                 this.logger.LogError(exception, $"{exception.GetType()} getting access token in {nameof(OnBehalfOfAuthProvider)}, on-behalf.");
-                return string.Empty;
             }
+
+            return new OnBehalfOfTokenProviderResult();
         }
     }
 }

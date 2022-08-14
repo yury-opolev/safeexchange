@@ -20,6 +20,8 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangeAccess
     {
+        private static readonly string ConsentRequiredSubStatus = "consent_required";
+
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -65,7 +67,8 @@ namespace SafeExchange.Core.Functions
                     {
                         if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.GrantAccess))
                         {
-                            return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId);
+                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(userUpn);
+                            return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
                         }
 
                         var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.RevokeAccess);
@@ -76,7 +79,8 @@ namespace SafeExchange.Core.Functions
                     {
                         if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read))
                         {
-                            return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId);
+                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(userUpn);
+                            return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
                         }
 
                         return await this.GetAccessListAsync(existingMetadata.ObjectName, log);
@@ -86,7 +90,8 @@ namespace SafeExchange.Core.Functions
                     {
                         if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.RevokeAccess))
                         {
-                            return ActionResults.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId);
+                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(userUpn);
+                            return ActionResults.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
                         }
 
                         return await this.RevokeAccessAsync(existingMetadata.ObjectName, request, log);

@@ -9,6 +9,13 @@ namespace SafeExchange.Core.Permissions
     public interface IPermissionsManager
     {
         /// <summary>
+        /// Return true if specified user is required to consent to the AAD application in order to use groups authorization.
+        /// </summary>
+        /// <param name="userId">Specified user id.</param>
+        /// <returns>Task, representing asynchronous operation.</returns>
+        public Task<bool> IsConsentRequiredAsync(string userId);
+
+        /// <summary>
         /// Return true if specified user has specified permission to specified secret, return false otherwise.
         /// </summary>
         /// <param name="userId">Specified user id.</param>
