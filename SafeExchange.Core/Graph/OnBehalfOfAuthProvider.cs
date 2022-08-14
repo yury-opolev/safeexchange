@@ -81,7 +81,7 @@ namespace SafeExchange.Core.Graph
             catch (MsalUiRequiredException msalUiRequiredException)
             {
                 this.logger.LogInformation($"Cannot acquire token for [{string.Join(',', this.scopes)}] silently, UI required. Error code: {msalUiRequiredException.ErrorCode}.");
-                var consentRequired = msalUiRequiredException.ErrorCode.Contains("AADSTS65001", StringComparison.OrdinalIgnoreCase);
+                var consentRequired = msalUiRequiredException.Classification == UiRequiredExceptionClassification.ConsentRequired;
                 return new OnBehalfOfTokenProviderResult() { ConsentRequired = consentRequired };
             }
             catch (Exception exception)
@@ -112,7 +112,7 @@ namespace SafeExchange.Core.Graph
             catch (MsalUiRequiredException msalUiRequiredException)
             {
                 this.logger.LogError(msalUiRequiredException, $"{msalUiRequiredException.GetType()} getting access token in {nameof(OnBehalfOfAuthProvider)}, on-behalf, UI required. Error code: {msalUiRequiredException.ErrorCode}.");
-                var consentRequired = msalUiRequiredException.ErrorCode.Contains("AADSTS65001", StringComparison.OrdinalIgnoreCase);
+                var consentRequired = msalUiRequiredException.Classification == UiRequiredExceptionClassification.ConsentRequired;
                 return new OnBehalfOfTokenProviderResult() { ConsentRequired = consentRequired };
             }
             catch (Exception exception)
