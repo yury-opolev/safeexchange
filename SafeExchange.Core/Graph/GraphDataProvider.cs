@@ -35,14 +35,9 @@ namespace SafeExchange.Core.Graph
                 var graphClient = new GraphServiceClient(authProvider);
 
                 var tokenResult = await authProvider.TryGetAccessTokenAsync();
-                if (tokenResult.ConsentRequired)
-                {
-                    return new GroupListResult() { ConsentRequired = true };
-                }
-
                 if (!tokenResult.Success)
                 {
-                    return new GroupListResult();
+                    return new GroupListResult() { ConsentRequired = tokenResult.ConsentRequired };
                 }
 
                 var memberOf = await graphClient.Me.MemberOf.Request().Select("id").GetAsync();

@@ -107,7 +107,7 @@ namespace SafeExchange.Core.Filters
 
             if (!userGroupsResult.Success)
             {
-                user.GroupSyncNotBefore = utcNow + TimeSpan.FromSeconds(10);
+                user.GroupSyncNotBefore = utcNow + TimeSpan.FromSeconds(30);
                 user.ConsentRequired = userGroupsResult.ConsentRequired;
                 user.Groups ??= Array.Empty<UserGroup>().ToList();
             }
