@@ -15,12 +15,13 @@ namespace SafeExchange.Core.Model
         public AccessRequest()
         { }
 
-        public AccessRequest(string secretId, string userUpn, SubjectPermissionsInput source)
+        public AccessRequest(string secretId, SubjectType subjectType, string subjectId, SubjectPermissionsInput source)
         {
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = this.GetPartitionKey();
 
-            this.SubjectName = userUpn;
+            this.SubjectType = subjectType;
+            this.SubjectName = subjectId;
             this.ObjectName = secretId;
 
             this.Permission = source.GetPermissionType();
@@ -38,7 +39,12 @@ namespace SafeExchange.Core.Model
         public string PartitionKey { get; set; }
 
         /// <summary>
-        /// User's name/id, who requests access
+        /// Requestor type, i.e. user or application.
+        /// </summary>
+        public SubjectType SubjectType { get; set; }
+
+        /// <summary>
+        /// Requestor's name/id, can be either user UPN or application ID.
         /// </summary>
         public string SubjectName { get; set; }
 
@@ -67,12 +73,13 @@ namespace SafeExchange.Core.Model
 
         public override string ToString()
         {
-            return $"Id:{this.Id}, Subject:{this.SubjectName}, Object:{this.ObjectName}, Permissions:'{this.Permission}', RequestedAt:{this.RequestedAt}, Status:{this.Status}";
+            return $"Id:{this.Id}, Subject:{this.SubjectType} {this.SubjectName}, Object:{this.ObjectName}, Permissions:'{this.Permission}', RequestedAt:{this.RequestedAt}, Status:{this.Status}";
         }
 
         internal AccessRequestOutput ToDto() => new()
         {
             Id = this.Id,
+            SubjectType = this.SubjectType.ToDto(),
             SubjectName = this.SubjectName,
             ObjectName = this.ObjectName,
 

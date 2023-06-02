@@ -148,8 +148,8 @@ namespace SafeExchange.Core.Functions
                     return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
                 }
 
-                var userUpn = this.tokenHelper.GetUpn(principal);
-                if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+                (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+                if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
                 {
                     return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
                 }
@@ -257,8 +257,8 @@ namespace SafeExchange.Core.Functions
                     return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
                 }
 
-                var userUpn = this.tokenHelper.GetUpn(principal);
-                if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read)))
+                (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+                if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
                 {
                     return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
                 }
@@ -324,8 +324,8 @@ namespace SafeExchange.Core.Functions
                     return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
                 }
 
-                var userUpn = this.tokenHelper.GetUpn(principal);
-                if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read)))
+                (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+                if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
                 {
                     return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
                 }

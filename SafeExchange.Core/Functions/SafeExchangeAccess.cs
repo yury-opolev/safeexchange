@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
@@ -51,8 +52,8 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeAccess)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeAccess)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
 
             var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
             if (existingMetadata == null)
@@ -65,21 +66,21 @@ namespace SafeExchange.Core.Functions
             {
                 case "post":
                     {
-                        if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.GrantAccess))
+                        if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.GrantAccess))
                         {
-                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(userUpn);
+                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
                             return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
                         }
 
-                        var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.RevokeAccess);
+                        var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess);
                         return await this.GrantAccessAsync(existingMetadata.ObjectName, request, userCanRevokeAccess, log);
                     }
 
                 case "get":
                     {
-                        if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Read))
+                        if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read))
                         {
-                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(userUpn);
+                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
                             return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
                         }
 
@@ -88,9 +89,9 @@ namespace SafeExchange.Core.Functions
 
                 case "delete":
                     {
-                        if (!await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.RevokeAccess))
+                        if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess))
                         {
-                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(userUpn);
+                            var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
                             return ActionResults.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
                         }
 
@@ -120,7 +121,7 @@ namespace SafeExchange.Core.Functions
                     permission &= ~PermissionType.RevokeAccess;
                 }
 
-                await this.permissionsManager.SetPermissionAsync(permissionInput.SubjectName, secretId, permission);
+                await this.permissionsManager.SetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permission);
             }
 
             await this.dbContext.SaveChangesAsync();
@@ -154,7 +155,7 @@ namespace SafeExchange.Core.Functions
 
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
             {
-                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectName, secretId, permissionInput.GetPermissionType());
+                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permissionInput.GetPermissionType());
             }
 
             await this.dbContext.SaveChangesAsync();

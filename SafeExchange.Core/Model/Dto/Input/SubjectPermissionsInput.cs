@@ -9,6 +9,8 @@ namespace SafeExchange.Core.Model.Dto.Input
 
     public class SubjectPermissionsInput
     {
+        public SubjectTypeInput SubjectType { get; set; } = SubjectTypeInput.User;
+
         public string SubjectName { get; set; }
 
         public bool CanRead { get; set; }

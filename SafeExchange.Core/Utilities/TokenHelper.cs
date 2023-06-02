@@ -1,7 +1,7 @@
 /// <summary>
 /// TokenHelper
 /// </summary>
-/// 
+
 namespace SafeExchange.Core
 {
     using System.Net.Http.Headers;
@@ -67,6 +67,12 @@ namespace SafeExchange.Core
             }
 
             return result ?? string.Empty;
+        }
+
+        /// <inheritdoc/>
+        public string GetApplicationClientId(ClaimsPrincipal principal)
+        {
+            return string.Empty; // TODO: find application client id
         }
 
         /// <inheritdoc/>

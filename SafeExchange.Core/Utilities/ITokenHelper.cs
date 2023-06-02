@@ -31,6 +31,13 @@ namespace SafeExchange.Core
         public string GetUpn(ClaimsPrincipal principal);
 
         /// <summary>
+        /// Get AAD application client id from ClaimsPrincipal.
+        /// </summary>
+        /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
+        /// <returns>A string, representing AAD application client id, extracted from given ClaimsPrincipal.</returns>
+        public string GetApplicationClientId(ClaimsPrincipal principal);
+
+        /// <summary>
         /// Get user display name from ClaimsPrincipal.
         /// </summary>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>

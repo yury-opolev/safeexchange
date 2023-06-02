@@ -7,6 +7,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.EntityFrameworkCore.Cosmos.Storage.Internal;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
@@ -59,8 +60,8 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
@@ -74,13 +75,13 @@ namespace SafeExchange.Core.Functions
             switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleAccessRequestCreation(request, secretId, userUpn, log);
+                    return await this.HandleAccessRequestCreation(request, secretId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleAccessRequestUpdate(request, secretId, userUpn, log);
+                    return await this.HandleAccessRequestUpdate(request, secretId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleAccessRequestDeletion(request, secretId, userUpn, log);
+                    return await this.HandleAccessRequestDeletion(request, secretId, subjectType, subjectId, log);
 
                 default:
                     return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
@@ -108,7 +109,7 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<IActionResult> HandleAccessRequestCreation(HttpRequest request, string secretId, string userUpn, ILogger log)
+        private async Task<IActionResult> HandleAccessRequestCreation(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -131,26 +132,26 @@ namespace SafeExchange.Core.Functions
 
             var requestedPermission = accessRequestInput.GetPermissionType();
             var existingRequest = await this.dbContext.AccessRequests
-                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(userUpn) && ar.SubjectName.Equals(secretId));
+                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(secretId) && ar.SubjectType.Equals(subjectType) && ar.SubjectName.Equals(subjectId));
 
             if (existingRequest != null && existingRequest.Permission == requestedPermission)
             {
-                log.LogInformation($"Found identical access request {existingRequest.Id} from {userUpn} for secret '{secretId}', skipping duplicate.");
+                log.LogInformation($"Found identical access request {existingRequest.Id} from {subjectType} {subjectId} for secret '{secretId}', skipping duplicate.");
                 return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
             }
 
-            var accessRequest = new AccessRequest(secretId, userUpn, accessRequestInput);
+            var accessRequest = new AccessRequest(secretId, subjectType, subjectId, accessRequestInput);
 
             var subjectPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !p.SubjectName.Equals(userUpn))
+                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !(p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId)))
                 .ToListAsync();
-            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectName = p.SubjectName }).ToList();
+            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectType = p.SubjectType, SubjectName = p.SubjectName }).ToList();
             accessRequest.Recipients = recipients;
 
             await this.dbContext.AccessRequests.AddAsync(accessRequest);
             await this.dbContext.SaveChangesAsync();
 
-            log.LogInformation($"Created access request {accessRequest.Id} from {userUpn} for secret '{secretId}'.");
+            log.LogInformation($"Created access request {accessRequest.Id} from {subjectType} {subjectId} for secret '{secretId}'.");
 
             await this.TryNotifyAsync(accessRequest, RequestStatus.InProgress);
 
@@ -158,12 +159,13 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleAccessRequestCreation), log);
 
-        private async Task<IActionResult> HandleAccessRequestList(HttpRequest request, string userUpn, ILogger log)
+        private async Task<IActionResult> HandleAccessRequestList(HttpRequest request, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
             var outgoingRequests = await this.dbContext.AccessRequests.Where(
                 ar =>
-                    ar.SubjectName.Equals(userUpn) &&
+                    ar.SubjectType.Equals(subjectType) &&
+                    ar.SubjectName.Equals(subjectId) &&
                     ar.Status == RequestStatus.InProgress)
                 .AsNoTracking().ToListAsync();
 
@@ -172,6 +174,7 @@ namespace SafeExchange.Core.Functions
                     " SELECT " +
                     "  AR.Id," +
                     "  AR.PartitionKey," +
+                    "  AR.SubjectType," +
                     "  AR.SubjectName," +
                     "  AR.ObjectName," +
                     "  AR.Permission," +
@@ -181,8 +184,8 @@ namespace SafeExchange.Core.Functions
                     "  AR.FinishedBy," +
                     "  AR.FinishedAt" +
                     " FROM AccessRequests AR" +
-                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectName = {0})" +
-                    " WHERE AR.Status = {1}", userUpn, RequestStatus.InProgress)
+                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectType = {0} AND RECIP.SubjectName = {1})" +
+                    " WHERE AR.Status = {2}", subjectType, subjectId, RequestStatus.InProgress)
                 .AsNoTracking().ToListAsync();
 
             var requests = new List<AccessRequestOutput>(outgoingRequests.Count + incomingRequests.Count);
@@ -193,7 +196,7 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleAccessRequestList), log);
 
-        private async Task<IActionResult> HandleAccessRequestUpdate(HttpRequest request, string secretId, string userUpn, ILogger log)
+        private async Task<IActionResult> HandleAccessRequestUpdate(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -221,23 +224,23 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or for different secret." });
             }
 
-            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectName.Equals(userUpn, StringComparison.OrdinalIgnoreCase));
+            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
             if (foundRecipient == null)
             {
-                log.LogWarning($"User '{userUpn}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
+                log.LogWarning($"{subjectType} '{subjectId}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "User is not a recipient." });
             }
 
-            var userHasGrantRights = await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.GrantAccess);
+            var userHasGrantRights = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.GrantAccess);
             if (!userHasGrantRights)
             {
-                log.LogWarning($"User {userUpn} does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
+                log.LogWarning($"{subjectType} {subjectId} does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
                 return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId, string.Empty);
             }
 
             if (accessRequestInput.Approve)
             {
-                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectName, secretId, existingRequest.Permission);
+                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectType, existingRequest.SubjectName, secretId, existingRequest.Permission);
                 existingRequest.Status = RequestStatus.Approved;
             }
             else
@@ -245,7 +248,7 @@ namespace SafeExchange.Core.Functions
                 existingRequest.Status = RequestStatus.Rejected;
             }
 
-            existingRequest.FinishedBy = userUpn;
+            existingRequest.FinishedBy = $"{subjectType} {subjectId}";
             existingRequest.FinishedAt = DateTimeProvider.UtcNow;
 
             await this.dbContext.SaveChangesAsync();
@@ -256,7 +259,7 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleAccessRequestUpdate), log);
 
-        private async Task<IActionResult> HandleAccessRequestDeletion(HttpRequest request, string secretId, string userUpn, ILogger log)
+        private async Task<IActionResult> HandleAccessRequestDeletion(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -284,9 +287,9 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or for different secret." });
             }
 
-            if (!existingRequest.SubjectName.Equals(userUpn, StringComparison.OrdinalIgnoreCase))
+            if (!(existingRequest.SubjectType.Equals(subjectType) && existingRequest.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase)))
             {
-                log.LogWarning($"User '{userUpn}' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
+                log.LogWarning($"{subjectType} '{subjectId}' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
                 return ActionResults.InsufficientPermissionsResult("AccessRequestCancellation", secretId, string.Empty);
             }
 

@@ -46,6 +46,11 @@ namespace SafeExchange.Tests
             return principal.FindFirst("upn")?.Value ?? string.Empty;
         }
 
+        public string GetApplicationClientId(ClaimsPrincipal principal)
+        {
+            return string.Empty; // TODO: find application client id
+        }
+
         public bool IsUserToken(ClaimsPrincipal principal)
         {
             return true;

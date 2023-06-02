@@ -46,31 +46,37 @@ namespace SafeExchange.Core.Permissions
             return existingUser?.ConsentRequired ?? false;
         }
 
-        public async Task<bool> IsAuthorizedAsync(string userUpn, string secretId, PermissionType permission)
+        public async Task<bool> IsAuthorizedAsync(SubjectType subjectType, string subjectId, string secretId, PermissionType permission)
         {
-            userUpn = Normalize(userUpn);
-
-            var isAuthorized = await this.HasPermissionAsync(userUpn, secretId, permission);
-            this.logger.LogInformation($"User '{userUpn}' {(isAuthorized ? "has" : "does not have")} direct {permission} permissions for '{secretId}'.");
-
-            if (!isAuthorized)
+            if (subjectType == SubjectType.User)
             {
-                isAuthorized = await this.IsGroupAuthorizedAsync(userUpn, secretId, permission);
+                subjectId = Normalize(subjectId);
+            }
+
+            var isAuthorized = await this.HasPermissionAsync(subjectType, subjectId, secretId, permission);
+            this.logger.LogInformation($"Subject '{subjectType} {subjectId}' {(isAuthorized ? "has" : "does not have")} direct {permission} permissions for '{secretId}'.");
+
+            if (!isAuthorized && subjectType == SubjectType.User)
+            {
+                isAuthorized = await this.IsGroupAuthorizedAsync(subjectId, secretId, permission);
             }
 
             return isAuthorized;
         }
 
-        public async Task SetPermissionAsync(string userUpn, string secretId, PermissionType permission)
+        public async Task SetPermissionAsync(SubjectType subjectType, string subjectId, string secretId, PermissionType permission)
         {
-            userUpn = Normalize(userUpn);
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
 
             var canRead = (permission & PermissionType.Read) == PermissionType.Read;
             var canWrite = (permission & PermissionType.Write) == PermissionType.Write;
             var canGrantAccess = (permission & PermissionType.GrantAccess) == PermissionType.GrantAccess;
             var canRevokeAccess = (permission & PermissionType.RevokeAccess) == PermissionType.RevokeAccess;
 
-            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretId, userUpn);
+            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretId, subjectType, subjectId);
             if (subjectPermissions != null)
             {
                 subjectPermissions.CanRead = canRead || subjectPermissions.CanRead;
@@ -80,7 +86,7 @@ namespace SafeExchange.Core.Permissions
             }
             else
             {
-                var newPermissions = new SubjectPermissions(secretId, userUpn)
+                var newPermissions = new SubjectPermissions(secretId, subjectType, subjectId)
                 {
                     CanRead = canRead,
                     CanWrite = canWrite,
@@ -92,16 +98,19 @@ namespace SafeExchange.Core.Permissions
             }
         }
 
-        public async Task UnsetPermissionAsync(string userUpn, string secretId, PermissionType permission)
+        public async Task UnsetPermissionAsync(SubjectType subjectType, string subjectId, string secretId, PermissionType permission)
         {
-            userUpn = Normalize(userUpn);
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
 
             var unsetRead = (permission & PermissionType.Read) == PermissionType.Read;
             var unsetWrite = (permission & PermissionType.Write) == PermissionType.Write;
             var unsetGrantAccess = (permission & PermissionType.GrantAccess) == PermissionType.GrantAccess;
             var unsetRevokeAccess = (permission & PermissionType.RevokeAccess) == PermissionType.RevokeAccess;
 
-            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretId, userUpn);
+            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretId, subjectType, subjectId);
             if (subjectPermissions == null)
             {
                 return;
@@ -145,7 +154,7 @@ namespace SafeExchange.Core.Permissions
                             break;
                     }
                 }
-
+                
                 if (result == false)
                 {
                     break;
@@ -165,9 +174,9 @@ namespace SafeExchange.Core.Permissions
             return value.Trim(' ').ToLowerInvariant();
         }
 
-        private async Task<bool> HasPermissionAsync(string userName, string secretName, PermissionType permission)
+        private async Task<bool> HasPermissionAsync(SubjectType subjectType, string subjectId, string secretName, PermissionType permission)
         {
-            var permissions = await this.dbContext.Permissions.FirstOrDefaultAsync(p => p.SecretName.Equals(secretName) && p.SubjectName.Equals(userName));
+            var permissions = await this.dbContext.Permissions.FirstOrDefaultAsync(p => p.SecretName.Equals(secretName) && p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId));
             if (permissions == default)
             {
                 return false;
@@ -238,9 +247,9 @@ namespace SafeExchange.Core.Permissions
             return await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretName)).ToListAsync();
         }
 
-        public async Task<SubjectPermissions?> GetSubjectPermissionsAsync(string secretName, string userUpn)
+        public async Task<SubjectPermissions?> GetSubjectPermissionsAsync(string secretName, SubjectType subjectType, string subjectId)
         {
-            return await this.dbContext.Permissions.FindAsync(secretName, userUpn);
+            return await this.dbContext.Permissions.FindAsync(secretName, subjectType, subjectId);
         }
     }
 }
