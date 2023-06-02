@@ -96,13 +96,13 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeAccessRequest)}-{nameof(RunList)} triggered by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeAccessRequest)}-{nameof(RunList)} triggered by {subjectType} {subjectId} [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleAccessRequestList(request, userUpn, log);
+                    return await this.HandleAccessRequestList(request, subjectType, subjectId, log);
 
                 default:
                     return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });

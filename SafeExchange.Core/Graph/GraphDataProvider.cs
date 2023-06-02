@@ -6,6 +6,8 @@ namespace SafeExchange.Core.Graph
 {
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
+    using Microsoft.Graph.Models;
+    using Microsoft.Kiota.Abstractions.Authentication;
     using SafeExchange.Core.AzureAd;
     using System;
 
@@ -31,32 +33,29 @@ namespace SafeExchange.Core.Graph
             try
             {
                 var aadClient = this.aadClientProvider.GetConfidentialClient();
-                var authProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GraphScopes, this.log);
-                var graphClient = new GraphServiceClient(authProvider);
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GraphScopes, this.log);
+                var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
 
-                var tokenResult = await authProvider.TryGetAccessTokenAsync();
+                var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
                 if (!tokenResult.Success)
                 {
                     return new GroupListResult() { ConsentRequired = tokenResult.ConsentRequired };
                 }
 
-                var memberOf = await graphClient.Me.MemberOf.Request().Select("id").GetAsync();
-                while (memberOf.Count > 0)
-                {
-                    foreach (Group group in memberOf)
-                    {
-                        totalGroups.Add(group.Id);
-                    }
+                var memberOf = await graphClient.Me.MemberOf.GetAsync(
+                    requestConfiguration => requestConfiguration.QueryParameters.Select = new string[] { "id" });
 
-                    if (memberOf.NextPageRequest != null)
-                    {
-                        memberOf = await memberOf.NextPageRequest.GetAsync();
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
+                var pageIterator = PageIterator<DirectoryObject, DirectoryObjectCollectionResponse>
+                    .CreatePageIterator(
+                        graphClient,
+                        memberOf,
+                        (group) =>
+                        {
+                            totalGroups.Add(group.Id);
+                            return true;
+                        });
+
+                await pageIterator.IterateAsync();
             }
             catch (Exception exception)
             {

@@ -5,13 +5,12 @@
 namespace SafeExchange.Core.Graph
 {
     using Microsoft.Extensions.Logging;
-    using Microsoft.Graph;
     using Microsoft.Identity.Client;
+    using Microsoft.Kiota.Abstractions.Authentication;
     using System;
-    using System.Net.Http.Headers;
     using System.Threading.Tasks;
 
-    public class OnBehalfOfAuthProvider : IAuthenticationProvider
+    public class OnBehalfOfAuthProvider : IAccessTokenProvider
     {
         private IConfidentialClientApplication msalClient;
 
@@ -23,6 +22,8 @@ namespace SafeExchange.Core.Graph
 
         private OnBehalfOfTokenProviderResult lastResult;
 
+        public AllowedHostsValidator AllowedHostsValidator => new();
+
         public OnBehalfOfAuthProvider(IConfidentialClientApplication msalClient, AccountIdAndToken accountIdAndToken, string[] scopes, ILogger logger)
         {
             this.scopes = scopes;
@@ -30,6 +31,17 @@ namespace SafeExchange.Core.Graph
 
             this.accountIdAndToken = accountIdAndToken;
             this.msalClient = msalClient;
+        }
+
+        public async Task<string> GetAuthorizationTokenAsync(Uri uri, Dictionary<string, object>? additionalAuthenticationContext = null, CancellationToken cancellationToken = default)
+        {
+            if (!lastResult.Success)
+            {
+                throw new InvalidOperationException("Could not get authorization token.");
+            }
+
+            var accessTokenResult = await this.TryGetAccessTokenAsync();
+            return accessTokenResult.Token;
         }
 
         public async Task<OnBehalfOfTokenProviderResult> TryGetAccessTokenAsync()
@@ -50,17 +62,6 @@ namespace SafeExchange.Core.Graph
             }
 
             return lastResult;
-        }
-
-        public async Task AuthenticateRequestAsync(HttpRequestMessage requestMessage)
-        {
-            if (!lastResult.Success)
-            {
-                throw new InvalidOperationException("Cannot authenticate without access token.");
-            }
-
-            var accessTokenResult = await this.TryGetAccessTokenAsync();
-            requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessTokenResult.Token);
         }
 
         private async Task<OnBehalfOfTokenProviderResult> GetTokenSilentlyAsync(IAccount account)

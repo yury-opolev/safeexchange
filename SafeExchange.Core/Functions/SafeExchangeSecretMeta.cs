@@ -64,24 +64,24 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{req.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
             
             switch (req.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretMetaCreation(req, secretId, principal, log);
+                    return await this.HandleSecretMetaCreation(req, secretId, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleSecretMetaRead(secretId, principal, log);
+                    return await this.HandleSecretMetaRead(secretId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleSecretMetaUpdate(req, secretId, principal, log);
+                    return await this.HandleSecretMetaUpdate(req, secretId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleSecretMetaDeletion(req, secretId, principal, log);
+                    return await this.HandleSecretMetaDeletion(req, secretId, subjectType, subjectId, log);
 
                 default:
                     return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
@@ -124,7 +124,7 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleListSecretMeta), log);
 
-        private async Task<IActionResult> HandleSecretMetaCreation(HttpRequest request, string secretId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretMetaCreation(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
@@ -158,19 +158,16 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Secret id value is not provided." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, userUpn, log);
-            log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for user '{userUpn}' are set.");
+            var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
+            log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '{subjectId}' are set.");
 
             return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = createdMetadata.ToDto() });
 
         }, nameof(HandleSecretMetaCreation), log);
 
-        private async Task<IActionResult> HandleSecretMetaRead(string secretId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretMetaRead(string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
-
             var metadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (metadata == null)
             {
@@ -184,7 +181,7 @@ namespace SafeExchange.Core.Functions
                 return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
             }
 
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userName, secretId, PermissionType.Read)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
             }
@@ -196,11 +193,9 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleSecretMetaRead), log);
 
-        private async Task<IActionResult> HandleSecretMetaUpdate(HttpRequest request, string secretId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretMetaUpdate(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
-
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
@@ -214,7 +209,7 @@ namespace SafeExchange.Core.Functions
                 return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
             }
 
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userName, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
@@ -244,16 +239,14 @@ namespace SafeExchange.Core.Functions
             }
 
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
-            log.LogInformation($"User '{userName}' updated metadata for secret '{existingMetadata.ObjectName}'.");
+            log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
 
             return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
         }, nameof(HandleSecretMetaUpdate), log);
 
-        private async Task<IActionResult> HandleSecretMetaDeletion(HttpRequest request, string secretId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretMetaDeletion(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
-
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
@@ -267,23 +260,23 @@ namespace SafeExchange.Core.Functions
                 return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
             }
 
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userName, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
 
             await this.purger.PurgeAsync(secretId, this.dbContext);
-            log.LogInformation($"User '{userName}' deleted secret '{secretId}'");
+            log.LogInformation($"{subjectType} '{subjectId}' deleted secret '{secretId}'");
 
             return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(HandleSecretMetaDeletion), log);
 
-        private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, string userName, ILogger log)
+        private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var objectMetadata = new ObjectMetadata(secretId, metadataInput, userName);
+            var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} {subjectId}");
             var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
             
-            await this.permissionsManager.SetPermissionAsync(userName, secretId, PermissionType.Full);
+            await this.permissionsManager.SetPermissionAsync(subjectType, subjectId, secretId, PermissionType.Full);
             
             await this.dbContext.SaveChangesAsync();
 

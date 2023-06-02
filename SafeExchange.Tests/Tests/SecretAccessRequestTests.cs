@@ -290,10 +290,10 @@ namespace SafeExchange.Tests
             Assert.AreEqual("ok", approvalResult?.Result);
 
             // [THEN] The second user has acquired read access to the secret.
-            Assert.IsTrue(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.Read));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.Write));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.GrantAccess));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.RevokeAccess));
+            Assert.IsTrue(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess));
 
             var permissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
@@ -349,10 +349,10 @@ namespace SafeExchange.Tests
             Assert.AreEqual("ok", deletionResult?.Result);
 
             // [THEN] The access request is deleted from database, the second user does not have permissions for the secret.
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.Read));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.Write));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.GrantAccess));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.RevokeAccess));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess));
 
             accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
             Assert.AreEqual(0, accessRequests.Count);
@@ -446,10 +446,10 @@ namespace SafeExchange.Tests
             Assert.AreEqual("ok", approvalResult?.Result);
 
             // [THEN] The second user has acquired read access to the secret.
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.Read));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.Write));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.GrantAccess));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync("second@test.test", "sunshine", PermissionType.RevokeAccess));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess));
+            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess));
 
             var permissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))

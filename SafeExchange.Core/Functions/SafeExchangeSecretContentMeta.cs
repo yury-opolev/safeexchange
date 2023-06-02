@@ -19,7 +19,6 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
-    using System.Text.Json;
     using SafeExchange.Core.Model.Dto.Output;
 
     public class SafeExchangeSecretContentMeta
@@ -68,21 +67,21 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{req.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
             switch (req.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretContentMetaCreation(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaCreation(req, secretId, contentId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleSecretContentMetaUpdate(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaUpdate(req, secretId, contentId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleSecretContentMetaDeletion(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaDeletion(req, secretId, contentId, subjectType, subjectId, log);
 
                 default:
                     return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
@@ -99,22 +98,22 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [DROP ({req.Method})].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [DROP ({req.Method})].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
             switch (req.Method.ToLower())
             {
                 case "patch":
-                    return await this.HandleSecretContentMetaDrop(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaDrop(req, secretId, contentId, subjectType, subjectId, log);
 
                 default:
                     return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
             }
         }
 
-        private async Task<IActionResult> HandleSecretContentMetaCreation(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretContentMetaCreation(HttpRequest request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () => 
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
@@ -130,8 +129,7 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Cannot specify content name on creation." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
@@ -163,10 +161,9 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleSecretContentMetaCreation), log);
 
-        private async Task<IActionResult> HandleSecretContentMetaUpdate(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretContentMetaUpdate(HttpRequest request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
@@ -186,8 +183,7 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify content name on update." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
@@ -220,10 +216,9 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleSecretContentMetaDeletion), log);
 
-        private async Task<IActionResult> HandleSecretContentMetaDrop(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretContentMetaDrop(HttpRequest request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
@@ -243,8 +238,7 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify content name on drop." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
@@ -263,10 +257,9 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleSecretContentMetaDeletion), log);
 
-        private async Task<IActionResult> HandleSecretContentMetaDeletion(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleSecretContentMetaDeletion(HttpRequest request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
@@ -286,8 +279,7 @@ namespace SafeExchange.Core.Functions
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify content name on deletion." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
                 return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
             }
