@@ -11,6 +11,8 @@ namespace SafeExchange.Core
     {
         public DbSet<User> Users { get; set; }
 
+        public DbSet<Application> Applications { get; set; }
+
         public DbSet<ObjectMetadata> Objects { get; set; }
 
         public DbSet<SubjectPermissions> Permissions { get; set; }
@@ -101,6 +103,11 @@ namespace SafeExchange.Core
                 .ToContainer("Users")
                 .HasNoDiscriminator()
                 .HasPartitionKey(u => u.PartitionKey);
+
+            modelBuilder.Entity<Application>()
+                .ToContainer("Applications")
+                .HasNoDiscriminator()
+                .HasPartitionKey(a => a.PartitionKey);
         }
     }
 }

@@ -39,7 +39,7 @@ namespace SafeExchange.Core.Model
         public bool Enabled { get; set; }
 
         [Required]
-        [StringLength(100, ErrorMessage = "Value too long (100 character limit).")]
+        [StringLength(150, ErrorMessage = "Value too long (150 character limit).")]
         [RegularExpression(@"^[a-zA-Z0-9-]+( [a-zA-Z0-9-]+)*$", ErrorMessage = "Only letters, numbers, hyphens and spaces are allowed, starting with non-space symbol.")]
         public string DisplayName { get; set; }
 
@@ -54,7 +54,11 @@ namespace SafeExchange.Core.Model
 
         public DateTime CreatedAt { get; set; }
 
+        public string CreatedBy { get; set; }
+
         public DateTime ModifiedAt { get; set; }
+
+        public DateTime ModifiedBy { get; set; }
     }
 }
 

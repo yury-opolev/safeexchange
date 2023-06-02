@@ -97,24 +97,25 @@ namespace SafeExchange.Core.Functions
                 return filterResult ?? new EmptyResult();
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} {subjectId}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
 
             switch (req.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListSecretMeta(principal, log);
+                    return await this.HandleListSecretMeta(subjectType, subjectId, log);
 
                 default:
                     return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
             }
         }
 
-        private async Task<IActionResult> HandleListSecretMeta(ClaimsPrincipal principal, ILogger log)
+        private async Task<IActionResult> HandleListSecretMeta(SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
         {
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            var existingPermissions = await this.dbContext.Permissions.Where(p => p.SubjectName.Equals(userUpn) && p.CanRead).ToListAsync();
+            var existingPermissions = await this.dbContext.Permissions
+                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId) && p.CanRead)
+                .ToListAsync();
 
             return new OkObjectResult(new BaseResponseObject<List<SubjectPermissionsOutput>>
             {
