@@ -3,12 +3,16 @@ namespace SafeExchange.Core.Functions.Admin
 {
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
     using System;
     using System.Security.Claims;
+    using System.Text.RegularExpressions;
     using System.Web.Http;
 
     public class SafeExchangeApplications
@@ -33,7 +37,7 @@ namespace SafeExchange.Core.Functions.Admin
 
         public async Task<IActionResult> Run(
             HttpRequest req,
-            string applicationId,
+            string applicationId, // display name
             ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
@@ -48,7 +52,7 @@ namespace SafeExchange.Core.Functions.Admin
             switch (req.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleApplicationRegistration(req, subjectType, subjectId, log);
+                    return await this.HandleApplicationRegistration(req, applicationId, subjectType, subjectId, log);
 
                 case "get":
                     return await this.HandleApplicationRead(applicationId, subjectType, subjectId, log);
@@ -86,15 +90,91 @@ namespace SafeExchange.Core.Functions.Admin
             }
         }
 
-        private async Task<IActionResult> HandleApplicationRegistration(HttpRequest req, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<IActionResult> HandleApplicationRegistration(HttpRequest request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(async () =>
         {
-            throw new NotImplementedException();
-        }
+            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
+            if (existingRegistration != null)
+            {
+                log.LogInformation($"Cannot register application '{applicationId}', as already exists");
+                return new ConflictObjectResult(new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with display name." });
+            }
+
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            ApplicationRegistrationInput? registrationInput;
+            try
+            {
+                registrationInput = DefaultJsonSerializer.Deserialize<ApplicationRegistrationInput>(requestBody);
+            }
+            catch
+            {
+                log.LogInformation($"Could not parse input data for '{applicationId}'.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
+            }
+
+            if (registrationInput is null)
+            {
+                log.LogInformation($"Input data for '{applicationId}' is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
+            }
+
+            if (string.IsNullOrEmpty(registrationInput.ContactEmail))
+            {
+                log.LogInformation($"{nameof(ApplicationRegistrationInput.ContactEmail)} for '{applicationId}' is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
+            }
+
+            if (string.IsNullOrEmpty(registrationInput.AadTenantId))
+            {
+                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadTenantId)} for '{applicationId}' is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not provided." });
+            }
+
+            if (!Regex.IsMatch(registrationInput.AadTenantId, DefaultGuidRegex))
+            {
+                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadTenantId)} for '{applicationId}' is in incorrect format.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
+            }
+
+            if (string.IsNullOrEmpty(registrationInput.AadClientId))
+            {
+                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadClientId)} for '{applicationId}' is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Client Id is not provided." });
+            }
+
+            if (!Regex.IsMatch(registrationInput.AadClientId, DefaultGuidRegex))
+            {
+                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadClientId)} for '{applicationId}' is in incorrect format.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Client Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
+            }
+
+            existingRegistration = await this.dbContext.Applications
+                .FirstOrDefaultAsync(r => r.AadTenantId.Equals(registrationInput.AadTenantId) && r.AadClientId.Equals(registrationInput.AadClientId));
+            if (existingRegistration != null)
+            {
+                log.LogInformation($"Cannot register application '{applicationId}', as already exists with provided tenant and client Ids.");
+                return new ConflictObjectResult(new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with tenant and client ids." });
+            }
+
+            var registeredApplication = await this.RegisterApplicationAsync(applicationId, registrationInput, subjectType, subjectId, log);
+            log.LogInformation($"Application '{applicationId}' ({registrationInput.AadTenantId}.{registrationInput.AadClientId}) registered by {subjectType} '{subjectId}'.");
+
+            return new OkObjectResult(new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = registeredApplication.ToDto() });
+        }, nameof(HandleApplicationRegistration), log);
 
         private async Task<IActionResult> HandleApplicationRead(string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(async () =>
         {
-            throw new NotImplementedException();
-        }
+            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
+            if (existingRegistration == null)
+            {
+                log.LogInformation($"Cannot get application registration '{applicationId}', as does not exist.");
+                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
+            }
+
+            return new OkObjectResult(new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = existingRegistration.ToDto() });
+
+        }, nameof(HandleApplicationRead), log);
 
         private async Task<IActionResult> HandleApplicationModification(HttpRequest req, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
         {
@@ -102,13 +182,44 @@ namespace SafeExchange.Core.Functions.Admin
         }
 
         private async Task<IActionResult> HandleApplicationDeletion(string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(async () =>
         {
-            throw new NotImplementedException();
-        }
+            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
+            if (existingRegistration == null)
+            {
+                log.LogInformation($"Cannot delete application registration '{applicationId}', as it does not exist.");
+                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
+            }
+
+            this.dbContext.Applications.Remove(existingRegistration);
+            await dbContext.SaveChangesAsync();
+
+            log.LogInformation($"{subjectType} '{subjectId}' deleted application registration '{applicationId}'.");
+
+            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+        }, nameof(HandleApplicationDeletion), log);
 
         private async Task<IActionResult> HandleListApplications(SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(async () =>
         {
-            throw new NotImplementedException();
+            var existingRegistrations = await this.dbContext.Applications.ToListAsync();
+
+            return new OkObjectResult(new BaseResponseObject<List<ApplicationRegistrationOverviewOutput>>
+            {
+                Status = "ok",
+                Result = existingRegistrations.Select(p => p.ToOverviewDto()).ToList()
+            });
+
+        }, nameof(HandleListApplications), log);
+
+        private async Task<Application> RegisterApplicationAsync(string applicationId, ApplicationRegistrationInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            var appRegistration = new Application(applicationId, registrationInput, $"{subjectType} {subjectId}");
+            var entity = await this.dbContext.Applications.AddAsync(appRegistration);
+
+            await this.dbContext.SaveChangesAsync();
+
+            return entity.Entity;
         }
 
         private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)

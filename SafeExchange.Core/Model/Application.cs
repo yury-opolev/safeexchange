@@ -7,6 +7,8 @@ namespace SafeExchange.Core.Model
     using System;
     using System.ComponentModel.DataAnnotations;
     using Microsoft.EntityFrameworkCore;
+    using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
 
     [Index(nameof(AadTenantId), nameof(AadClientId), IsUnique = true)]
     [Index(nameof(DisplayName), IsUnique = true)]
@@ -16,20 +18,22 @@ namespace SafeExchange.Core.Model
 
         public Application() { }
 
-        public Application(string displayName, string aadClientId, string aadTenantId, string contactEmail)
+        public Application(string displayName, ApplicationRegistrationInput input, string createdBy)
         {
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = Application.DefaultPartitionKey;
             this.Enabled = true;
 
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
-            this.AadClientId = aadClientId ?? throw new ArgumentNullException(nameof(aadClientId));
-            this.AadTenantId = aadTenantId ?? throw new ArgumentNullException(nameof(aadTenantId));
+            this.AadClientId = input.AadClientId ?? throw new ArgumentNullException(nameof(input.AadClientId));
+            this.AadTenantId = input.AadTenantId ?? throw new ArgumentNullException(nameof(input.AadTenantId));
 
-            this.ContactEmail = contactEmail ?? string.Empty;
+            this.ContactEmail = input.ContactEmail ?? throw new ArgumentNullException(nameof(input.ContactEmail));
 
             this.CreatedAt = DateTimeProvider.UtcNow;
+            this.CreatedBy = createdBy;
             this.ModifiedAt = DateTime.MinValue;
+            this.ModifiedBy = string.Empty;
         }
 
         public string Id { get; set; }
@@ -58,7 +62,24 @@ namespace SafeExchange.Core.Model
 
         public DateTime ModifiedAt { get; set; }
 
-        public DateTime ModifiedBy { get; set; }
+        public string ModifiedBy { get; set; }
+
+        internal ApplicationRegistrationOutput ToDto() => new()
+        {
+            DisplayName = this.DisplayName,
+            ContactEmail = this.ContactEmail,
+
+            AadTenantId = this.AadTenantId,
+            AadClientId = this.AadClientId,
+
+            Enabled = this.Enabled
+        };
+
+        internal ApplicationRegistrationOverviewOutput ToOverviewDto() => new()
+        {
+            DisplayName = this.DisplayName,
+            Enabled = this.Enabled
+        };
     }
 }
 

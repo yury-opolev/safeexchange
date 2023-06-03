@@ -26,7 +26,7 @@ namespace SafeExchange.Core.Model
 
         public string SecretName { get; set; }
 
-        public SubjectType SubjectType { get; set; }
+        public SubjectType SubjectType { get; set; } = SubjectType.User;
 
         public string SubjectName { get; set; }
 
