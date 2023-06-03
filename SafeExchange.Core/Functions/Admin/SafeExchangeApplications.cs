@@ -6,6 +6,7 @@ namespace SafeExchange.Core.Functions.Admin
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
+    using Microsoft.IdentityModel.Tokens;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
@@ -63,7 +64,7 @@ namespace SafeExchange.Core.Functions.Admin
                     return await this.HandleApplicationRead(applicationId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleApplicationModification(req, applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationUpdate(req, applicationId, subjectType, subjectId, log);
 
                 case "delete":
                     return await this.HandleApplicationDeletion(applicationId, subjectType, subjectId, log);
@@ -193,10 +194,52 @@ namespace SafeExchange.Core.Functions.Admin
 
         }, nameof(HandleApplicationRead), log);
 
-        private async Task<IActionResult> HandleApplicationModification(HttpRequest req, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<IActionResult> HandleApplicationUpdate(HttpRequest request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(async () =>
         {
-            throw new NotImplementedException();
-        }
+            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
+            if (existingRegistration == null)
+            {
+                log.LogInformation($"Cannot update application registration '{applicationId}', as it does not exist.");
+                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Application '{applicationId}' does not exist." });
+            }
+
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            ApplicationRegistrationUpdateInput? updateInput;
+            try
+            {
+                updateInput = DefaultJsonSerializer.Deserialize<ApplicationRegistrationUpdateInput>(requestBody);
+            }
+            catch
+            {
+                log.LogInformation($"Could not parse input data for '{applicationId}' update.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+            }
+
+            if (updateInput is null)
+            {
+                log.LogInformation($"Update input for '{applicationId}' is not provided.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+            }
+
+            if (updateInput.Enabled is null || string.IsNullOrEmpty(updateInput.ContactEmail))
+            {
+                log.LogInformation($"Either {nameof(updateInput.Enabled)} or {nameof(updateInput.ContactEmail)} property for '{applicationId}' is not provided for update.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+            }
+
+            if (!string.IsNullOrEmpty(updateInput.ContactEmail) &&
+                (updateInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength || !Regex.IsMatch(updateInput.ContactEmail, DefaultEmailRegex)))
+            {
+                log.LogInformation($"{nameof(updateInput.ContactEmail)} property value for '{applicationId}' is incorrect.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
+            }
+
+            var updatedRegistration = await this.UpdateApplicationRegistrationAsync(existingRegistration, updateInput, log);
+            log.LogInformation($"{subjectType} '{subjectId}' updated application registration '{existingRegistration.DisplayName}'.");
+
+            return new OkObjectResult(new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = updatedRegistration.ToDto() });
+        }, nameof(HandleApplicationUpdate), log);
 
         private async Task<IActionResult> HandleApplicationDeletion(string applicationId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(async () =>
@@ -237,6 +280,24 @@ namespace SafeExchange.Core.Functions.Admin
             await this.dbContext.SaveChangesAsync();
 
             return entity.Entity;
+        }
+
+        private async Task<Application> UpdateApplicationRegistrationAsync(Application existingApplication, ApplicationRegistrationUpdateInput updateInput, ILogger log)
+        {
+            if (updateInput.Enabled is not null)
+            {
+                existingApplication.Enabled = updateInput.Enabled ?? true;
+            }
+
+            if (!string.IsNullOrEmpty(updateInput.ContactEmail))
+            {
+                existingApplication.ContactEmail = updateInput.ContactEmail;
+            }
+
+            this.dbContext.Applications.Update(existingApplication);
+            await this.dbContext.SaveChangesAsync();
+
+            return existingApplication;
         }
 
         private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)

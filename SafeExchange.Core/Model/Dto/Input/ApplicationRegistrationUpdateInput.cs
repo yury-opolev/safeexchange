@@ -8,7 +8,7 @@ namespace SafeExchange.Core.Model.Dto.Input
 
     public class ApplicationRegistrationUpdateInput
     {
-        public bool Enabled { get; set; }
+        public bool? Enabled { get; set; }
 
         public string ContactEmail { get; set; }
     }
