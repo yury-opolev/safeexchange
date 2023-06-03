@@ -4,7 +4,8 @@
 
 namespace SafeExchange.Core.Configuration
 {
-    using Microsoft.Azure.Services.AppAuthentication;
+    using Azure.Core;
+    using Azure.Identity;
     using Microsoft.Extensions.Configuration;
     using System;
     using System.Collections.Generic;
@@ -36,12 +37,12 @@ namespace SafeExchange.Core.Configuration
             var cosmosDbConfig = new CosmosDbConfiguration();
             this.configuration.GetSection("CosmosDb").Bind(cosmosDbConfig);
 
-            var azureServiceTokenProvider = new AzureServiceTokenProvider();
-            string accessToken = await azureServiceTokenProvider.GetAccessTokenAsync("https://management.azure.com/");
+            var defaultAzureCredential = new DefaultAzureCredential();
+            AccessToken accessToken = await defaultAzureCredential.GetTokenAsync(new TokenRequestContext(new[] { "https://management.azure.com/.default" }));
             string endpoint = $"https://management.azure.com/subscriptions/{cosmosDbConfig.SubscriptionId}/resourceGroups/{cosmosDbConfig.ResourceGroupName}/providers/Microsoft.DocumentDB/databaseAccounts/{cosmosDbConfig.AccountName}/listKeys?api-version=2019-12-12";
 
             HttpClient httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
             var result = await httpClient.PostAsync(endpoint, new StringContent(""));
             this.databaseKeys = await result.Content.ReadAsAsync<DatabaseAccountListKeysResult>();
         }

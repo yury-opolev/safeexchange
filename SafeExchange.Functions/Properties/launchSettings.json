@@ -4,7 +4,7 @@
       "commandName": "Project",
       "commandLineArgs": "host start --useHttps --cert %USERPROFILE%/source/azurefunc/devcert/certificate.pfx --password %USERPROFILE%/source/azurefunc/devcert/certpass.txt",
       "environmentVariables": {
-        "KEYVAULT_BASEURI": "https://safeexchange.vault.azure.net/"
+        "KEYVAULT_BASEURI": "https://safeexchange-local.vault.azure.net/"
       }
     }
   }
