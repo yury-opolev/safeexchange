@@ -1,6 +1,7 @@
 ﻿
 namespace SafeExchange.Core.Functions.Admin
 {
+    using Azure.Storage.Blobs.Models;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,10 @@ namespace SafeExchange.Core.Functions.Admin
     public class SafeExchangeApplications
     {
         private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
+
+        private static int MaxEmailLength = 320;
+
+        private static string DefaultEmailRegex = @"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
 
         private readonly SafeExchangeDbContext dbContext;
 
@@ -122,6 +127,18 @@ namespace SafeExchange.Core.Functions.Admin
             {
                 log.LogInformation($"{nameof(ApplicationRegistrationInput.ContactEmail)} for '{applicationId}' is not provided.");
                 return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
+            }
+
+            if (registrationInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength)
+            {
+                log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is too long.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is too long." });
+            }
+
+            if (!Regex.IsMatch(registrationInput.ContactEmail, SafeExchangeApplications.DefaultEmailRegex))
+            {
+                log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is not in email-like format.");
+                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
             }
 
             if (string.IsNullOrEmpty(registrationInput.AadTenantId))
