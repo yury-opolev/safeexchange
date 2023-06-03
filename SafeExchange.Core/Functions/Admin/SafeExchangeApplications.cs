@@ -1,12 +1,10 @@
 ﻿
 namespace SafeExchange.Core.Functions.Admin
 {
-    using Azure.Storage.Blobs.Models;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
-    using Microsoft.IdentityModel.Tokens;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
@@ -46,7 +44,7 @@ namespace SafeExchange.Core.Functions.Admin
             string applicationId, // display name
             ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
             if (shouldReturn)
             {
                 return filterResult ?? new EmptyResult();
@@ -77,7 +75,7 @@ namespace SafeExchange.Core.Functions.Admin
         public async Task<IActionResult> RunList(
             HttpRequest req, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
             if (shouldReturn)
             {
                 return filterResult ?? new EmptyResult();
