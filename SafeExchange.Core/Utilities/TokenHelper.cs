@@ -7,6 +7,7 @@ namespace SafeExchange.Core
     using System.Net.Http.Headers;
     using System.Security.Claims;
     using Microsoft.AspNetCore.Http;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
 
     public class TokenHelper : ITokenHelper
@@ -108,7 +109,7 @@ namespace SafeExchange.Core
         }
 
         /// <inheritdoc/>
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequest request, ClaimsPrincipal principal)
+        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal)
         {
             var accessToken = GetAccessToken(request);
             var accountId = GetAccountId(principal);
@@ -145,10 +146,10 @@ namespace SafeExchange.Core
             return principal.HasClaim(claim => claim.Type.Equals(type));
         }
 
-        private static string GetAccessToken(HttpRequest request)
+        private static string GetAccessToken(HttpRequestData request)
         {
-            if (!request.Headers.ContainsKey("Authorization") || 
-                !AuthenticationHeaderValue.TryParse(request.Headers["Authorization"], out var authHeader))
+            if (!request.Headers.TryGetValues("Authorization", out var headerValues) || 
+                !AuthenticationHeaderValue.TryParse(headerValues.FirstOrDefault(), out var authHeader))
             {
                 return string.Empty;
             }

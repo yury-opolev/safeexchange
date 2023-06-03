@@ -4,12 +4,12 @@
 
 namespace SafeExchange.Core.Filters
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -33,9 +33,9 @@ namespace SafeExchange.Core.Filters
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        public async ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetFilterResultAsync(HttpRequest request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
-            (bool shouldReturn, IActionResult? actionResult) result = (shouldReturn: false, actionResult: null);
+            (bool shouldReturn, HttpResponseData? response) result = (shouldReturn: false, response: null);
 
             if (!this.tokenHelper.IsUserToken(principal))
             {
@@ -43,7 +43,8 @@ namespace SafeExchange.Core.Filters
                 this.log.LogInformation($"'{userUpn}' is not authenticated with user access/id token.");
 
                 result.shouldReturn = true;
-                result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not authenticated with user token." }) { StatusCode = StatusCodes.Status401Unauthorized };
+                result.response = request.CreateResponse(HttpStatusCode.Unauthorized);
+                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = "Not authenticated with user token." });
                 return result;
             }
 
@@ -53,7 +54,8 @@ namespace SafeExchange.Core.Filters
                 this.log.LogInformation($"Could not get or create user from claims principal.");
 
                 result.shouldReturn = true;
-                result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"User token is invalid." }) { StatusCode = StatusCodes.Status401Unauthorized };
+                result.response = request.CreateResponse(HttpStatusCode.Unauthorized);
+                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = "User token is invalid." });
                 return result;
             }
 
@@ -61,7 +63,7 @@ namespace SafeExchange.Core.Filters
             return result;
         }
 
-        private async Task<User?> GetOrCreateUserAsync(HttpRequest request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        private async Task<User?> GetOrCreateUserAsync(HttpRequestData request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
             var aadObjectId = this.tokenHelper.GetObjectId(principal);
             if (string.IsNullOrEmpty(aadObjectId))
@@ -89,7 +91,7 @@ namespace SafeExchange.Core.Filters
             return createdEntity.Entity;
         }
 
-        private async ValueTask UpdateGroupsAsync(User user, HttpRequest request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        private async ValueTask UpdateGroupsAsync(User user, HttpRequestData request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
             if (!this.useGroups)
             {

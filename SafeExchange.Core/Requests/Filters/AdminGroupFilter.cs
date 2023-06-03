@@ -4,15 +4,14 @@
 
 namespace SafeExchange.Core.Filters
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
-    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -52,15 +51,16 @@ namespace SafeExchange.Core.Filters
             }
         }
 
-        public async ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
-            (bool shouldReturn, IActionResult? actionResult) result = (shouldReturn: false, actionResult: null);
+            (bool shouldReturn, HttpResponseData? response) result = (shouldReturn: false, response: null);
 
             if (!this.adminGroupIds.Any() && !this.adminUserIds.Any())
             {
                 this.log.LogInformation($"No admin groups or users configured, unauthorized.");
                 result.shouldReturn = true;
-                result.actionResult = new ObjectResult(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+                result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
+                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." });
                 return result;
             }
 
@@ -76,7 +76,8 @@ namespace SafeExchange.Core.Filters
             if (existingUser is null)
             {
                 result.shouldReturn = true;
-                result.actionResult = new ObjectResult(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+                result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
+                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." });
                 return result;
             }
 
@@ -92,7 +93,8 @@ namespace SafeExchange.Core.Filters
 
             this.log.LogInformation($"{userUpn} is not an admin or a member of any admin group, unauthorized.");
             result.shouldReturn = true;
-            result.actionResult = new ObjectResult(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+            result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
+            await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." });
             return await Task.FromResult(result);
         }
     }

@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Core.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
-    using Microsoft.EntityFrameworkCore.Cosmos.Storage.Internal;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
@@ -18,6 +16,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using System;
+    using System.Net;
     using System.Security.Claims;
     using System.Web.Http;
 
@@ -52,12 +51,12 @@ namespace SafeExchange.Core.Functions
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
-        public async Task<IActionResult> Run(HttpRequest request, string secretId, ClaimsPrincipal principal, ILogger log)
+        public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -69,7 +68,9 @@ namespace SafeExchange.Core.Functions
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot request access to secret '{secretId}', because it not exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
             }
 
             switch (request.Method.ToLower())
@@ -84,16 +85,18 @@ namespace SafeExchange.Core.Functions
                     return await this.HandleAccessRequestDeletion(request, secretId, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        public async Task<IActionResult> RunList(HttpRequest request, ClaimsPrincipal principal, ILogger log)
+        public async Task<HttpResponseData> RunList(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -105,12 +108,14 @@ namespace SafeExchange.Core.Functions
                     return await this.HandleAccessRequestList(request, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        private async Task<IActionResult> HandleAccessRequestCreation(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleAccessRequestCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             SubjectPermissionsInput? accessRequestInput;
@@ -121,13 +126,17 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for access request.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
             if (accessRequestInput == null)
             {
                 log.LogInformation($"Input data for access request is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
             var requestedPermission = accessRequestInput.GetPermissionType();
@@ -137,7 +146,9 @@ namespace SafeExchange.Core.Functions
             if (existingRequest != null && existingRequest.Permission == requestedPermission)
             {
                 log.LogInformation($"Found identical access request {existingRequest.Id} from {subjectType} {subjectId} for secret '{secretId}', skipping duplicate.");
-                return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<string> { Status = "ok", Result = "ok" });
             }
 
             var accessRequest = new AccessRequest(secretId, subjectType, subjectId, accessRequestInput);
@@ -155,12 +166,14 @@ namespace SafeExchange.Core.Functions
 
             await this.TryNotifyAsync(accessRequest, RequestStatus.InProgress);
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
 
         }, nameof(HandleAccessRequestCreation), log);
 
-        private async Task<IActionResult> HandleAccessRequestList(HttpRequest request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleAccessRequestList(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var outgoingRequests = await this.dbContext.AccessRequests.Where(
                 ar =>
@@ -192,12 +205,14 @@ namespace SafeExchange.Core.Functions
             requests.AddRange(outgoingRequests.Select(ar => ar.ToDto()));
             requests.AddRange(incomingRequests.Select(ar => ar.ToDto()));
 
-            return new OkObjectResult(new BaseResponseObject<List<AccessRequestOutput>> { Status = "ok", Result = requests });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<AccessRequestOutput>> { Status = "ok", Result = requests });
 
         }, nameof(HandleAccessRequestList), log);
 
-        private async Task<IActionResult> HandleAccessRequestUpdate(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleAccessRequestUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             AccessRequestUpdateInput? accessRequestInput;
@@ -208,34 +223,44 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for access request.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
             if (string.IsNullOrEmpty(accessRequestInput?.RequestId))
             {
                 log.LogInformation($"Input data for access request is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
             var existingRequest = await this.dbContext.AccessRequests.FindAsync(accessRequestInput.RequestId);
             if (existingRequest == null || !existingRequest.ObjectName.Equals(secretId))
             {
                 log.LogWarning($"Cannot find access request '{accessRequestInput.RequestId}' for secret '{secretId}'.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or for different secret." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or is for different secret." });
             }
 
             var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
             if (foundRecipient == null)
             {
                 log.LogWarning($"{subjectType} '{subjectId}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "User is not a recipient." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "User is not a recipient." });
             }
 
             var userHasGrantRights = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.GrantAccess);
             if (!userHasGrantRights)
             {
                 log.LogWarning($"{subjectType} {subjectId} does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
-                return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.GrantAccess, secretId, string.Empty));
             }
 
             if (accessRequestInput.Approve)
@@ -255,12 +280,14 @@ namespace SafeExchange.Core.Functions
 
             await this.TryNotifyAsync(existingRequest, RequestStatus.Approved);
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
 
         }, nameof(HandleAccessRequestUpdate), log);
 
-        private async Task<IActionResult> HandleAccessRequestDeletion(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleAccessRequestDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             AccessRequestDeletionInput? accessRequestInput;
@@ -271,32 +298,42 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for access request.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
             if (string.IsNullOrEmpty(accessRequestInput?.RequestId))
             {
                 log.LogInformation($"Input data for access request is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Input data is not provided or incorrect." });
             }
 
             var existingRequest = await this.dbContext.AccessRequests.FindAsync(accessRequestInput.RequestId);
             if (existingRequest == null || !existingRequest.ObjectName.Equals(secretId))
             {
                 log.LogWarning($"Cannot find access request '{accessRequestInput.RequestId}' for secret '{secretId}'.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or for different secret." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or is for different secret." });
             }
 
             if (!(existingRequest.SubjectType.Equals(subjectType) && existingRequest.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase)))
             {
                 log.LogWarning($"{subjectType} '{subjectId}' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
-                return ActionResults.InsufficientPermissionsResult("AccessRequestCancellation", secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions("AccessRequestCancellation", secretId, string.Empty));
             }
 
             this.dbContext.AccessRequests.Remove(existingRequest);
             await this.dbContext.SaveChangesAsync();
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
 
         }, nameof(HandleAccessRequestDeletion), log);
 
@@ -315,7 +352,7 @@ namespace SafeExchange.Core.Functions
             await Task.CompletedTask;
         }
 
-        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {
             try
             {
@@ -324,7 +361,9 @@ namespace SafeExchange.Core.Functions
             catch (Exception ex)
             {
                 log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return new ExceptionResult(ex, true);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.InternalServerError,
+                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
             }
         }
     }

@@ -1,11 +1,10 @@
 ﻿/// <summary>
-/// SafeExchange
+/// IRequestFilter
 /// </summary>
 
 namespace SafeExchange.Core.Filters
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -19,6 +18,6 @@ namespace SafeExchange.Core.Filters
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
         /// <param name="dbContext">Database context to retrieve/persist user data.</param>
         /// <returns></returns>
-        public ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext);
+        public ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext);
     }
 }

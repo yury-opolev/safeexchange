@@ -1,8 +1,7 @@
 ﻿
 namespace SafeExchange.Core.Functions.Admin
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Crypto;
@@ -11,6 +10,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using System;
+    using System.Net;
     using System.Security.Claims;
     using System.Text.RegularExpressions;
     using System.Web.Http;
@@ -39,15 +39,15 @@ namespace SafeExchange.Core.Functions.Admin
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public async Task<IActionResult> Run(
-            HttpRequest req,
+        public async Task<HttpResponseData> Run(
+            HttpRequestData req,
             string applicationId, // display name
             ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResponse ?? req.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -59,26 +59,28 @@ namespace SafeExchange.Core.Functions.Admin
                     return await this.HandleApplicationRegistration(req, applicationId, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleApplicationRead(applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationRead(req, applicationId, subjectType, subjectId, log);
 
                 case "patch":
                     return await this.HandleApplicationUpdate(req, applicationId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleApplicationDeletion(applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationDeletion(req, applicationId, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    var response = req.CreateResponse(HttpStatusCode.BadRequest);
+                    await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    return response;
             }
         }
 
-        public async Task<IActionResult> RunList(
-            HttpRequest req, ClaimsPrincipal principal, ILogger log)
+        public async Task<HttpResponseData> RunList(
+            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResponse ?? req.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -87,21 +89,25 @@ namespace SafeExchange.Core.Functions.Admin
             switch (req.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListApplications(subjectType, subjectId, log);
+                    return await this.HandleListApplications(req, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    var response = req.CreateResponse(HttpStatusCode.BadRequest);
+                    await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    return response;
             }
         }
 
-        private async Task<IActionResult> HandleApplicationRegistration(HttpRequest request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleApplicationRegistration(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration != null)
             {
                 log.LogInformation($"Cannot register application '{applicationId}', as already exists");
-                return new ConflictObjectResult(new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with display name." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Conflict,
+                    new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with display name." });
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -113,55 +119,73 @@ namespace SafeExchange.Core.Functions.Admin
             catch
             {
                 log.LogInformation($"Could not parse input data for '{applicationId}'.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
             }
 
             if (registrationInput is null)
             {
                 log.LogInformation($"Input data for '{applicationId}' is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
             }
 
             if (string.IsNullOrEmpty(registrationInput.ContactEmail))
             {
                 log.LogInformation($"{nameof(ApplicationRegistrationInput.ContactEmail)} for '{applicationId}' is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
             }
 
             if (registrationInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength)
             {
                 log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is too long.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is too long." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Contact email is too long." });
             }
 
             if (!Regex.IsMatch(registrationInput.ContactEmail, SafeExchangeApplications.DefaultEmailRegex))
             {
                 log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is not in email-like format.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
             }
 
             if (string.IsNullOrEmpty(registrationInput.AadTenantId))
             {
                 log.LogInformation($"{nameof(ApplicationRegistrationInput.AadTenantId)} for '{applicationId}' is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not provided." });
             }
 
             if (!Regex.IsMatch(registrationInput.AadTenantId, DefaultGuidRegex))
             {
                 log.LogInformation($"{nameof(ApplicationRegistrationInput.AadTenantId)} for '{applicationId}' is in incorrect format.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
             }
 
             if (string.IsNullOrEmpty(registrationInput.AadClientId))
             {
                 log.LogInformation($"{nameof(ApplicationRegistrationInput.AadClientId)} for '{applicationId}' is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Client Id is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Client Id is not provided." });
             }
 
             if (!Regex.IsMatch(registrationInput.AadClientId, DefaultGuidRegex))
             {
                 log.LogInformation($"{nameof(ApplicationRegistrationInput.AadClientId)} for '{applicationId}' is in incorrect format.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Client Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Client Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
             }
 
             existingRegistration = await this.dbContext.Applications
@@ -169,37 +193,47 @@ namespace SafeExchange.Core.Functions.Admin
             if (existingRegistration != null)
             {
                 log.LogInformation($"Cannot register application '{applicationId}', as already exists with provided tenant and client Ids.");
-                return new ConflictObjectResult(new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with tenant and client ids." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Conflict,
+                    new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with tenant and client ids." });
             }
 
             var registeredApplication = await this.RegisterApplicationAsync(applicationId, registrationInput, subjectType, subjectId, log);
             log.LogInformation($"Application '{applicationId}' ({registrationInput.AadTenantId}.{registrationInput.AadClientId}) registered by {subjectType} '{subjectId}'.");
 
-            return new OkObjectResult(new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = registeredApplication.ToDto() });
+            return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = registeredApplication.ToDto() });
+
         }, nameof(HandleApplicationRegistration), log);
 
-        private async Task<IActionResult> HandleApplicationRead(string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleApplicationRead(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration == null)
             {
                 log.LogInformation($"Cannot get application registration '{applicationId}', as does not exist.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
             }
 
-            return new OkObjectResult(new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = existingRegistration.ToDto() });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = existingRegistration.ToDto() });
         }, nameof(HandleApplicationRead), log);
 
-        private async Task<IActionResult> HandleApplicationUpdate(HttpRequest request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleApplicationUpdate(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration == null)
             {
                 log.LogInformation($"Cannot update application registration '{applicationId}', as it does not exist.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Application '{applicationId}' does not exist." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -211,42 +245,54 @@ namespace SafeExchange.Core.Functions.Admin
             catch
             {
                 log.LogInformation($"Could not parse input data for '{applicationId}' update.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
             }
 
             if (updateInput is null)
             {
                 log.LogInformation($"Update input for '{applicationId}' is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
             }
 
             if (updateInput.Enabled is null || string.IsNullOrEmpty(updateInput.ContactEmail))
             {
                 log.LogInformation($"Either {nameof(updateInput.Enabled)} or {nameof(updateInput.ContactEmail)} property for '{applicationId}' is not provided for update.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
             }
 
             if (!string.IsNullOrEmpty(updateInput.ContactEmail) &&
                 (updateInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength || !Regex.IsMatch(updateInput.ContactEmail, DefaultEmailRegex)))
             {
                 log.LogInformation($"{nameof(updateInput.ContactEmail)} property value for '{applicationId}' is incorrect.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
             }
 
             var updatedRegistration = await this.UpdateApplicationRegistrationAsync(existingRegistration, updateInput, log);
             log.LogInformation($"{subjectType} '{subjectId}' updated application registration '{existingRegistration.DisplayName}'.");
 
-            return new OkObjectResult(new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = updatedRegistration.ToDto() });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = updatedRegistration.ToDto() });
         }, nameof(HandleApplicationUpdate), log);
 
-        private async Task<IActionResult> HandleApplicationDeletion(string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleApplicationDeletion(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration == null)
             {
                 log.LogInformation($"Cannot delete application registration '{applicationId}', as it does not exist.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NoContent,
+                    new BaseResponseObject<string> { Status = "no_content", Result = $"Application registration '{applicationId}' does not exist." });
             }
 
             this.dbContext.Applications.Remove(existingRegistration);
@@ -254,20 +300,23 @@ namespace SafeExchange.Core.Functions.Admin
 
             log.LogInformation($"{subjectType} '{subjectId}' deleted application registration '{applicationId}'.");
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(HandleApplicationDeletion), log);
 
-        private async Task<IActionResult> HandleListApplications(SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleListApplications(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingRegistrations = await this.dbContext.Applications.ToListAsync();
 
-            return new OkObjectResult(new BaseResponseObject<List<ApplicationRegistrationOverviewOutput>>
-            {
-                Status = "ok",
-                Result = existingRegistrations.Select(p => p.ToOverviewDto()).ToList()
-            });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<ApplicationRegistrationOverviewOutput>>
+                {
+                    Status = "ok",
+                    Result = existingRegistrations.Select(p => p.ToOverviewDto()).ToList()
+                });
         }, nameof(HandleListApplications), log);
 
         private async Task<Application> RegisterApplicationAsync(string applicationId, ApplicationRegistrationInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
@@ -298,7 +347,7 @@ namespace SafeExchange.Core.Functions.Admin
             return existingApplication;
         }
 
-        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {
             try
             {
@@ -307,7 +356,10 @@ namespace SafeExchange.Core.Functions.Admin
             catch (Exception ex)
             {
                 log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return new ExceptionResult(ex, true);
+
+                var response = request.CreateResponse(HttpStatusCode.InternalServerError);
+                await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
+                return response;
             }
         }
     }

@@ -4,7 +4,7 @@
 
 namespace SafeExchange.Core
 {
-    using Microsoft.AspNetCore.Http;
+    using Microsoft.Azure.Functions.Worker.Http;
     using System.Security.Claims;
 
     public interface ITokenHelper
@@ -64,6 +64,6 @@ namespace SafeExchange.Core
         /// <param name="request">Incoming http request.</param>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
         /// <returns><see cref="AccountIdAndToken">AccountIdAndToken</see>.</returns>
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequest request, ClaimsPrincipal principal);
+        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal);
     }
 }

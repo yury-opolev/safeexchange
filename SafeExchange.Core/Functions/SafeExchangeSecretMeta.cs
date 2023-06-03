@@ -22,6 +22,8 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Model.Dto.Output;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.Azure.Functions.Worker.Http;
+    using System.Net;
 
     public class SafeExchangeSecretMeta
     {
@@ -54,14 +56,14 @@ namespace SafeExchange.Core.Functions
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
-        public async Task<IActionResult> Run(
-            HttpRequest req,
+        public async Task<HttpResponseData> Run(
+            HttpRequestData req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? req.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -75,7 +77,7 @@ namespace SafeExchange.Core.Functions
                     return await this.HandleSecretMetaCreation(req, secretId, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleSecretMetaRead(secretId, subjectType, subjectId, log);
+                    return await this.HandleSecretMetaRead(req, secretId, subjectType, subjectId, log);
 
                 case "patch":
                     return await this.HandleSecretMetaUpdate(req, secretId, subjectType, subjectId, log);
@@ -84,17 +86,19 @@ namespace SafeExchange.Core.Functions
                     return await this.HandleSecretMetaDeletion(req, secretId, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    return await ActionResults.CreateResponseAsync(
+                        req, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        public async Task<IActionResult> RunList(
-            HttpRequest req, ClaimsPrincipal principal, ILogger log)
+        public async Task<HttpResponseData> RunList(
+            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? req.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -103,30 +107,34 @@ namespace SafeExchange.Core.Functions
             switch (req.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListSecretMeta(subjectType, subjectId, log);
+                    return await this.HandleListSecretMeta(req, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    return await ActionResults.CreateResponseAsync(
+                        req, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        private async Task<IActionResult> HandleListSecretMeta(SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions
                 .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId) && p.CanRead)
                 .ToListAsync();
 
-            return new OkObjectResult(new BaseResponseObject<List<SubjectPermissionsOutput>>
-            {
-                Status = "ok",
-                Result = existingPermissions.Select(p => p.ToDto()).ToList()
-            });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                {
+                    Status = "ok",
+                    Result = existingPermissions.Select(p => p.ToDto()).ToList()
+                });
 
         }, nameof(HandleListSecretMeta), log);
 
-        private async Task<IActionResult> HandleSecretMetaCreation(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretMetaCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata != null)
@@ -166,8 +174,8 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleSecretMetaCreation), log);
 
-        private async Task<IActionResult> HandleSecretMetaRead(string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretMetaRead(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var metadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (metadata == null)
@@ -194,8 +202,8 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleSecretMetaRead), log);
 
-        private async Task<IActionResult> HandleSecretMetaUpdate(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretMetaUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -245,8 +253,8 @@ namespace SafeExchange.Core.Functions
             return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
         }, nameof(HandleSecretMetaUpdate), log);
 
-        private async Task<IActionResult> HandleSecretMetaDeletion(HttpRequest request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretMetaDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -295,7 +303,7 @@ namespace SafeExchange.Core.Functions
             return existingMetadata;
         }
 
-        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {
             try
             {
@@ -304,7 +312,9 @@ namespace SafeExchange.Core.Functions
             catch (Exception ex)
             {
                 log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return new ExceptionResult(ex, true);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.InternalServerError,
+                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
             }
         }
     }

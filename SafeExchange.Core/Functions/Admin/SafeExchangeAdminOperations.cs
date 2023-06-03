@@ -4,14 +4,13 @@
 
 namespace SafeExchange.Core.Functions.Admin
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using System;
+    using System.Net;
     using System.Security.Claims;
-    using System.Web.Http;
 
     public class SafeExchangeAdminOperations
     {
@@ -31,14 +30,14 @@ namespace SafeExchange.Core.Functions.Admin
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public async Task<IActionResult> Run(
-            HttpRequest request,
+        public async Task<HttpResponseData> Run(
+            HttpRequestData request,
             string operationName, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
             var userUpn = this.tokenHelper.GetUpn(principal);
@@ -50,12 +49,14 @@ namespace SafeExchange.Core.Functions.Admin
                     return await this.PerformOperationAsync(operationName, request, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+                    var response = request.CreateResponse(HttpStatusCode.BadRequest);
+                    await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+                    return response;
             }
         }
 
-        private async Task<IActionResult> PerformOperationAsync(string operationName, HttpRequest request, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> PerformOperationAsync(string operationName, HttpRequestData request, ILogger log)
+            => await TryCatch(request, async () =>
         {
             switch (operationName)
             {
@@ -69,11 +70,13 @@ namespace SafeExchange.Core.Functions.Admin
                     break;
             }
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            var response = request.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "ok", Result = "ok" });
+            return response;
 
         }, nameof(PerformOperationAsync), log);
 
-        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {
             try
             {
@@ -81,8 +84,11 @@ namespace SafeExchange.Core.Functions.Admin
             }
             catch (Exception ex)
             {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return new ExceptionResult(ex, true);
+                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}.");
+
+                var response = request.CreateResponse(HttpStatusCode.InternalServerError);
+                await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
+                return response;
             }
         }
     }

@@ -4,8 +4,7 @@
 
 namespace SafeExchange.Core.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
@@ -15,9 +14,8 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using System;
+    using System.Net;
     using System.Security.Claims;
-    using System.Text.Json;
-    using System.Web.Http;
 
     public class SafeExchangeAccess
     {
@@ -42,14 +40,14 @@ namespace SafeExchange.Core.Functions
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
-        public async Task<IActionResult> Run(
-            HttpRequest request,
+        public async Task<HttpResponseData> Run(
+            HttpRequestData request,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
@@ -59,7 +57,9 @@ namespace SafeExchange.Core.Functions
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot handle permissions for secret '{secretId}', as it not exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists" });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists" });
             }
 
             switch (request.Method.ToLower())
@@ -69,7 +69,9 @@ namespace SafeExchange.Core.Functions
                         if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.GrantAccess))
                         {
                             var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
-                            return ActionResults.InsufficientPermissionsResult(PermissionType.GrantAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
+                            return await ActionResults.CreateResponseAsync(
+                                request, HttpStatusCode.Forbidden,
+                                ActionResults.InsufficientPermissions(PermissionType.GrantAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty));
                         }
 
                         var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess);
@@ -81,10 +83,12 @@ namespace SafeExchange.Core.Functions
                         if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read))
                         {
                             var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
-                            return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
+                            return await ActionResults.CreateResponseAsync(
+                                request, HttpStatusCode.Forbidden,
+                                ActionResults.InsufficientPermissions(PermissionType.Read, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty));
                         }
 
-                        return await this.GetAccessListAsync(existingMetadata.ObjectName, log);
+                        return await this.GetAccessListAsync(request, existingMetadata.ObjectName, log);
                     }
 
                 case "delete":
@@ -92,25 +96,31 @@ namespace SafeExchange.Core.Functions
                         if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess))
                         {
                             var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
-                            return ActionResults.InsufficientPermissionsResult(PermissionType.RevokeAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty);
+                            return await ActionResults.CreateResponseAsync(
+                                request, HttpStatusCode.Forbidden,
+                                ActionResults.InsufficientPermissions(PermissionType.RevokeAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty));
                         }
 
                         return await this.RevokeAccessAsync(existingMetadata.ObjectName, request, log);
                     }
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        private async Task<IActionResult> GrantAccessAsync(string secretId, HttpRequest request, bool userCanRevokeAccess, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> GrantAccessAsync(string secretId, HttpRequestData request, bool userCanRevokeAccess, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
             if ((permissionsInput?.Count ?? 0) == 0)
             {
                 log.LogInformation($"Permissions data for '{secretId}' not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Access settings are not provided." });
             }
 
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
@@ -126,31 +136,35 @@ namespace SafeExchange.Core.Functions
 
             await this.dbContext.SaveChangesAsync();
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(GrantAccessAsync), log);
 
-        private async Task<IActionResult> GetAccessListAsync(string secretId, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretId)).ToListAsync();
 
-            return new OkObjectResult(new BaseResponseObject<List<SubjectPermissionsOutput>>
-            {
-                Status = "ok",
-                Result = existingPermissions.Select(p => p.ToDto()).ToList()
-            });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                {
+                    Status = "ok",
+                    Result = existingPermissions.Select(p => p.ToDto()).ToList()
+                });
         }, nameof(GetAccessListAsync), log);
 
-        private async Task<IActionResult> RevokeAccessAsync(string secretId, HttpRequest request, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> RevokeAccessAsync(string secretId, HttpRequestData request, ILogger log)
+            => await TryCatch(request, async () =>
         {
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
             if ((permissionsInput?.Count ?? 0) == 0)
             {
                 log.LogInformation($"Permissions data for '{secretId}' not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Access settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Access settings are not provided." });
             }
 
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
@@ -160,11 +174,12 @@ namespace SafeExchange.Core.Functions
 
             await this.dbContext.SaveChangesAsync();
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(RevokeAccessAsync), log);
 
-        private async Task<List<SubjectPermissionsInput>?> TryGetPermissionsInputAsync(HttpRequest request, ILogger log)
+        private async Task<List<SubjectPermissionsInput>?> TryGetPermissionsInputAsync(HttpRequestData request, ILogger log)
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             try
@@ -178,7 +193,7 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {
             try
             {
@@ -187,7 +202,9 @@ namespace SafeExchange.Core.Functions
             catch (Exception ex)
             {
                 log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return new ExceptionResult(ex, true);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.InternalServerError,
+                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
             }
         }
     }

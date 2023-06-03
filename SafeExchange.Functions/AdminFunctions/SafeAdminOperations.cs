@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Crypto;
@@ -29,10 +27,10 @@ namespace SafeExchange.Functions
             this.adminOperationsHandler = new SafeExchangeAdminOperations(dbContext, tokenHelper, cryptoHelper, globalFilters);
         }
 
-        [FunctionName("SafeExchange-AdminOperations")]
-        public async Task<IActionResult> Run(
+        [Function("SafeExchange-AdminOperations")]
+        public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/admops/{{operationName}}")]
-            HttpRequest req,
+            HttpRequestData req,
             string operationName, ClaimsPrincipal principal, ILogger log)
         {
             return await this.adminOperationsHandler.Run(req, operationName, principal, log);
