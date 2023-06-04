@@ -4,9 +4,13 @@
 
 namespace SafeExchange.Tests
 {
+    using Azure.Core.Serialization;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
@@ -19,6 +23,7 @@ namespace SafeExchange.Tests
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -111,6 +116,13 @@ namespace SafeExchange.Tests
 
             DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
             DateTimeProvider.UseSpecifiedDateTime = true;
+
+            var workerOptions = Options.Create(new WorkerOptions() { Serializer = new JsonObjectSerializer() });
+            var serviceProviderMock = new Mock<IServiceProvider>();
+            serviceProviderMock
+                .Setup(x => x.GetService(typeof(IOptions<WorkerOptions>)))
+                .Returns(workerOptions);
+            TestFactory.FunctionContext.InstanceServices = serviceProviderMock.Object;
         }
 
         [OneTimeTearDown]
@@ -163,13 +175,13 @@ namespace SafeExchange.Tests
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", secondClaimsPrincipal, this.logger);
 
             // [THEN] UnauthorizedObjectResult is returned with Status = 'unauthorized', null Result and non-null Error.
-            var unauthorizedObjectResult = accessResponse as TestHttpResponseData;
+            var forbiddenObjectResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(unauthorizedObjectResult);
-            Assert.AreEqual(401, unauthorizedObjectResult?.StatusCode);
+            Assert.IsNotNull(forbiddenObjectResult);
+            Assert.AreEqual(HttpStatusCode.Forbidden, forbiddenObjectResult?.StatusCode);
 
-            var responseResult = unauthorizedObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.AreEqual("unauthorized", responseResult?.Status);
+            var responseResult = forbiddenObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.AreEqual("forbidden", responseResult?.Status);
             Assert.IsNull(responseResult?.Result);
             Assert.IsNotNull(responseResult?.Error);
         }
@@ -192,7 +204,7 @@ namespace SafeExchange.Tests
             var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -236,7 +248,7 @@ namespace SafeExchange.Tests
             var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -293,13 +305,13 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', but third user has only 'Read, Write, GrantAccess' permissions.
             var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -349,13 +361,13 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', third user has full permissions.
             var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -393,7 +405,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = getResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var getResponseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             var mainContent = getResponseResult?.Result?.Content.FirstOrDefault();
@@ -437,7 +449,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = getResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var getResponseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             var mainContent = getResponseResult?.Result?.Content.FirstOrDefault();
@@ -492,7 +504,7 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             // [THEN] Database contains persisted permissions only for the initial user to the created secret.
             var permissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals("sunshine")).ToListAsync();
@@ -522,7 +534,7 @@ namespace SafeExchange.Tests
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -565,7 +577,7 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
         }
 
         private async Task GrantAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
@@ -597,7 +609,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);

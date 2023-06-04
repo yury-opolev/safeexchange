@@ -122,7 +122,6 @@ namespace SafeExchange.Tests
             DateTimeProvider.UseSpecifiedDateTime = true;
 
             var workerOptions = Options.Create(new WorkerOptions() { Serializer = new JsonObjectSerializer() });
-
             var serviceProviderMock = new Mock<IServiceProvider>();
             serviceProviderMock
                 .Setup(x => x.GetService(typeof(IOptions<WorkerOptions>)))

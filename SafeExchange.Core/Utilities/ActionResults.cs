@@ -22,7 +22,7 @@ namespace SafeExchange.Core
         {
             return new BaseResponseObject<object>
             {
-                Status = "unauthorized",
+                Status = "forbidden",
                 Error = $"Insufficient permissions to do '{permission}' action on '{secretId}'",
                 SubStatus = subStatus
             };
