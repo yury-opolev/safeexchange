@@ -4,26 +4,19 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Http.Internal;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Logging.Abstractions;
-    using Microsoft.Extensions.Primitives;
-    using System.Collections.Generic;
+    using Moq;
+    using SafeExchange.Tests.Utilities;
 
     public class TestFactory
     {
-        public static HttpRequest CreateHttpRequest(string requestMethod, Dictionary<string, StringValues> queryValues = null)
+        public static TestHttpRequestData CreateHttpRequestData(string requestMethod)
         {
-            var context = new DefaultHttpContext();
-
-            var request = context.Request;
-            request.Method = requestMethod;
-
-            if (queryValues != null)
-            {
-                request.Query = new QueryCollection(queryValues);
-            }
+            var context = new Mock<FunctionContext>();
+            var request = new TestHttpRequestData(context.Object);
+            request.SetMethod(requestMethod);
 
             return request;
         }

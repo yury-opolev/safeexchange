@@ -4,7 +4,7 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.Azure.WebJobs;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Functions;
@@ -20,7 +20,7 @@ namespace SafeExchange.Functions
             this.purgeHandler = new SafeExchangePurge(dbContext, purger);
         }
 
-        [FunctionName("SafeExchange-Purge")]
+        [Function("SafeExchange-Purge")]
         public async Task Run(
             [TimerTrigger("0 0 */6 * * *")] // every 6 hours
             TimerInfo timer,

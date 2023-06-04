@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
@@ -28,10 +26,10 @@ namespace SafeExchange.Functions
             this.accessHandler = new SafeExchangeAccess(dbContext, tokenHelper, globalFilters, purger, permissionsManager);
         }
 
-        [FunctionName("SafeExchange-Access")]
-        public async Task<IActionResult> RunSecret(
+        [Function("SafeExchange-Access")]
+        public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", Route = $"{Version}/access/{{secretId}}")]
-            HttpRequest req,
+            HttpRequestData req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
             return await this.accessHandler.Run(req, secretId, principal, log);

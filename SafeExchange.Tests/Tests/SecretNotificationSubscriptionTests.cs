@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
@@ -12,17 +11,15 @@ namespace SafeExchange.Tests
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
-    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
     using System.Linq;
-    using System.Net.Http;
     using System.Security.Claims;
-    using System.Text.Json;
     using System.Threading.Tasks;
 
     [TestFixture]
@@ -172,7 +169,7 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] The user has subscribed to web notifications.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new NotificationSubscriptionCreationInput()
             {
                 Url = "https://someurl",
@@ -180,14 +177,14 @@ namespace SafeExchange.Tests
                 Auth = "someauth"
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretNotificationSubscription.Run(request, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
             Assert.AreEqual("ok", responseResult?.Result);
@@ -210,7 +207,7 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [GIVEN] The user has successfully subscribed to web notifications.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new NotificationSubscriptionCreationInput()
             {
                 Url = "https://someurl",
@@ -218,29 +215,29 @@ namespace SafeExchange.Tests
                 Auth = "someauth"
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretNotificationSubscription.Run(request, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
             // [WHEN] The user is unsubscribing from notifications.
-            var unsubscribeRequest = TestFactory.CreateHttpRequest("delete");
+            var unsubscribeRequest = TestFactory.CreateHttpRequestData("delete");
             var deletionInput = new NotificationSubscriptionDeletionInput()
             {
                 Url = creationInput.Url
             };
 
-            unsubscribeRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(deletionInput)).ReadAsStream();
+            unsubscribeRequest.SetBodyAsJson(deletionInput);
 
             var unsubResponse = await this.secretNotificationSubscription.Run(unsubscribeRequest, claimsPrincipal, this.logger);
-            var unsubOkObjectResult = unsubResponse as OkObjectResult;
+            var unsubOkObjectResult = unsubResponse as TestHttpResponseData;
 
             Assert.IsNotNull(unsubOkObjectResult);
             Assert.AreEqual(200, unsubOkObjectResult?.StatusCode);
 
-            var unsubResponseResult = unsubOkObjectResult?.Value as BaseResponseObject<string>;
+            var unsubResponseResult = unsubOkObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", unsubResponseResult?.Status);
             Assert.IsNull(unsubResponseResult?.Error);
             Assert.AreEqual("ok", unsubResponseResult?.Result);
@@ -257,22 +254,22 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] The user is unsubscribing from inexistent notification.
-            var unsubscribeRequest = TestFactory.CreateHttpRequest("delete");
+            var unsubscribeRequest = TestFactory.CreateHttpRequestData("delete");
             var deletionInput = new NotificationSubscriptionDeletionInput()
             {
                 Url = "https://notexists"
             };
 
-            unsubscribeRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(deletionInput)).ReadAsStream();
+            unsubscribeRequest.SetBodyAsJson(deletionInput);
 
             var unsubResponse = await this.secretNotificationSubscription.Run(unsubscribeRequest, claimsPrincipal, this.logger);
             
             // [THEN] NotFound reponse received.
-            var notFoundObjectResult = unsubResponse as NotFoundObjectResult;
+            var notFoundObjectResult = unsubResponse as TestHttpResponseData;
             Assert.IsNotNull(notFoundObjectResult);
             Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
             Assert.IsNull(responseResult?.Result);
@@ -280,15 +277,15 @@ namespace SafeExchange.Tests
 
         private async Task<List<AccessRequestOutput>> ListRequests(ClaimsIdentity identity)
         {
-            var requestForRequests = TestFactory.CreateHttpRequest("get");
+            var requestForRequests = TestFactory.CreateHttpRequestData("get");
             var claimsPrincipal = new ClaimsPrincipal(identity);
             var listRequestsResponse = await this.secretAccessRequest.RunList(requestForRequests, claimsPrincipal, this.logger);
-            var listResult = listRequestsResponse as OkObjectResult;
+            var listResult = listRequestsResponse as TestHttpResponseData;
 
             Assert.IsNotNull(listResult);
             Assert.AreEqual(200, listResult?.StatusCode);
 
-            var responseResult = listResult?.Value as BaseResponseObject<List<AccessRequestOutput>>;
+            var responseResult = listResult?.ReadBodyAsJson<BaseResponseObject<List<AccessRequestOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
 
@@ -299,7 +296,7 @@ namespace SafeExchange.Tests
         private async Task CreateSecret(ClaimsIdentity identity, string secretName)
         {
             var claimsPrincipal = new ClaimsPrincipal(identity);
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -311,9 +308,9 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
@@ -321,7 +318,7 @@ namespace SafeExchange.Tests
 
         private async Task RequestAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
         {
-            var accessRequest = TestFactory.CreateHttpRequest("post");
+            var accessRequest = TestFactory.CreateHttpRequestData("post");
             var accessInput = new SubjectPermissionsInput()
             {
                 SubjectName = subjectName,
@@ -331,17 +328,17 @@ namespace SafeExchange.Tests
                 CanRevokeAccess = revokeAccess
             };
 
-            accessRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(accessInput)).ReadAsStream();
+            accessRequest.SetBodyAsJson(accessInput);
 
             var claimsPrincipal = new ClaimsPrincipal(identity);
             var accessResponse = await this.secretAccessRequest.Run(accessRequest, secretName, claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = accessResponse as OkObjectResult;
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
-            var responseResult = okObjectAccessResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
             Assert.AreEqual("ok", responseResult?.Result);
@@ -355,7 +352,7 @@ namespace SafeExchange.Tests
 
         private async Task InternalAccessRequest(ClaimsIdentity identity, string method, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
         {
-            var accessRequest = TestFactory.CreateHttpRequest(method);
+            var accessRequest = TestFactory.CreateHttpRequestData(method);
             var accessInput = new List<SubjectPermissionsInput>()
             {
                 new SubjectPermissionsInput()
@@ -368,17 +365,17 @@ namespace SafeExchange.Tests
                 }
             };
 
-            accessRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(accessInput)).ReadAsStream();
+            accessRequest.SetBodyAsJson(accessInput);
 
             var claimsPrincipal = new ClaimsPrincipal(identity);
             var accessResponse = await this.secretAccess.Run(accessRequest, secretName, claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = accessResponse as OkObjectResult;
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
-            var responseResult = okObjectAccessResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
             Assert.AreEqual("ok", responseResult?.Result);

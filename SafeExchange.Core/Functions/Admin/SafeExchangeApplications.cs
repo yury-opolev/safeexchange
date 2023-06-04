@@ -13,7 +13,6 @@ namespace SafeExchange.Core.Functions.Admin
     using System.Net;
     using System.Security.Claims;
     using System.Text.RegularExpressions;
-    using System.Web.Http;
 
     public class SafeExchangeApplications
     {

@@ -126,7 +126,7 @@ namespace SafeExchange.Tests
                 ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
 
-            var request = TestFactory.CreateHttpRequest("get");
+            var request = TestFactory.CreateHttpRequestData("get");
 
             // [WHEN] An arbitrary call to a service
             await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
@@ -175,7 +175,7 @@ namespace SafeExchange.Tests
                 ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
 
-            var request = TestFactory.CreateHttpRequest("get");
+            var request = TestFactory.CreateHttpRequestData("get");
 
             // [WHEN] An arbitrary call to a service
             await localSecretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
@@ -205,7 +205,7 @@ namespace SafeExchange.Tests
                 ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
 
-            var request = TestFactory.CreateHttpRequest("get");
+            var request = TestFactory.CreateHttpRequestData("get");
 
             // [GIVEN] Was making calls to a service before
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
@@ -253,7 +253,7 @@ namespace SafeExchange.Tests
                 ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
 
-            var request = TestFactory.CreateHttpRequest("get");
+            var request = TestFactory.CreateHttpRequestData("get");
 
             // [GIVEN] Was making calls to a service before
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);

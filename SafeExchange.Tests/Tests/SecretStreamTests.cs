@@ -4,7 +4,7 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
@@ -16,6 +16,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
     using System.IO;
@@ -196,16 +197,16 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to upload data to a secret that not exists.
-            var request = TestFactory.CreateHttpRequest("post");
-            request.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(this.imageContent).ReadAsStream());
 
             var response = await this.secretStream.Run(request, "inexistent", "default", string.Empty, claimsPrincipal, this.logger);
-            var notFoundObjectResult = response as NotFoundObjectResult;
+            var notFoundObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(notFoundObjectResult);
             Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -224,16 +225,16 @@ namespace SafeExchange.Tests
             }
 
             // [WHEN] A request is made to upload data to a secret that not exists.
-            var request = TestFactory.CreateHttpRequest("post");
-            request.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(this.imageContent).ReadAsStream());
 
             var response = await this.secretStream.Run(request, objectMetadata.ObjectName, "inexistent", string.Empty, claimsPrincipal, this.logger);
-            var notFoundObjectResult = response as NotFoundObjectResult;
+            var notFoundObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(notFoundObjectResult);
             Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -254,16 +255,16 @@ namespace SafeExchange.Tests
             }
 
             // [WHEN] A request is made to upload data to main content.
-            var request = TestFactory.CreateHttpRequest("post");
-            request.Body = new ByteArrayContent(this.mainContent).ReadAsStream();
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(this.mainContent).ReadAsStream());
 
             var response = await this.secretStream.Run(request, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -301,32 +302,32 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] Main content data was uploaded.
-            var request = TestFactory.CreateHttpRequest("post");
-            request.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(this.imageContent).ReadAsStream());
 
             var response = await this.secretStream.Run(request, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
 
             // [GIVEN] An attachment is uploaded.
-            var request2 = TestFactory.CreateHttpRequest("post");
+            var request2 = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request2.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request2.SetBodyAsJson(creationInput);
 
             var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult2 = response2 as OkObjectResult;
+            var okObjectResult2 = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult2);
             Assert.AreEqual(200, okObjectResult2?.StatusCode);
@@ -337,27 +338,28 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Attachment content for secret is null.");
             }
 
-            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
+            var (chunkMetadata, headers) = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
 
             Assert.IsNotNull(chunkMetadata);
             Assert.AreNotEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata?.ChunkName);
             Assert.AreEqual(this.imageContent.Length, chunkMetadata?.Length);
 
-            var ticketResponseHeader = request.HttpContext.Response.Headers[SafeExchangeSecretStream.AccessTicketHeaderName];
-            var accessTicket = ticketResponseHeader.FirstOrDefault();
+            IEnumerable<string>? ticketResponseHeader = default;
+            headers?.TryGetValues(SafeExchangeSecretStream.AccessTicketHeaderName, out ticketResponseHeader);
+            var accessTicket = ticketResponseHeader?.FirstOrDefault();
             Assert.IsTrue(string.IsNullOrEmpty(accessTicket));
 
             // [WHEN] A request is made to get secret metadata.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. Newly added chunk is present.
             var getResponse = await this.secretMeta.Run(getRequest, DefaultSecretName, claimsPrincipal, this.logger);
-            var okObjectGetResult = getResponse as OkObjectResult;
+            var okObjectGetResult = getResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectGetResult);
             Assert.AreEqual(200, okObjectGetResult?.StatusCode);
 
-            var responseGetResult = okObjectGetResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var responseGetResult = okObjectGetResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             Assert.IsNotNull(responseGetResult);
             Assert.AreEqual("ok", responseGetResult?.Status);
             Assert.IsNull(responseGetResult?.Error);
@@ -370,7 +372,7 @@ namespace SafeExchange.Tests
             }
 
             var secondContent = content.FirstOrDefault(c => !c.IsMain);
-            var chunks = secondContent.Chunks;
+            var chunks = secondContent?.Chunks;
             if (chunks == null || chunks.Count == 0)
             {
                 throw new AssertionException("Chunks is null.");
@@ -411,17 +413,17 @@ namespace SafeExchange.Tests
 
             // [GIVEN] An attachment is uploaded.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var request2 = TestFactory.CreateHttpRequest("post");
+            var request2 = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request2.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request2.SetBodyAsJson(creationInput);
 
             var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult2 = response2 as OkObjectResult;
+            var okObjectResult2 = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult2);
             Assert.AreEqual(200, okObjectResult2?.StatusCode);
@@ -432,16 +434,16 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Attachment content for secret is null.");
             }
 
-            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
+            var (chunkMetadata, headers) = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
 
             // [WHEN] A request is made to download secret data.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             var getResponse = await this.secretStream.Run(getRequest, DefaultSecretName, attachmentContent.ContentName, chunkMetadata.ChunkName, claimsPrincipal, this.logger);
-            var fileStreamResult = getResponse as FileStreamResult;
+            var fileStreamResult = getResponse as TestHttpResponseData;
 
-            var dataStream = fileStreamResult?.FileStream;
+            var dataStream = fileStreamResult?.Body;
             if (dataStream == null)
             {
                 throw new AssertionException($"Data stream for secret is null.");
@@ -475,12 +477,12 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Main content for secret is null.");
             }
 
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.imageContent_part_1).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
@@ -491,11 +493,11 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(15);
 
             // [WHEN] A request is made to download secret data after access tikcet expiration.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             var getResponse = await this.secretStream.Run(getRequest, DefaultSecretName, mainContent.ContentName, $"{0:00000000}", claimsPrincipal, this.logger);
-            var unprocessableEntityObjectResult = getResponse as UnprocessableEntityObjectResult;
+            var unprocessableEntityObjectResult = getResponse as TestHttpResponseData;
             if (unprocessableEntityObjectResult == null)
             {
                 throw new AssertionException($"UnprocessableEntityObjectResult result is null.");
@@ -504,7 +506,7 @@ namespace SafeExchange.Tests
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual(422, unprocessableEntityObjectResult?.StatusCode);
 
-            var responseResult = unprocessableEntityObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("unprocessable", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -529,20 +531,20 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Main content for secret is null.");
             }
 
-            var chunkMetadata = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName, 1950);
+            var (chunkMetadata, headers) = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName, 1950);
 
             // [WHEN] A request is made to drop secret content.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var dropRequest = TestFactory.CreateHttpRequest("patch");
+            var dropRequest = TestFactory.CreateHttpRequestData("patch");
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. Chunk list is empty.
             var dropResponse = await this.secretContentMeta.RunDrop(dropRequest, DefaultSecretName, mainContent.ContentName, claimsPrincipal, this.logger);
-            var okObjectResult = dropResponse as OkObjectResult;
+            var okObjectResult = dropResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -551,19 +553,19 @@ namespace SafeExchange.Tests
             Assert.AreEqual(0, metadata?.Chunks.Count);
         }
 
-        private async Task<ChunkCreationOutput> UploadDataAsync(string secretName, string contentName, int expectedContentLength)
+        private async Task<(ChunkCreationOutput, HttpHeadersCollection?)> UploadDataAsync(string secretName, string contentName, int expectedContentLength)
         {
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var request = TestFactory.CreateHttpRequest("post");
-            request.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(this.imageContent).ReadAsStream());
 
             var response = await this.secretStream.Run(request, secretName, contentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -578,7 +580,7 @@ namespace SafeExchange.Tests
             Assert.AreEqual(expectedContentLength, chunkMetadata.Length);
             Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata.AccessTicket));
 
-            return chunkMetadata;
+            return (chunkMetadata, okObjectResult?.Headers);
         }
 
         [Test]
@@ -595,17 +597,17 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] First part of main content data was uploaded.
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.mainContent_part_1).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.mainContent_part_1).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
 
-            var responseResult1 = okObjectResult1?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult1);
             Assert.AreEqual("ok", responseResult1?.Status);
             Assert.IsNull(responseResult1?.Error);
@@ -622,23 +624,23 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [WHEN] A request is made to upload second and final part of content data.
-            var request2 = TestFactory.CreateHttpRequest("post");
-            request2.Headers[SafeExchangeSecretStream.AccessTicketHeaderName] = accessTicket1;
+            var request2 = TestFactory.CreateHttpRequestData("post");
+            request2.Headers.Add(SafeExchangeSecretStream.AccessTicketHeaderName, accessTicket1);
 
-            request2.Body = new ByteArrayContent(this.mainContent_part_2).ReadAsStream();
+            request2.SetBodyAsStream(new ByteArrayContent(this.mainContent_part_2).ReadAsStream());
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult2 = response2 as OkObjectResult;
+            var okObjectResult2 = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult2);
             Assert.AreEqual(200, okObjectResult2?.StatusCode);
 
-            var ticketResponseHeader2 = request2.HttpContext.Response.Headers[SafeExchangeSecretStream.AccessTicketHeaderName];
-            var accessTicket2 = ticketResponseHeader2.FirstOrDefault();
+            response2.Headers.TryGetValues(SafeExchangeSecretStream.AccessTicketHeaderName, out var ticketResponseHeader2);
+            var accessTicket2 = ticketResponseHeader2?.FirstOrDefault();
             Assert.IsTrue(string.IsNullOrEmpty(accessTicket2));
 
-            var responseResult2 = okObjectResult2?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult2 = okObjectResult2?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult2);
             Assert.AreEqual("ok", responseResult2?.Status);
             Assert.IsNull(responseResult2?.Error);
@@ -668,48 +670,48 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] First part of main content data was uploaded.
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.imageContent).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
 
             // [GIVEN] A second content is added to the secret.
-            var request2 = TestFactory.CreateHttpRequest("post");
+            var request2 = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request2.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request2.SetBodyAsJson(creationInput);
 
             var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult2 = response2 as OkObjectResult;
+            var okObjectResult2 = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult2);
             Assert.AreEqual(200, okObjectResult2?.StatusCode);
 
-            var content2 = okObjectResult2?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var content2 = okObjectResult2?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             var content2Name = content2?.Result?.ContentName;
             Assert.IsFalse(string.IsNullOrEmpty(content2Name));
 
             // [WHEN] A request is made to upload data for second content.
-            var request3 = TestFactory.CreateHttpRequest("post");
-            request3.Body = new ByteArrayContent(this.imageContent).ReadAsStream();
+            var request3 = TestFactory.CreateHttpRequestData("post");
+            request3.SetBodyAsStream(new ByteArrayContent(this.imageContent).ReadAsStream());
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             var response3 = await this.secretStream.Run(request3, DefaultSecretName, content2Name, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult3 = response3 as OkObjectResult;
+            var okObjectResult3 = response3 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult3);
             Assert.AreEqual(200, okObjectResult3?.StatusCode);
 
-            var responseResult3 = okObjectResult3?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult3 = okObjectResult3?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult3);
             Assert.AreEqual("ok", responseResult3?.Status);
             Assert.IsNull(responseResult3?.Error);
@@ -738,17 +740,17 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] First part of main content data was uploaded.
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.imageContent_part_1).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
 
-            var responseResult1 = okObjectResult1?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult1);
             Assert.AreEqual("ok", responseResult1?.Status);
             Assert.IsNull(responseResult1?.Error);
@@ -760,17 +762,17 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [WHEN] Another user is trying to upload content data.
-            var request2 = TestFactory.CreateHttpRequest("post");
-            request2.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            var request2 = TestFactory.CreateHttpRequestData("post");
+            request2.SetBodyAsStream(new ByteArrayContent(this.imageContent_part_1).ReadAsStream());
 
             // [THEN] UnprocessableEntityObjectResult is returned with Status = 'unprocessable', null Result and non-null Error.
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var unprocessableEntityObjectResult = response2 as UnprocessableEntityObjectResult;
+            var unprocessableEntityObjectResult = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual(422, unprocessableEntityObjectResult?.StatusCode);
 
-            var responseResult2 = unprocessableEntityObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult2 = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual("unprocessable", responseResult2?.Status);
             Assert.IsNotNull(responseResult2?.Error);
@@ -791,17 +793,17 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] First part of main content data was uploaded.
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.imageContent_part_1).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
 
-            var responseResult1 = okObjectResult1?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult1);
             Assert.AreEqual("ok", responseResult1?.Status);
             Assert.IsNull(responseResult1?.Error);
@@ -813,16 +815,16 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [WHEN] Another user is trying to download content data.
-            var request2 = TestFactory.CreateHttpRequest("get");
+            var request2 = TestFactory.CreateHttpRequestData("get");
 
             // [THEN] UnprocessableEntityObjectResult is returned with Status = 'unprocessable', null Result and non-null Error.
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, $"{0:00000000}", claimsPrincipal, this.logger);
-            var unprocessableEntityObjectResult = response2 as UnprocessableEntityObjectResult;
+            var unprocessableEntityObjectResult = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual(422, unprocessableEntityObjectResult?.StatusCode);
 
-            var responseResult2 = unprocessableEntityObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult2 = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual("unprocessable", responseResult2?.Status);
             Assert.IsNotNull(responseResult2?.Error);
@@ -843,17 +845,17 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] First part of main content data was uploaded.
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.imageContent_part_1).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
 
-            var responseResult1 = okObjectResult1?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult1);
             Assert.AreEqual("ok", responseResult1?.Status);
             Assert.IsNull(responseResult1?.Error);
@@ -865,16 +867,16 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [WHEN] Another user is trying to drop content data.
-            var request2 = TestFactory.CreateHttpRequest("patch");
+            var request2 = TestFactory.CreateHttpRequestData("patch");
 
             // [THEN] UnprocessableEntityObjectResult is returned with Status = 'unprocessable', null Result and non-null Error.
             var response2 = await this.secretContentMeta.RunDrop(request2, DefaultSecretName, mainContent.ContentName, claimsPrincipal, this.logger);
-            var unprocessableEntityObjectResult = response2 as UnprocessableEntityObjectResult;
+            var unprocessableEntityObjectResult = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual(422, unprocessableEntityObjectResult?.StatusCode);
 
-            var responseResult2 = unprocessableEntityObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult2 = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(unprocessableEntityObjectResult);
             Assert.AreEqual("unprocessable", responseResult2?.Status);
             Assert.IsNotNull(responseResult2?.Error);
@@ -895,17 +897,17 @@ namespace SafeExchange.Tests
             }
 
             // [GIVEN] First part of main content data was uploaded.
-            var request1 = TestFactory.CreateHttpRequest("post");
-            request1.Headers[SafeExchangeSecretStream.OperationTypeHeaderName] = SafeExchangeSecretStream.InterimOperationType;
-            request1.Body = new ByteArrayContent(this.imageContent_part_1).ReadAsStream();
+            var request1 = TestFactory.CreateHttpRequestData("post");
+            request1.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request1.SetBodyAsStream(new ByteArrayContent(this.imageContent_part_1).ReadAsStream());
 
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult1 = response1 as OkObjectResult;
+            var okObjectResult1 = response1 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult1);
             Assert.AreEqual(200, okObjectResult1?.StatusCode);
 
-            var responseResult1 = okObjectResult1?.Value as BaseResponseObject<ChunkCreationOutput>;
+            var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
             Assert.IsNotNull(responseResult1);
             Assert.AreEqual("ok", responseResult1?.Status);
             Assert.IsNull(responseResult1?.Error);
@@ -917,16 +919,16 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(15);
 
             // [WHEN] Another user is trying to drop content data after access ticket timeout.
-            var request2 = TestFactory.CreateHttpRequest("patch");
+            var request2 = TestFactory.CreateHttpRequestData("patch");
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             var response2 = await this.secretContentMeta.RunDrop(request2, DefaultSecretName, mainContent.ContentName, claimsPrincipal, this.logger);
-            var okObjectResult2 = response2 as OkObjectResult;
+            var okObjectResult2 = response2 as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult2);
             Assert.AreEqual(200, okObjectResult2?.StatusCode);
 
-            var responseResult2 = okObjectResult2?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var responseResult2 = okObjectResult2?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             Assert.IsNotNull(responseResult2);
             Assert.AreEqual("ok", responseResult2?.Status);
             Assert.IsNull(responseResult2?.Error);
@@ -938,7 +940,7 @@ namespace SafeExchange.Tests
         private async Task CreateSecret(string secretName)
         {
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -950,9 +952,9 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);

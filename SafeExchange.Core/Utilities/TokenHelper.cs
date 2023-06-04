@@ -6,7 +6,6 @@ namespace SafeExchange.Core
 {
     using System.Net.Http.Headers;
     using System.Security.Claims;
-    using Microsoft.AspNetCore.Http;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
 

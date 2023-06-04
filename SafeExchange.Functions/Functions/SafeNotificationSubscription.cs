@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
@@ -26,10 +24,10 @@ namespace SafeExchange.Functions
             this.notificationSubscriptionHandler = new SafeExchangeNotificationSubscription(dbContext, tokenHelper, globalFilters);
         }
 
-        [FunctionName("SafeExchange-NotificationSubscription")]
-        public async Task<IActionResult> Run(
+        [Function("SafeExchange-NotificationSubscription")]
+        public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "delete", Route = $"{Version}/notificationsub/web")]
-            HttpRequest req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
         {
             return await this.notificationSubscriptionHandler.Run(req, principal, log);
         }

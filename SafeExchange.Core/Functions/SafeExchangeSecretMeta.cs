@@ -5,11 +5,11 @@
 namespace SafeExchange.Core.Functions
 {
     using System.Threading.Tasks;
-    using Microsoft.AspNetCore.Mvc;
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
     using System;
     using System.IO;
+
     using Microsoft.Extensions.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
@@ -21,6 +21,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Net;
+    using Grpc.Core;
 
     public class SafeExchangeSecretMeta
     {
@@ -137,7 +138,9 @@ namespace SafeExchange.Core.Functions
             if (existingMetadata != null)
             {
                 log.LogInformation($"Cannot create secret '{secretId}', as already exists");
-                return new ConflictObjectResult(new BaseResponseObject<object> { Status = "conflict", Error = $"Secret '{secretId}' already exists" });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Conflict,
+                    new BaseResponseObject<object> { Status = "conflict", Error = $"Secret '{secretId}' already exists." });
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -149,26 +152,33 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for '{secretId}'.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Expiration settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
             }
 
             if ((metadataInput is null) || metadataInput.ExpirationSettings == null)
             {
                 log.LogInformation($"Expiration settings for '{secretId}' not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Expiration settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
             }
 
             if (string.IsNullOrEmpty(secretId))
             {
                 log.LogInformation("Secret id value is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Secret id value is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
             }
 
             var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
             log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '{subjectId}' are set.");
 
-            return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = createdMetadata.ToDto() });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = createdMetadata.ToDto() });
         }, nameof(HandleSecretMetaCreation), log);
 
         private async Task<HttpResponseData> HandleSecretMetaRead(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
@@ -178,25 +188,32 @@ namespace SafeExchange.Core.Functions
             if (metadata == null)
             {
                 log.LogInformation($"Cannot get secret '{secretId}', as no metadata exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!metadata.KeepInStorage)
             {
                 log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
             }
 
             if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Read, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Read, secretId, string.Empty));
             }
 
             metadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
-            return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = metadata.ToDto() });
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = metadata.ToDto() });
         }, nameof(HandleSecretMetaRead), log);
 
         private async Task<HttpResponseData> HandleSecretMetaUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
@@ -206,18 +223,24 @@ namespace SafeExchange.Core.Functions
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot update secret '{secretId}', as no metadata exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!existingMetadata.KeepInStorage)
             {
                 log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
             }
 
             if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -229,25 +252,33 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for '{secretId}'.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Expiration settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
             }
 
             if ((metadataInput is null) || metadataInput.ExpirationSettings == null)
             {
                 log.LogInformation($"Expiration settings for '{secretId}' not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Expiration settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
             }
 
             if (string.IsNullOrEmpty(secretId))
             {
                 log.LogInformation("Secret id value is not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Secret id value is not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
             }
 
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
             log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
 
-            return new OkObjectResult(new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
         }, nameof(HandleSecretMetaUpdate), log);
 
         private async Task<HttpResponseData> HandleSecretMetaDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
@@ -257,24 +288,32 @@ namespace SafeExchange.Core.Functions
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot delete secret '{secretId}', as no metadata exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!existingMetadata.KeepInStorage)
             {
                 log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
             }
 
             if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
             await this.purger.PurgeAsync(secretId, this.dbContext);
             log.LogInformation($"{subjectType} '{subjectId}' deleted secret '{secretId}'");
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(HandleSecretMetaDeletion), log);
 
         private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, SubjectType subjectType, string subjectId, ILogger log)

@@ -18,7 +18,6 @@ namespace SafeExchange.Core.Functions
     using System;
     using System.Net;
     using System.Security.Claims;
-    using System.Web.Http;
 
     public class SafeExchangeAccessRequest
     {

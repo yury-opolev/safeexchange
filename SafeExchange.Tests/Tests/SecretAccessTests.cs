@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
@@ -16,12 +15,11 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
     using System.Linq;
-    using System.Net.Http;
     using System.Security.Claims;
-    using System.Text.Json;
     using System.Threading.Tasks;
 
     [TestFixture]
@@ -160,17 +158,17 @@ namespace SafeExchange.Tests
             await this.CreateSecret(this.firstIdentity, "sunshine");
 
             // [WHEN] A second user has made a request to get secret access list.
-            var accessRequest = TestFactory.CreateHttpRequest("get");
+            var accessRequest = TestFactory.CreateHttpRequestData("get");
             var secondClaimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", secondClaimsPrincipal, this.logger);
 
             // [THEN] UnauthorizedObjectResult is returned with Status = 'unauthorized', null Result and non-null Error.
-            var unauthorizedObjectResult = accessResponse as ObjectResult;
+            var unauthorizedObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(unauthorizedObjectResult);
             Assert.AreEqual(401, unauthorizedObjectResult?.StatusCode);
 
-            var responseResult = unauthorizedObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = unauthorizedObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.AreEqual("unauthorized", responseResult?.Status);
             Assert.IsNull(responseResult?.Result);
             Assert.IsNotNull(responseResult?.Error);
@@ -186,17 +184,17 @@ namespace SafeExchange.Tests
             await this.GrantAccess(this.firstIdentity, "sunshine", "second@test.test", true, false, false, false);
 
             // [WHEN] A second user has made a request to get secret access list.
-            var accessRequest = TestFactory.CreateHttpRequest("get");
+            var accessRequest = TestFactory.CreateHttpRequestData("get");
             var secondClaimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", secondClaimsPrincipal, this.logger);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result with a list of permissions and null Error.
-            var okObjectResult = accessResponse as OkObjectResult;
+            var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<List<SubjectPermissionsOutput>>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
 
@@ -230,17 +228,17 @@ namespace SafeExchange.Tests
             await this.GrantAccess(this.firstIdentity, "sunshine", "second@test.test", true, true, true, false);
 
             // [WHEN] A second user has made a request to get secret access list.
-            var accessRequest = TestFactory.CreateHttpRequest("get");
+            var accessRequest = TestFactory.CreateHttpRequestData("get");
             var secondClaimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", secondClaimsPrincipal, this.logger);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result with a list of permissions and null Error.
-            var okObjectResult = accessResponse as OkObjectResult;
+            var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<List<SubjectPermissionsOutput>>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
 
@@ -274,7 +272,7 @@ namespace SafeExchange.Tests
             await this.GrantAccess(this.firstIdentity, "sunshine", "second@test.test", true, true, true, false);
 
             // [WHEN] The second user is granting full access to a third user.
-            var accessRequest = TestFactory.CreateHttpRequest("post");
+            var accessRequest = TestFactory.CreateHttpRequestData("post");
             var accessInput = new List<SubjectPermissionsInput>()
             {
                 new SubjectPermissionsInput()
@@ -287,23 +285,23 @@ namespace SafeExchange.Tests
                 }
             };
 
-            accessRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(accessInput)).ReadAsStream();
+            accessRequest.SetBodyAsJson(accessInput);
 
             var claimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = accessResponse as OkObjectResult;
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', but third user has only 'Read, Write, GrantAccess' permissions.
-            var okObjectResult = accessResponse as OkObjectResult;
+            var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
             Assert.AreEqual("ok", responseResult?.Result);
@@ -330,7 +328,7 @@ namespace SafeExchange.Tests
             await this.GrantAccess(this.firstIdentity, "sunshine", "second@test.test", true, true, true, true);
 
             // [WHEN] The second user is granting full access to a third user.
-            var accessRequest = TestFactory.CreateHttpRequest("post");
+            var accessRequest = TestFactory.CreateHttpRequestData("post");
             var accessInput = new List<SubjectPermissionsInput>()
             {
                 new SubjectPermissionsInput()
@@ -343,23 +341,23 @@ namespace SafeExchange.Tests
                 }
             };
 
-            accessRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(accessInput)).ReadAsStream();
+            accessRequest.SetBodyAsJson(accessInput);
 
             var claimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = accessResponse as OkObjectResult;
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', third user has full permissions.
-            var okObjectResult = accessResponse as OkObjectResult;
+            var okObjectResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
             Assert.AreEqual("ok", responseResult?.Result);
@@ -388,16 +386,16 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [GIVEN] The second user can read the secret metadata.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
             var claimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var getResponse = await this.secretMeta.Run(getRequest, "sunshine", claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = getResponse as OkObjectResult;
+            var okObjectAccessResult = getResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
-            var getResponseResult = okObjectAccessResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var getResponseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             var mainContent = getResponseResult?.Result?.Content.FirstOrDefault();
             if (mainContent == null)
             {
@@ -432,16 +430,16 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [GIVEN] The second user can read the secret metadata.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
             var claimsPrincipal = new ClaimsPrincipal(this.secondIdentity);
             var getResponse = await this.secretMeta.Run(getRequest, "sunshine", claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = getResponse as OkObjectResult;
+            var okObjectAccessResult = getResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
-            var getResponseResult = okObjectAccessResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var getResponseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             var mainContent = getResponseResult?.Result?.Content.FirstOrDefault();
             if (mainContent == null)
             {
@@ -475,7 +473,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A user with valid credentials.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -487,11 +485,11 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             // [WHEN] A request is made to create a secret.
             var response = await this.secretMeta.Run(request, "sunshine", claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
@@ -518,15 +516,15 @@ namespace SafeExchange.Tests
 
             // [WHEN] A request is made to get secret access list.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var accessRequest = TestFactory.CreateHttpRequest("get");
+            var accessRequest = TestFactory.CreateHttpRequestData("get");
             var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", claimsPrincipal, this.logger);
-            var okObjectAccessResult = accessResponse as OkObjectResult;
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
-            var responseResult = okObjectAccessResult?.Value as BaseResponseObject<List<SubjectPermissionsOutput>>;
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
 
@@ -550,7 +548,7 @@ namespace SafeExchange.Tests
         private async Task CreateSecret(ClaimsIdentity identity, string secretName)
         {
             var claimsPrincipal = new ClaimsPrincipal(identity);
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -562,9 +560,9 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
@@ -578,7 +576,7 @@ namespace SafeExchange.Tests
 
         private async Task InternalAccessRequest(ClaimsIdentity identity, string method, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
         {
-            var accessRequest = TestFactory.CreateHttpRequest(method);
+            var accessRequest = TestFactory.CreateHttpRequestData(method);
             var accessInput = new List<SubjectPermissionsInput>()
             {
                 new SubjectPermissionsInput()
@@ -591,17 +589,17 @@ namespace SafeExchange.Tests
                 }
             };
 
-            accessRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(accessInput)).ReadAsStream();
+            accessRequest.SetBodyAsJson(accessInput);
 
             var claimsPrincipal = new ClaimsPrincipal(identity);
             var accessResponse = await this.secretAccess.Run(accessRequest, secretName, claimsPrincipal, this.logger);
 
-            var okObjectAccessResult = accessResponse as OkObjectResult;
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
             Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
 
-            var responseResult = okObjectAccessResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
             Assert.AreEqual("ok", responseResult?.Result);

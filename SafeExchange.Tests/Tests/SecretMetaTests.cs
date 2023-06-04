@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Mvc;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
@@ -16,12 +15,12 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Net.Http;
     using System.Security.Claims;
-    using System.Text.Json;
     using System.Threading.Tasks;
 
     [TestFixture]
@@ -143,15 +142,15 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request to get secret metadata is made for nonexistent secret.
-            var request = TestFactory.CreateHttpRequest("get");
+            var request = TestFactory.CreateHttpRequestData("get");
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
-            var notFoundObjectResult = response as NotFoundObjectResult;
+            var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', Error message and null Result
             Assert.IsNotNull(notFoundObjectResult);
             Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -165,15 +164,15 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request to get secret metadata is made for nonexistent secret.
-            var request = TestFactory.CreateHttpRequest("patch");
+            var request = TestFactory.CreateHttpRequestData("patch");
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
-            var notFoundObjectResult = response as NotFoundObjectResult;
+            var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', Error message and null Result
             Assert.IsNotNull(notFoundObjectResult);
             Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -187,15 +186,15 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request to get secret metadata is made for nonexistent secret.
-            var request = TestFactory.CreateHttpRequest("delete");
+            var request = TestFactory.CreateHttpRequestData("delete");
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
-            var notFoundObjectResult = response as NotFoundObjectResult;
+            var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', Error message and null Result
             Assert.IsNotNull(notFoundObjectResult);
             Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -209,7 +208,7 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request to create secret is made, without secret id specified.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -221,16 +220,16 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretMeta.Run(request, string.Empty, claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
             Assert.IsNotNull(badRequestObjectResult);
             Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("error", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -244,15 +243,15 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request to create secret is made, without body specified.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var response = await this.secretMeta.Run(request, "badrequest", claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
             Assert.IsNotNull(badRequestObjectResult);
             Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("error", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -265,7 +264,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A secret with name 'x' exists.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -277,22 +276,22 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, "badrequest2", claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
             // [WHEN] A request to update secret 'x' is made, without body specified.
-            request = TestFactory.CreateHttpRequest("patch");
+            request = TestFactory.CreateHttpRequestData("patch");
             response = await this.secretMeta.Run(request, "badrequest2", claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
             Assert.IsNotNull(badRequestObjectResult);
             Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("error", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -306,18 +305,17 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request to create secret is made, without body specified.
-            var request = TestFactory.CreateHttpRequest("post");
-            var creationInputString = DefaultJsonSerializer.Serialize(new MetadataCreationInput());
-            request.Body = new StringContent(creationInputString).ReadAsStream();
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(new MetadataCreationInput());
 
             var response = await this.secretMeta.Run(request, "badrequest", claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             Assert.IsNotNull(badRequestObjectResult);
             Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("error", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -330,7 +328,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A secret with name 'x' exists.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -342,24 +340,24 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, "badrequest3", claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
             // [WHEN] A request to update secret 'x' is made, without expiration settings specified.
-            request = TestFactory.CreateHttpRequest("patch");
+            request = TestFactory.CreateHttpRequestData("patch");
             var patchInput = new MetadataUpdateInput();
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(patchInput)).ReadAsStream();
+            request.SetBodyAsJson(patchInput);
             response = await this.secretMeta.Run(request, "badrequest3", claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
             Assert.IsNotNull(badRequestObjectResult);
             Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("error", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -373,7 +371,7 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to create secret.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -385,16 +383,16 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretMeta.Run(request, "sunshine", claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -445,10 +443,10 @@ namespace SafeExchange.Tests
             var secretCount = 10;
             for (int i = 0; i < secretCount; i++)
             {
-                var request = TestFactory.CreateHttpRequest("post");
-                request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+                var request = TestFactory.CreateHttpRequestData("post");
+                request.SetBodyAsJson(creationInput);
                 var response = await this.secretMeta.Run(request, $"somesecret{i}", claimsPrincipal, this.logger);
-                var okObjectResult = response as OkObjectResult;
+                var okObjectResult = response as TestHttpResponseData;
 
                 Assert.IsNotNull(okObjectResult);
                 Assert.AreEqual(200, okObjectResult?.StatusCode);
@@ -457,14 +455,14 @@ namespace SafeExchange.Tests
             var secrets = await this.dbContext.Objects.Where(o => o.ObjectName.StartsWith("somesecret")).ToListAsync();
             Assert.AreEqual(secretCount, secrets.Count);
 
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
             var getResponse = await this.secretMeta.RunList(getRequest, claimsPrincipal, this.logger);
-            var okObjectListResult = getResponse as OkObjectResult;
+            var okObjectListResult = getResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectListResult);
             Assert.AreEqual(200, okObjectListResult?.StatusCode);
 
-            var listResponseResult = okObjectListResult?.Value as BaseResponseObject<List<SubjectPermissionsOutput>>;
+            var listResponseResult = okObjectListResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.IsNotNull(listResponseResult);
             Assert.AreEqual("ok", listResponseResult?.Status);
             Assert.IsNull(listResponseResult?.Error);
@@ -480,7 +478,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A user with valid credentials.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -492,26 +490,26 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretMeta.Run(request, "twice", claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             // [GIVEN] A secret 'x' exists.
             Assert.IsNotNull(okObjectResult);
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
             // [WHEN] A request is made to create secret with then same name 'x'.
-            request = TestFactory.CreateHttpRequest("post");
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(creationInput);
             response = await this.secretMeta.Run(request, "twice", claimsPrincipal, this.logger);
-            var conflictObjectResult = response as ConflictObjectResult;
+            var conflictObjectResult = response as TestHttpResponseData;
 
             // [THEN] ConflictObjectResult is returned with Status = 'conflict', null Result and non-null Error.
             Assert.IsNotNull(conflictObjectResult);
             Assert.AreEqual(409, conflictObjectResult?.StatusCode);
 
-            var responseResult = conflictObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = conflictObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("conflict", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -524,7 +522,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A user with valid credentials.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var postRequest = TestFactory.CreateHttpRequest("post");
+            var postRequest = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -536,10 +534,10 @@ namespace SafeExchange.Tests
                 }
             };
 
-            postRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            postRequest.SetBodyAsJson(creationInput);
 
             var postResponse = await this.secretMeta.Run(postRequest, "sunshine2", claimsPrincipal, this.logger);
-            var okObjectResult = postResponse as OkObjectResult;
+            var okObjectResult = postResponse as TestHttpResponseData;
 
             // [GIVEN] Secret is created with name 'x'.
             Assert.IsNotNull(okObjectResult);
@@ -548,14 +546,14 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
             // [WHEN] The same user is making a request to get secret 'x'.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
             var getResponse = await this.secretMeta.Run(getRequest, "sunshine2", claimsPrincipal, this.logger);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            okObjectResult = getResponse as OkObjectResult;
+            okObjectResult = getResponse as TestHttpResponseData;
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -587,7 +585,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A user with valid credentials.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var postRequest = TestFactory.CreateHttpRequest("post");
+            var postRequest = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -599,10 +597,10 @@ namespace SafeExchange.Tests
                 }
             };
 
-            postRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            postRequest.SetBodyAsJson(creationInput);
 
             var postResponse = await this.secretMeta.Run(postRequest, "sunshine3", claimsPrincipal, this.logger);
-            var okObjectResult = postResponse as OkObjectResult;
+            var okObjectResult = postResponse as TestHttpResponseData;
 
             // [GIVEN] Secret is created with name 'x'.
             Assert.IsNotNull(okObjectResult);
@@ -611,7 +609,7 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
             // [WHEN] The same user is making a request to get secret 'x'.
-            var patchRequest = TestFactory.CreateHttpRequest("patch");
+            var patchRequest = TestFactory.CreateHttpRequestData("patch");
             var updateInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -623,14 +621,14 @@ namespace SafeExchange.Tests
                 }
             };
 
-            patchRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(updateInput)).ReadAsStream();
+            patchRequest.SetBodyAsJson(updateInput);
             var patchResponse = await this.secretMeta.Run(patchRequest, "sunshine3", claimsPrincipal, this.logger);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            okObjectResult = patchResponse as OkObjectResult;
+            okObjectResult = patchResponse as TestHttpResponseData;
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -662,7 +660,7 @@ namespace SafeExchange.Tests
             // [GIVEN] A user with valid credentials.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
-            var postRequest = TestFactory.CreateHttpRequest("post");
+            var postRequest = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -674,10 +672,10 @@ namespace SafeExchange.Tests
                 }
             };
 
-            postRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            postRequest.SetBodyAsJson(creationInput);
 
             var postResponse = await this.secretMeta.Run(postRequest, "sunshine4", claimsPrincipal, this.logger);
-            var okObjectResult = postResponse as OkObjectResult;
+            var okObjectResult = postResponse as TestHttpResponseData;
 
             // [GIVEN] Secret is created with name 'x'.
             Assert.IsNotNull(okObjectResult);
@@ -686,14 +684,14 @@ namespace SafeExchange.Tests
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
             // [WHEN] The same user is making a request to delete secret 'x'.
-            var deleteRequest = TestFactory.CreateHttpRequest("delete");
+            var deleteRequest = TestFactory.CreateHttpRequestData("delete");
             var deleteResponse = await this.secretMeta.Run(deleteRequest, "sunshine4", claimsPrincipal, this.logger);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', Result = 'ok' and null Error.
-            okObjectResult = deleteResponse as OkObjectResult;
+            okObjectResult = deleteResponse as TestHttpResponseData;
             Assert.AreEqual(200, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);

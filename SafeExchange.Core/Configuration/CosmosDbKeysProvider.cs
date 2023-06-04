@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Configuration
     using Microsoft.Extensions.Configuration;
     using System;
     using System.Collections.Generic;
+    using System.Configuration;
     using System.Net.Http;
     using System.Net.Http.Headers;
     using System.Threading.Tasks;
@@ -44,7 +45,13 @@ namespace SafeExchange.Core.Configuration
             HttpClient httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
             var result = await httpClient.PostAsync(endpoint, new StringContent(""));
-            this.databaseKeys = await result.Content.ReadAsAsync<DatabaseAccountListKeysResult>();
+            var resultContent = await result.Content.ReadAsStringAsync();
+            if (!string.IsNullOrEmpty(resultContent))
+            {
+                throw new ConfigurationErrorsException("Could not retrieve database keys.");
+            }
+
+            this.databaseKeys = DefaultJsonSerializer.Deserialize<DatabaseAccountListKeysResult>(resultContent ?? string.Empty);
         }
 
         private IDictionary<string, string> CreateConfigurationValues()

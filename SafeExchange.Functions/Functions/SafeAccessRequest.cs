@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
@@ -29,19 +27,19 @@ namespace SafeExchange.Functions.Functions
             this.accessRequestHandler = new SafeExchangeAccessRequest(configuration, dbContext, globalFilters, tokenHelper, purger, permissionsMaanger);
         }
 
-        [FunctionName("SafeExchange-AccessRequest")]
-        public async Task<IActionResult> RunSecret(
+        [Function("SafeExchange-AccessRequest")]
+        public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "patch", "delete", Route = $"{Version}/accessrequest/{{secretId}}")]
-            HttpRequest req,
+            HttpRequestData req,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
             return await this.accessRequestHandler.Run(req, secretId, principal, log);
         }
 
-        [FunctionName("SafeExchange-ListAccessRequests")]
-        public async Task<IActionResult> RunListSecret(
+        [Function("SafeExchange-ListAccessRequests")]
+        public async Task<HttpResponseData> RunListSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/accessrequest-list")]
-            HttpRequest req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
         {
             return await this.accessRequestHandler.RunList(req, principal, log);
         }
