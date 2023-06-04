@@ -49,8 +49,9 @@ namespace SafeExchange.Core.Functions.Admin
                     return await this.PerformOperationAsync(operationName, request, log);
 
                 default:
-                    var response = request.CreateResponse(HttpStatusCode.BadRequest);
-                    await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+                    var response = await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.InternalServerError,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
                     return response;
             }
         }
@@ -70,10 +71,9 @@ namespace SafeExchange.Core.Functions.Admin
                     break;
             }
 
-            var response = request.CreateResponse(HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "ok", Result = "ok" });
-            return response;
-
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<object> { Status = "ok", Result = "ok" });
         }, nameof(PerformOperationAsync), log);
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
@@ -86,9 +86,9 @@ namespace SafeExchange.Core.Functions.Admin
             {
                 log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}.");
 
-                var response = request.CreateResponse(HttpStatusCode.InternalServerError);
-                await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-                return response;
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.InternalServerError,
+                    new BaseResponseObject<object> { Status = "error", SubStatus = "error", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
             }
         }
     }

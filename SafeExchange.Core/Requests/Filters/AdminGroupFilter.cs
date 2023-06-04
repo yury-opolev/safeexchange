@@ -59,8 +59,9 @@ namespace SafeExchange.Core.Filters
             {
                 this.log.LogInformation($"No admin groups or users configured, unauthorized.");
                 result.shouldReturn = true;
-                result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
-                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." });
+                result.response = await ActionResults.CreateResponseAsync(
+                    req, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = $"Not an admin or a member of an admin group." });
                 return result;
             }
 
@@ -76,8 +77,9 @@ namespace SafeExchange.Core.Filters
             if (existingUser is null)
             {
                 result.shouldReturn = true;
-                result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
-                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." });
+                result.response = await ActionResults.CreateResponseAsync(
+                    req, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = $"Not an admin or a member of an admin group." });
                 return result;
             }
 
@@ -93,9 +95,10 @@ namespace SafeExchange.Core.Filters
 
             this.log.LogInformation($"{userUpn} is not an admin or a member of any admin group, unauthorized.");
             result.shouldReturn = true;
-            result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
-            await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not an admin or a member of an admin group." });
-            return await Task.FromResult(result);
+            result.response = await ActionResults.CreateResponseAsync(
+                req, HttpStatusCode.Forbidden,
+                new BaseResponseObject<object> { Status = "forbidden", Error = $"Not an admin or a member of an admin group." });
+            return result;
         }
     }
 }

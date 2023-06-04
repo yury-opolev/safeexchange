@@ -4,9 +4,14 @@
 
 namespace SafeExchange.Tests
 {
+    using Azure.Core.Serialization;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
@@ -20,6 +25,7 @@ namespace SafeExchange.Tests
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -114,6 +120,14 @@ namespace SafeExchange.Tests
 
             DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
             DateTimeProvider.UseSpecifiedDateTime = true;
+
+            var workerOptions = Options.Create(new WorkerOptions() { Serializer = new JsonObjectSerializer() });
+
+            var serviceProviderMock = new Mock<IServiceProvider>();
+            serviceProviderMock
+                .Setup(x => x.GetService(typeof(IOptions<WorkerOptions>)))
+                .Returns(workerOptions);
+            TestFactory.FunctionContext.InstanceServices = serviceProviderMock.Object;
         }
 
         [OneTimeTearDown]
@@ -183,7 +197,7 @@ namespace SafeExchange.Tests
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error, but requester is the second user.
             var testResponse = response as TestHttpResponseData;
             Assert.IsNotNull(testResponse);
-            Assert.AreEqual(200, testResponse?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, testResponse?.StatusCode);
 
             var responseResult = testResponse.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.IsNotNull(responseResult);
@@ -281,7 +295,7 @@ namespace SafeExchange.Tests
 
             var approvalOkResult = approvalResponse as TestHttpResponseData;
             Assert.IsNotNull(approvalOkResult);
-            Assert.AreEqual(200, approvalOkResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, approvalOkResult?.StatusCode);
 
             var approvalResult = approvalOkResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", approvalResult?.Status);
@@ -340,7 +354,7 @@ namespace SafeExchange.Tests
             var deletionOkResult = deletionResponse as TestHttpResponseData;
 
             Assert.IsNotNull(deletionOkResult);
-            Assert.AreEqual(200, deletionOkResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, deletionOkResult?.StatusCode);
 
             var deletionResult = deletionOkResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", deletionResult?.Status);
@@ -390,11 +404,12 @@ namespace SafeExchange.Tests
             var deletionResponse = await this.secretAccessRequest.Run(deletionRequest, "sunshine", claimsPrincipal, this.logger);
             var deletionOkResult = deletionResponse as TestHttpResponseData;
 
+            // [THEN] The first user receives 'Forbidden' response and access request is not deleted.
             Assert.IsNotNull(deletionOkResult);
-            Assert.AreEqual(401, deletionOkResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.Forbidden, deletionOkResult?.StatusCode);
 
             var deletionResult = deletionOkResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.AreEqual("unauthorized", deletionResult?.Status);
+            Assert.AreEqual("forbidden", deletionResult?.Status);
             Assert.IsNotNull(deletionResult?.Error);
             Assert.IsNull(deletionResult?.Result);
 
@@ -437,7 +452,7 @@ namespace SafeExchange.Tests
             var approvalOkResult = approvalResponse as TestHttpResponseData;
 
             Assert.IsNotNull(approvalOkResult);
-            Assert.AreEqual(200, approvalOkResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, approvalOkResult?.StatusCode);
 
             var approvalResult = approvalOkResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", approvalResult?.Status);
@@ -465,7 +480,7 @@ namespace SafeExchange.Tests
             var listResult = listRequestsResponse as TestHttpResponseData;
 
             Assert.IsNotNull(listResult);
-            Assert.AreEqual(200, listResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, listResult?.StatusCode);
 
             var responseResult = listResult?.ReadBodyAsJson<BaseResponseObject<List<AccessRequestOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -495,7 +510,7 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
         }
 
         private async Task RequestAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
@@ -518,7 +533,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -555,7 +570,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);

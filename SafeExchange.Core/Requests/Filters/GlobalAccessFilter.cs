@@ -58,8 +58,9 @@ namespace SafeExchange.Core.Filters
             if (existingUser is null)
             {
                 result.shouldReturn = true;
-                result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
-                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not a member of a global group." });
+                result.response = await ActionResults.CreateResponseAsync(
+                    req, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = $"Not a member of a global group." });
                 return result;
             }
 
@@ -74,8 +75,9 @@ namespace SafeExchange.Core.Filters
 
             this.log.LogInformation($"{existingUser.AadUpn} is not a member of any global access group, unauthorized.");
             result.shouldReturn = true;
-            result.response = req.CreateResponse(HttpStatusCode.Unauthorized);
-            await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not a member of a global group." });
+            result.response = await ActionResults.CreateResponseAsync(
+                req, HttpStatusCode.Forbidden,
+                new BaseResponseObject<object> { Status = "forbidden", Error = $"Not a member of a global group." });
             return result;
         }
     }

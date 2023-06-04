@@ -4,18 +4,17 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Logging.Abstractions;
-    using Moq;
     using SafeExchange.Tests.Utilities;
 
     public class TestFactory
     {
+        public static TestFunctionContext FunctionContext = new TestFunctionContext();
+
         public static TestHttpRequestData CreateHttpRequestData(string requestMethod)
         {
-            var context = new Mock<FunctionContext>();
-            var request = new TestHttpRequestData(context.Object);
+            var request = new TestHttpRequestData(FunctionContext);
             request.SetMethod(requestMethod);
 
             return request;

@@ -43,8 +43,9 @@ namespace SafeExchange.Core.Filters
                 this.log.LogInformation($"'{userUpn}' is not authenticated with user access/id token.");
 
                 result.shouldReturn = true;
-                result.response = request.CreateResponse(HttpStatusCode.Unauthorized);
-                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = "Not authenticated with user token." });
+                result.response = await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Not authenticated with user token." });
                 return result;
             }
 
@@ -54,8 +55,9 @@ namespace SafeExchange.Core.Filters
                 this.log.LogInformation($"Could not get or create user from claims principal.");
 
                 result.shouldReturn = true;
-                result.response = request.CreateResponse(HttpStatusCode.Unauthorized);
-                await result.response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = "User token is invalid." });
+                result.response = await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "User token is invalid." });
                 return result;
             }
 

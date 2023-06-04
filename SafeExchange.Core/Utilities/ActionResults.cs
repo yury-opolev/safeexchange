@@ -12,8 +12,9 @@ namespace SafeExchange.Core
     {
         public static async Task<HttpResponseData> CreateResponseAsync<T>(HttpRequestData request, HttpStatusCode statusCode, T resultObject)
         {
-            var response = request.CreateResponse(statusCode);
+            var response = request.CreateResponse();
             await response.WriteAsJsonAsync(resultObject);
+            response.StatusCode = statusCode;
             return response;
         }
 
@@ -31,7 +32,7 @@ namespace SafeExchange.Core
         {
             return new BaseResponseObject<object>
             {
-                Status = "unauthorized",
+                Status = "forbidden",
                 Error = $"Insufficient permissions to do '{actionName}' action on '{secretId}'",
                 SubStatus = subStatus
             };

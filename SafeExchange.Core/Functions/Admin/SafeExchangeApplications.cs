@@ -67,9 +67,9 @@ namespace SafeExchange.Core.Functions.Admin
                     return await this.HandleApplicationDeletion(req, applicationId, subjectType, subjectId, log);
 
                 default:
-                    var response = req.CreateResponse(HttpStatusCode.BadRequest);
-                    await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
-                    return response;
+                    return await ActionResults.CreateResponseAsync(
+                        req, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
             }
         }
 
@@ -91,9 +91,9 @@ namespace SafeExchange.Core.Functions.Admin
                     return await this.HandleListApplications(req, subjectType, subjectId, log);
 
                 default:
-                    var response = req.CreateResponse(HttpStatusCode.BadRequest);
-                    await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
-                    return response;
+                    return await ActionResults.CreateResponseAsync(
+                        req, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
             }
         }
 
@@ -356,9 +356,9 @@ namespace SafeExchange.Core.Functions.Admin
             {
                 log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
 
-                var response = request.CreateResponse(HttpStatusCode.InternalServerError);
-                await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-                return response;
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.InternalServerError,
+                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
             }
         }
     }
