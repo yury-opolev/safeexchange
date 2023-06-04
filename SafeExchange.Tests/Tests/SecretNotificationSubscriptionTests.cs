@@ -4,9 +4,14 @@
 
 namespace SafeExchange.Tests
 {
+    using Azure.Core.Serialization;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
@@ -19,6 +24,7 @@ namespace SafeExchange.Tests
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -115,6 +121,13 @@ namespace SafeExchange.Tests
 
             DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
             DateTimeProvider.UseSpecifiedDateTime = true;
+
+            var workerOptions = Options.Create(new WorkerOptions() { Serializer = new JsonObjectSerializer() });
+            var serviceProviderMock = new Mock<IServiceProvider>();
+            serviceProviderMock
+                .Setup(x => x.GetService(typeof(IOptions<WorkerOptions>)))
+                .Returns(workerOptions);
+            TestFactory.FunctionContext.InstanceServices = serviceProviderMock.Object;
         }
 
         [OneTimeTearDown]
@@ -182,7 +195,7 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -220,7 +233,7 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             // [WHEN] The user is unsubscribing from notifications.
             var unsubscribeRequest = TestFactory.CreateHttpRequestData("delete");
@@ -235,7 +248,7 @@ namespace SafeExchange.Tests
             var unsubOkObjectResult = unsubResponse as TestHttpResponseData;
 
             Assert.IsNotNull(unsubOkObjectResult);
-            Assert.AreEqual(200, unsubOkObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, unsubOkObjectResult?.StatusCode);
 
             var unsubResponseResult = unsubOkObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", unsubResponseResult?.Status);
@@ -267,7 +280,7 @@ namespace SafeExchange.Tests
             // [THEN] NotFound reponse received.
             var notFoundObjectResult = unsubResponse as TestHttpResponseData;
             Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.AreEqual("not_found", responseResult?.Status);
@@ -283,7 +296,7 @@ namespace SafeExchange.Tests
             var listResult = listRequestsResponse as TestHttpResponseData;
 
             Assert.IsNotNull(listResult);
-            Assert.AreEqual(200, listResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, listResult?.StatusCode);
 
             var responseResult = listResult?.ReadBodyAsJson<BaseResponseObject<List<AccessRequestOutput>>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -313,7 +326,7 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
         }
 
         private async Task RequestAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
@@ -336,7 +349,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);
@@ -373,7 +386,7 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(200, okObjectAccessResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.AreEqual("ok", responseResult?.Status);

@@ -142,7 +142,7 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "conflict", Error = $"Secret '{secretId}' already exists." });
             }
 
-            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            var requestBody = await new StreamReader(request.Body ?? Stream.Null).ReadToEndAsync();
             MetadataCreationInput? metadataInput;
             try
             {
@@ -242,7 +242,7 @@ namespace SafeExchange.Core.Functions
                     ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
-            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            var requestBody = await new StreamReader(request.Body ?? Stream.Null).ReadToEndAsync();
             MetadataUpdateInput? metadataInput;
             try
             {
