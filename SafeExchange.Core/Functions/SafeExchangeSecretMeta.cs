@@ -21,7 +21,6 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Net;
-    using Grpc.Core;
 
     public class SafeExchangeSecretMeta
     {
