@@ -461,6 +461,8 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Data stream for secret is null.");
             }
 
+            dataStream.Seek(0, SeekOrigin.Begin); // should only be needed in tests
+
             var dataBuffer = new byte[this.imageContent.Length * 2];
             var bytesRead = await dataStream.ReadAsync(dataBuffer, 0, dataBuffer.Length);
 
