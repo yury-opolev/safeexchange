@@ -42,7 +42,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.metaHandler.Run(request, secretId, principal, this.log);
         }
 
@@ -51,7 +51,7 @@ namespace SafeExchange.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/secret-list")]
             HttpRequestData request)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.metaHandler.RunList(request, principal, this.log);
         }
 
@@ -61,7 +61,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.contentMetaHandler.Run(request, secretId, string.Empty, principal, this.log);
         }
 
@@ -71,7 +71,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId, string contentId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.contentMetaHandler.Run(request, secretId, contentId, principal, this.log);
         }
 
@@ -81,7 +81,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId, string contentId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.contentMetaHandler.RunDrop(request, secretId, contentId, principal, this.log);
         }
 
@@ -91,7 +91,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId, string contentId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.contentHandler.Run(request, secretId, contentId, string.Empty, principal, this.log);
         }
         
@@ -101,7 +101,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId, string contentId, string chunkId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.contentHandler.Run(request, secretId, contentId, chunkId, principal, this.log);
         }
 
@@ -111,7 +111,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string secretId, string contentId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.contentHandler.RunContentDownload(request, secretId, contentId, principal, this.log);
         }
     }

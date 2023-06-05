@@ -32,7 +32,7 @@ namespace SafeExchange.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "delete", Route = $"{Version}/notificationsub/web")]
             HttpRequestData request)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.notificationSubscriptionHandler.Run(request, principal, this.log);
         }
     }

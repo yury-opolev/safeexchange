@@ -36,7 +36,7 @@ namespace SafeExchange.Functions.Functions
             HttpRequestData request,
             string secretId)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.accessRequestHandler.Run(request, secretId, principal, this.log);
         }
 
@@ -45,7 +45,7 @@ namespace SafeExchange.Functions.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/accessrequest-list")]
             HttpRequestData request)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.accessRequestHandler.RunList(request, principal, this.log);
         }
     }

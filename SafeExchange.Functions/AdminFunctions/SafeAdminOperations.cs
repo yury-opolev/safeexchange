@@ -36,7 +36,7 @@ namespace SafeExchange.Functions
             HttpRequestData request,
             string operationName)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.adminOperationsHandler.Run(request, operationName, principal, this.log);
         }
     }

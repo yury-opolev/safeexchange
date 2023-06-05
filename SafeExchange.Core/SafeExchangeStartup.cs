@@ -40,6 +40,8 @@ namespace SafeExchange.Core
 
         public static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
         {
+            services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
+
             var cosmosDbConfig = new CosmosDbConfiguration();
             configuration.GetSection("CosmosDb").Bind(cosmosDbConfig);
 

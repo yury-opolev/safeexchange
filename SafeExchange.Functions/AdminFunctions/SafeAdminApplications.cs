@@ -35,7 +35,7 @@ namespace SafeExchange.Functions.AdminFunctions
             HttpRequestData request,
             string operationName)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.safeExchangeApplicationsHandler.Run(request, operationName, principal, this.log);
         }
 
@@ -44,7 +44,7 @@ namespace SafeExchange.Functions.AdminFunctions
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/applications-list")]
             HttpRequestData request)
         {
-            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            var principal = request.FunctionContext.GetPrincipal();
             return await this.safeExchangeApplicationsHandler.RunList(request, principal, this.log);
         }
     }
