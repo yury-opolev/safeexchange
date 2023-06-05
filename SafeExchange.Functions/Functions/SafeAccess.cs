@@ -21,18 +21,22 @@ namespace SafeExchange.Functions
 
         private SafeExchangeAccess accessHandler;
 
-        public SafeAccess(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly ILogger log;
+
+        public SafeAccess(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAccess> log)
         {
             this.accessHandler = new SafeExchangeAccess(dbContext, tokenHelper, globalFilters, purger, permissionsManager);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         [Function("SafeExchange-Access")]
         public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", Route = $"{Version}/access/{{secretId}}")]
-            HttpRequestData req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId)
         {
-            return await this.accessHandler.Run(req, secretId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.accessHandler.Run(request, secretId, principal, this.log);
         }
     }
 }

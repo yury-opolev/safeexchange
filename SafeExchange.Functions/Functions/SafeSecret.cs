@@ -26,8 +26,11 @@ namespace SafeExchange.Functions
 
         private SafeExchangeSecretStream contentHandler;
 
-        public SafeSecret(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IBlobHelper blobHelper)
+        private readonly ILogger log;
+
+        public SafeSecret(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IBlobHelper blobHelper, ILogger<SafeSecret> log)
         {
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
             this.metaHandler = new SafeExchangeSecretMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
             this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
             this.contentHandler = new SafeExchangeSecretStream(configuration, dbContext, tokenHelper, globalFilters, purger, blobHelper, permissionsManager);
@@ -36,72 +39,80 @@ namespace SafeExchange.Functions
         [Function("SafeExchange-SecretMeta")]
         public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "patch", "delete", Route = $"{Version}/secret/{{secretId}}")]
-            HttpRequestData req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId)
         {
-            return await this.metaHandler.Run(req, secretId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.metaHandler.Run(request, secretId, principal, this.log);
         }
 
         [Function("SafeExchange-ListSecretMeta")]
         public async Task<HttpResponseData> RunListSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/secret-list")]
-            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request)
         {
-            return await this.metaHandler.RunList(req, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.metaHandler.RunList(request, principal, this.log);
         }
 
         [Function("SafeExchange-SecretContentMetaCreate")]
         public async Task<HttpResponseData> RunCreateContent(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/secret/{{secretId}}/content")]
-            HttpRequestData req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId)
         {
-            return await this.contentMetaHandler.Run(req, secretId, string.Empty, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.contentMetaHandler.Run(request, secretId, string.Empty, principal, this.log);
         }
 
         [Function("SafeExchange-SecretContentMeta")]
         public async Task<HttpResponseData> RunContent(
             [HttpTrigger(AuthorizationLevel.Anonymous, "patch", "delete", Route = $"{Version}/secret/{{secretId}}/content/{{contentId}}")]
-            HttpRequestData req,
-            string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId, string contentId)
         {
-            return await this.contentMetaHandler.Run(req, secretId, contentId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.contentMetaHandler.Run(request, secretId, contentId, principal, this.log);
         }
 
         [Function("SafeExchange-SecretContentMetaDrop")]
         public async Task<HttpResponseData> RunDrop(
             [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/secret/{{secretId}}/content/{{contentId}}/drop")]
-            HttpRequestData req,
-            string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId, string contentId)
         {
-            return await this.contentMetaHandler.RunDrop(req, secretId, contentId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.contentMetaHandler.RunDrop(request, secretId, contentId, principal, this.log);
         }
 
         [Function("SafeExchange-SecretStreamUpload")]
         public async Task<HttpResponseData> RunUploadStream(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/secret/{{secretId}}/content/{{contentId}}/chunk")]
-            HttpRequestData req,
-            string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId, string contentId)
         {
-            return await this.contentHandler.Run(req, secretId, contentId, string.Empty, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.contentHandler.Run(request, secretId, contentId, string.Empty, principal, this.log);
         }
         
         [Function("SafeExchange-SecretStreamDownload")]
         public async Task<HttpResponseData> RunDownloadStream(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/secret/{{secretId}}/content/{{contentId}}/chunk/{{chunkId}}")]
-            HttpRequestData req,
-            string secretId, string contentId, string chunkId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId, string contentId, string chunkId)
         {
-            return await this.contentHandler.Run(req, secretId, contentId, chunkId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.contentHandler.Run(request, secretId, contentId, chunkId, principal, this.log);
         }
 
         [Function("SafeExchange-SecretStreamContentDownload")]
         public async Task<HttpResponseData> RunContentDownloadStream(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/secret/{{secretId}}/content/{{contentId}}/all")]
-            HttpRequestData req,
-            string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId, string contentId)
         {
-            return await this.contentHandler.RunContentDownload(req, secretId, contentId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.contentHandler.RunContentDownload(request, secretId, contentId, principal, this.log);
         }
     }
 }

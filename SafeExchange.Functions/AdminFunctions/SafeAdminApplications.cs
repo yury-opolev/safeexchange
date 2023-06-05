@@ -21,26 +21,31 @@ namespace SafeExchange.Functions.AdminFunctions
 
         private SafeExchangeApplications safeExchangeApplicationsHandler;
 
-        public SafeAdminApplications(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly ILogger log;
+
+        public SafeAdminApplications(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAdminApplications> log)
         {
             this.safeExchangeApplicationsHandler = new SafeExchangeApplications(dbContext, tokenHelper, cryptoHelper, globalFilters);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         [Function("SafeExchange-Application")]
         public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "patch", "delete", Route = $"{Version}/applications/{{applicationId}}")]
             HttpRequestData request,
-            string operationName, ClaimsPrincipal principal, ILogger log)
+            string operationName)
         {
-            return await this.safeExchangeApplicationsHandler.Run(request, operationName, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.safeExchangeApplicationsHandler.Run(request, operationName, principal, this.log);
         }
 
         [Function("SafeExchange-ApplicationList")]
         public async Task<HttpResponseData> RunListApplications(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/applications-list")]
-            HttpRequestData request, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request)
         {
-            return await this.safeExchangeApplicationsHandler.RunList(request, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.safeExchangeApplicationsHandler.RunList(request, principal, this.log);
         }
     }
 }

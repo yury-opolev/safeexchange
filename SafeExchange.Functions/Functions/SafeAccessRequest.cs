@@ -22,26 +22,31 @@ namespace SafeExchange.Functions.Functions
 
         private SafeExchangeAccessRequest accessRequestHandler;
 
-        public SafeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsMaanger)
+        private readonly ILogger log;
+
+        public SafeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsMaanger, ILogger<SafeAccessRequest> log)
         {
             this.accessRequestHandler = new SafeExchangeAccessRequest(configuration, dbContext, globalFilters, tokenHelper, purger, permissionsMaanger);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         [Function("SafeExchange-AccessRequest")]
         public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "patch", "delete", Route = $"{Version}/accessrequest/{{secretId}}")]
-            HttpRequestData req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId)
         {
-            return await this.accessRequestHandler.Run(req, secretId, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.accessRequestHandler.Run(request, secretId, principal, this.log);
         }
 
         [Function("SafeExchange-ListAccessRequests")]
         public async Task<HttpResponseData> RunListSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/accessrequest-list")]
-            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request)
         {
-            return await this.accessRequestHandler.RunList(req, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.accessRequestHandler.RunList(request, principal, this.log);
         }
     }
 }

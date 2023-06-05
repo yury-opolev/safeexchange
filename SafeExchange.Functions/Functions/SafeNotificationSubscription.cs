@@ -19,17 +19,21 @@ namespace SafeExchange.Functions
 
         private SafeExchangeNotificationSubscription notificationSubscriptionHandler;
 
-        public SafeNotificationSubscription(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        private readonly ILogger log;
+
+        public SafeNotificationSubscription(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeNotificationSubscription> log)
         {
             this.notificationSubscriptionHandler = new SafeExchangeNotificationSubscription(dbContext, tokenHelper, globalFilters);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         [Function("SafeExchange-NotificationSubscription")]
         public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "delete", Route = $"{Version}/notificationsub/web")]
-            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request)
         {
-            return await this.notificationSubscriptionHandler.Run(req, principal, log);
+            var principal = new ClaimsPrincipal(request.Identities.FirstOrDefault() ?? new ClaimsIdentity());
+            return await this.notificationSubscriptionHandler.Run(request, principal, this.log);
         }
     }
 }

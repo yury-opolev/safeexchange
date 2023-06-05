@@ -46,7 +46,7 @@ namespace SafeExchange.Core.Configuration
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
             var result = await httpClient.PostAsync(endpoint, new StringContent(""));
             var resultContent = await result.Content.ReadAsStringAsync();
-            if (!string.IsNullOrEmpty(resultContent))
+            if (result.StatusCode != System.Net.HttpStatusCode.OK || string.IsNullOrEmpty(resultContent))
             {
                 throw new ConfigurationErrorsException("Could not retrieve database keys.");
             }

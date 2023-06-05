@@ -15,18 +15,20 @@ namespace SafeExchange.Functions
     {
         private SafeExchangePurge purgeHandler;
 
-        public SafePurge(SafeExchangeDbContext dbContext, IPurger purger)
+        private readonly ILogger log;
+
+        public SafePurge(SafeExchangeDbContext dbContext, IPurger purger, ILogger<SafePurge> log)
         {
             this.purgeHandler = new SafeExchangePurge(dbContext, purger);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         [Function("SafeExchange-Purge")]
         public async Task Run(
             [TimerTrigger("0 0 */6 * * *")] // every 6 hours
-            TimerInfo timer,
-            ILogger log)
+            TimerInfo timer)
         {
-            await this.purgeHandler.Run(log);
+            await this.purgeHandler.Run(this.log);
         }
     }
 }

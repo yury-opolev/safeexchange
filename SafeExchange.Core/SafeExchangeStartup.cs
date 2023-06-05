@@ -18,6 +18,8 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Crypto;
+    using System.Text.Json.Serialization;
+    using System.Text.Json;
 
     public class SafeExchangeStartup
     {
@@ -59,6 +61,11 @@ namespace SafeExchange.Core
             services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
+
+            services.Configure<JsonSerializerOptions>(options =>
+            {
+                options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            });
         }
     }
 }
