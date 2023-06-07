@@ -13,7 +13,6 @@ namespace SafeExchange.Functions
     using SafeExchange.Core.Functions.Admin;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
-    using System.Security.Claims;
     using System.Threading.Tasks;
 
     public class SafeAdminOperations

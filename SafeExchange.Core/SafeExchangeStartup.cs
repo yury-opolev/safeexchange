@@ -66,6 +66,7 @@ namespace SafeExchange.Core
 
             services.Configure<JsonSerializerOptions>(options =>
             {
+                options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                 options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
             });
         }
