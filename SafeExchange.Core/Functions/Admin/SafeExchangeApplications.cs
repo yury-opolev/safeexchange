@@ -4,7 +4,6 @@ namespace SafeExchange.Core.Functions.Admin
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
-    using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
@@ -26,15 +25,12 @@ namespace SafeExchange.Core.Functions.Admin
 
         private readonly ITokenHelper tokenHelper;
 
-        private readonly ICryptoHelper cryptoHelper;
-
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeApplications(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters)
+        public SafeExchangeApplications(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
-            this.cryptoHelper = cryptoHelper ?? throw new ArgumentNullException(nameof(cryptoHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
@@ -65,30 +61,6 @@ namespace SafeExchange.Core.Functions.Admin
 
                 case "delete":
                     return await this.HandleApplicationDeletion(req, applicationId, subjectType, subjectId, log);
-
-                default:
-                    return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
-                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
-            }
-        }
-
-        public async Task<HttpResponseData> RunList(
-            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
-        {
-            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
-            if (shouldReturn)
-            {
-                return filterResponse ?? req.CreateResponse(HttpStatusCode.NoContent);
-            }
-
-            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} {subjectId}, [{req.Method}].");
-
-            switch (req.Method.ToLower())
-            {
-                case "get":
-                    return await this.HandleListApplications(req, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -303,20 +275,6 @@ namespace SafeExchange.Core.Functions.Admin
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(HandleApplicationDeletion), log);
-
-        private async Task<HttpResponseData> HandleListApplications(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
-        {
-            var existingRegistrations = await this.dbContext.Applications.ToListAsync();
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<List<ApplicationRegistrationOverviewOutput>>
-                {
-                    Status = "ok",
-                    Result = existingRegistrations.Select(p => p.ToOverviewDto()).ToList()
-                });
-        }, nameof(HandleListApplications), log);
 
         private async Task<Application> RegisterApplicationAsync(string applicationId, ApplicationRegistrationInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {

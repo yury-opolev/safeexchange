@@ -7,12 +7,8 @@ namespace SafeExchange.Functions.AdminFunctions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Logging;
-    using System.Security.Claims;
-    using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions.Admin;
-    using SafeExchange.Core.Permissions;
-    using SafeExchange.Core.Purger;
     using SafeExchange.Core;
 
     public class SafeAdminApplications
@@ -23,9 +19,9 @@ namespace SafeExchange.Functions.AdminFunctions
 
         private readonly ILogger log;
 
-        public SafeAdminApplications(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAdminApplications> log)
+        public SafeAdminApplications(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeAdminApplications> log)
         {
-            this.safeExchangeApplicationsHandler = new SafeExchangeApplications(dbContext, tokenHelper, cryptoHelper, globalFilters);
+            this.safeExchangeApplicationsHandler = new SafeExchangeApplications(dbContext, tokenHelper, globalFilters);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -33,19 +29,10 @@ namespace SafeExchange.Functions.AdminFunctions
         public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "patch", "delete", Route = $"{Version}/applications/{{applicationId}}")]
             HttpRequestData request,
-            string operationName)
+            string applicationId)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.safeExchangeApplicationsHandler.Run(request, operationName, principal, this.log);
-        }
-
-        [Function("SafeExchange-ApplicationList")]
-        public async Task<HttpResponseData> RunListApplications(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/applications-list")]
-            HttpRequestData request)
-        {
-            var principal = request.FunctionContext.GetPrincipal();
-            return await this.safeExchangeApplicationsHandler.RunList(request, principal, this.log);
+            return await this.safeExchangeApplicationsHandler.Run(request, applicationId, principal, this.log);
         }
     }
 }
