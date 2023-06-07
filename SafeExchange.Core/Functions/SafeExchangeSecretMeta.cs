@@ -54,61 +54,75 @@ namespace SafeExchange.Core.Functions
         }
 
         public async Task<HttpResponseData> Run(
-            HttpRequestData req,
+            HttpRequestData request,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? req.CreateResponse(HttpStatusCode.NoContent);
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
+
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
             
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretMetaCreation(req, secretId, subjectType, subjectId, log);
+                    return await this.HandleSecretMetaCreation(request, secretId, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleSecretMetaRead(req, secretId, subjectType, subjectId, log);
+                    return await this.HandleSecretMetaRead(request, secretId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleSecretMetaUpdate(req, secretId, subjectType, subjectId, log);
+                    return await this.HandleSecretMetaUpdate(request, secretId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleSecretMetaDeletion(req, secretId, subjectType, subjectId, log);
+                    return await this.HandleSecretMetaDeletion(request, secretId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
+                        request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
         public async Task<HttpResponseData> RunList(
-            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? req.CreateResponse(HttpStatusCode.NoContent);
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} {subjectId}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
 
-            switch (req.Method.ToLower())
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} {subjectId}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+
+            switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListSecretMeta(req, subjectType, subjectId, log);
+                    return await this.HandleListSecretMeta(request, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
+                        request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }

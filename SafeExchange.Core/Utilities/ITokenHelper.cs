@@ -52,10 +52,10 @@ namespace SafeExchange.Core
         public string? GetObjectId(ClaimsPrincipal? principal);
 
         /// <summary>
-        /// Get user 'ObjectId' from ClaimsPrincipal.
+        /// Get 'TenantId' from ClaimsPrincipal.
         /// </summary>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
-        /// <returns>A string, representing user 'ObjectId', extracted from given ClaimsPrincipal.</returns>
+        /// <returns>A string, representing 'TenantId', extracted from given ClaimsPrincipal.</returns>
         public string? GetTenantId(ClaimsPrincipal? principal);
 
         /// <summary>

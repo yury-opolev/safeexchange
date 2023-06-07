@@ -35,36 +35,43 @@ namespace SafeExchange.Core.Functions.Admin
         }
 
         public async Task<HttpResponseData> Run(
-            HttpRequestData req,
+            HttpRequestData request,
             string applicationId, // display name
             ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResponse ?? req.CreateResponse(HttpStatusCode.NoContent);
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
-            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} {subjectId} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
 
-            switch (req.Method.ToLower())
+            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} {subjectId} [{request.Method}].");
+
+            switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleApplicationRegistration(req, applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationRegistration(request, applicationId, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleApplicationRead(req, applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationRead(request, applicationId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleApplicationUpdate(req, applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationUpdate(request, applicationId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleApplicationDeletion(req, applicationId, subjectType, subjectId, log);
+                    return await this.HandleApplicationDeletion(request, applicationId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
+                        request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
             }
         }

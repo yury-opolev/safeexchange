@@ -27,25 +27,32 @@ namespace SafeExchange.Core.Functions
         }
 
         public async Task<HttpResponseData> RunList(
-            HttpRequestData req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResponse ?? req.CreateResponse(HttpStatusCode.NoContent);
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
-            log.LogInformation($"{nameof(SafeExchangeApplicationsList)} triggered by {subjectType} {subjectId}, [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
 
-            switch (req.Method.ToLower())
+            log.LogInformation($"{nameof(SafeExchangeApplicationsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+
+            switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListApplications(req, subjectType, subjectId, log);
+                    return await this.HandleListApplications(request, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
+                        request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
             }
         }

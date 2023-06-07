@@ -50,7 +50,14 @@ namespace SafeExchange.Core.Functions
                 return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
+
             log.LogInformation($"{nameof(SafeExchangeAccess)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
 
             var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);

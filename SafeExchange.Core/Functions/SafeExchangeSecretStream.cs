@@ -68,57 +68,71 @@ namespace SafeExchange.Core.Functions
         }
 
         public async Task<HttpResponseData> Run(
-            HttpRequestData req,
+            HttpRequestData request,
             string secretId, string contentId, string chunkId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? req.CreateResponse(HttpStatusCode.NoContent);
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
+
+            log.LogInformation($"{nameof(SafeExchangeSecretStream)} triggered for '{secretId}' ({contentId}, {chunkId}) by {subjectType} {subjectId}, [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretStreamUpload(req, secretId, contentId, chunkId, principal, log);
+                    return await this.HandleSecretStreamUpload(request, secretId, contentId, chunkId, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleSecretStreamDownload(req, secretId, contentId, chunkId, principal, log);
+                    return await this.HandleSecretStreamDownload(request, secretId, contentId, chunkId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
+                        request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
         public async Task<HttpResponseData> RunContentDownload(
-            HttpRequestData req, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? req.CreateResponse(HttpStatusCode.NoContent);
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
+
+            log.LogInformation($"{nameof(SafeExchangeSecretStream)}-ContentDownload triggered for '{secretId}' ({contentId}) by {subjectType} {subjectId}, [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleSecretContentStreamDownload(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentStreamDownload(request, secretId, contentId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
-                        req, HttpStatusCode.BadRequest,
+                        request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
@@ -140,7 +154,7 @@ namespace SafeExchange.Core.Functions
             return (accessTicket, type);
         }
 
-        private async Task<HttpResponseData> HandleSecretStreamUpload(HttpRequestData request, string secretId, string contentId, string chunkId, ClaimsPrincipal principal, ILogger log)
+        private async Task<HttpResponseData> HandleSecretStreamUpload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
         {
             return await TryCatch(request, async () =>
             {
@@ -161,7 +175,6 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
                 }
 
-                (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
                 if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
                 {
                     return await ActionResults.CreateResponseAsync(
@@ -263,7 +276,7 @@ namespace SafeExchange.Core.Functions
             }, nameof(HandleSecretStreamUpload), log);
         }
 
-        private async Task<HttpResponseData> HandleSecretStreamDownload(HttpRequestData request, string secretId, string contentId, string chunkId, ClaimsPrincipal principal, ILogger log)
+        private async Task<HttpResponseData> HandleSecretStreamDownload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
         {
             return await TryCatch(request, async () =>
             {
@@ -284,7 +297,6 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
                 }
 
-                (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
                 if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
                 {
                     return await ActionResults.CreateResponseAsync(
@@ -350,7 +362,7 @@ namespace SafeExchange.Core.Functions
             }, nameof(HandleSecretStreamDownload), log);
         }
 
-        private async Task<HttpResponseData> HandleSecretContentStreamDownload(HttpRequestData request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
+        private async Task<HttpResponseData> HandleSecretContentStreamDownload(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
         {
             return await TryCatch(request, async () =>
             {
@@ -371,7 +383,6 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
                 }
 
-                (SubjectType subjectType, string subjectId) = SubjectHelper.GetSubjectInfo(this.tokenHelper, principal);
                 if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
                 {
                     return await ActionResults.CreateResponseAsync(
