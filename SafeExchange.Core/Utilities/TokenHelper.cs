@@ -21,7 +21,6 @@ namespace SafeExchange.Core
         /// <inheritdoc/>
         public TokenType GetTokenType(ClaimsPrincipal principal)
         {
-            var userName = this.GetUpn(principal);
             if (HasClaim(principal, "appid") && HasClaim(principal, "appidacr"))
             {
                 return TokenType.AccessToken;
@@ -38,7 +37,7 @@ namespace SafeExchange.Core
             var result = (tokenType == TokenType.IdToken) || 
                 (HasClaim(principal, "http://schemas.microsoft.com/identity/claims/scope") || HasClaim(principal, "scope"));
 
-            this.log.LogInformation($"Principal {userName} is authenticated as a {(result ? "user" : "app")} with {tokenType}");
+            this.log.LogInformation($"Principal {userName} is authenticated as {(result ? "a user" : "an app")} with {tokenType}");
             return result;
         }
 
