@@ -72,8 +72,13 @@ namespace SafeExchange.Core
         /// <inheritdoc/>
         public string GetApplicationClientId(ClaimsPrincipal principal)
         {
-            Claim? clientId = principal?.FindFirst("azp");
-            return clientId?.Value ?? string.Empty;
+            var clientId = principal?.FindFirst("azp")?.Value;
+            if (string.IsNullOrEmpty(clientId))
+            {
+                clientId = principal.FindFirst("appid")?.Value;
+            }
+
+            return clientId ?? string.Empty;
         }
 
         /// <inheritdoc/>
