@@ -17,6 +17,7 @@ namespace SafeExchange.Functions
                 .ConfigureFunctionsWorkerDefaults((context, builder) =>
                 {
                     builder.UseMiddleware<DefaultAuthenticationMiddleware>();
+                    builder.UseMiddleware<TokenFilterMiddleware>();
                 })
                 .ConfigureAppConfiguration(SafeExchangeStartup.ConfigureAppConfiguration)
                 .ConfigureServices((hostBuilderContext, serviceCollection) =>

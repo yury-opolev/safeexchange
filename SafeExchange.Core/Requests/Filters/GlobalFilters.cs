@@ -36,11 +36,9 @@ namespace SafeExchange.Core.Filters
                 !string.IsNullOrWhiteSpace(adminConfiguration.AdminGroups);
 
             this.currentFilters = new List<IRequestFilter>();
-            currentFilters.Add(new UserTokenFilter(tokenHelper, useGroups, graphDataProvider, log));
             currentFilters.Add(new GlobalAccessFilter(groupsConfiguration, tokenHelper, log));
 
             this.currentAdminFilters = new List<IRequestFilter>();
-            currentAdminFilters.Add(new UserTokenFilter(tokenHelper, useGroups, graphDataProvider, log));
             currentAdminFilters.Add(new AdminGroupFilter(adminConfiguration, tokenHelper, log));
         }
 

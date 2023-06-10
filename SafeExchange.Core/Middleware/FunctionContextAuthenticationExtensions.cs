@@ -1,6 +1,6 @@
-﻿///
-///
-///
+﻿/// <summary>
+/// FunctionContextAuthenticationExtensions
+/// </summary>
 
 namespace SafeExchange.Core
 {
@@ -8,7 +8,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Middleware;
     using System.Security.Claims;
 
-    public static class FunctinoContextAuthenticationExtensions
+    public static class FunctionContextAuthenticationExtensions
     {
         public static ClaimsPrincipal GetPrincipal(this FunctionContext context)
         {

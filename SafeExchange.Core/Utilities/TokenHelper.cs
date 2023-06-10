@@ -72,7 +72,8 @@ namespace SafeExchange.Core
         /// <inheritdoc/>
         public string GetApplicationClientId(ClaimsPrincipal principal)
         {
-            return string.Empty; // TODO: find application client id
+            Claim? clientId = principal?.FindFirst("azp");
+            return clientId?.Value ?? string.Empty;
         }
 
         /// <inheritdoc/>
@@ -129,7 +130,7 @@ namespace SafeExchange.Core
             return objectId?.Value ?? null;
         }
 
-        public string? GetTenantId(ClaimsPrincipal? principal)
+        public string GetTenantId(ClaimsPrincipal? principal)
         {
             var tenantId = principal?.FindFirst("tid");
             if (tenantId == null)
@@ -137,7 +138,7 @@ namespace SafeExchange.Core
                 tenantId = principal?.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid");
             }
 
-            return tenantId?.Value ?? null;
+            return tenantId?.Value ?? string.Empty;
         }
 
         private static bool HasClaim(ClaimsPrincipal principal, string type)

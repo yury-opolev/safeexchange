@@ -4,12 +4,8 @@ namespace SafeExchange.Tests.Utilities
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using Microsoft.Azure.Functions.Worker;
-    using Microsoft.Azure.Functions.Worker.Context.Features;
-    using Microsoft.Azure.Functions.Worker.OutputBindings;
     using Moq;
-    using SafeExchange.Core.Configuration;
 
     public class TestFunctionContext : FunctionContext, IDisposable
     {
@@ -37,7 +33,7 @@ namespace SafeExchange.Tests.Utilities
 
         public override FunctionDefinition FunctionDefinition { get; }
 
-        public override IDictionary<object, object> Items { get; set; }
+        public override IDictionary<object, object> Items { get; set; } = new Dictionary<object, object>();
 
         public override IInvocationFeatures Features { get; }
 

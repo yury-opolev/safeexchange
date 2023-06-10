@@ -1,21 +1,26 @@
 ﻿/// <summary>
-/// SafeExchange
+/// TokenFilterMiddleware
 /// </summary>
 
-namespace SafeExchange.Core.Filters
+namespace SafeExchange.Core.Middleware
 {
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
+    using System;
     using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
-    public class UserTokenFilter : IRequestFilter
+    public class TokenMiddlewareCore : ITokenMiddlewareCore
     {
         public static readonly TimeSpan GroupSyncDelay = TimeSpan.FromMinutes(2);
+
+        private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
 
@@ -25,23 +30,46 @@ namespace SafeExchange.Core.Filters
 
         private readonly ILogger log;
 
-        public UserTokenFilter(ITokenHelper tokenHelper, bool useGroups, IGraphDataProvider graphDataProvider, ILogger log)
+        public TokenMiddlewareCore(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, IGraphDataProvider graphDataProvider, ILogger<TokenMiddlewareCore> log)
         {
+            var features = new Features();
+            configuration.GetSection("Features").Bind(features);
+
+            var groupsConfiguration = new GloballyAllowedGroupsConfiguration();
+            configuration.GetSection("GlobalAllowLists").Bind(groupsConfiguration);
+
+            var adminConfiguration = new AdminConfiguration();
+            configuration.GetSection("AdminConfiguration").Bind(adminConfiguration);
+
+            var useGroups =
+                features.UseGroupsAuthorization ||
+                !string.IsNullOrWhiteSpace(groupsConfiguration.AllowedGroups) ||
+            !string.IsNullOrWhiteSpace(adminConfiguration.AdminGroups);
+
+            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.useGroups = useGroups;
             this.graphDataProvider = graphDataProvider ?? throw new ArgumentNullException(nameof(graphDataProvider));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> RunAsync(HttpRequestData request, ClaimsPrincipal principal)
         {
             (bool shouldReturn, HttpResponseData? response) result = (shouldReturn: false, response: null);
 
-            if (!this.tokenHelper.IsUserToken(principal))
+            var isUserToken = this.tokenHelper.IsUserToken(principal);
+            if (!isUserToken && await this.IsRegisteredApplicationAsync(principal))
             {
-                var userUpn = this.tokenHelper.GetUpn(principal);
-                this.log.LogInformation($"'{userUpn}' is not authenticated with user access/id token.");
+                return result;
+            }
 
+            if (!isUserToken)
+            {
+                var tenantId = this.tokenHelper.GetTenantId(principal);
+                var objectId = this.tokenHelper.GetObjectId(principal);
+                var clientId = this.tokenHelper.GetApplicationClientId(principal);
+
+                this.log.LogInformation($"Caller [{clientId}] '{tenantId}.{objectId}' is not authenticated with user token or a token from registered application.");
                 result.shouldReturn = true;
                 result.response = await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
@@ -49,7 +77,7 @@ namespace SafeExchange.Core.Filters
                 return result;
             }
 
-            var user = await this.GetOrCreateUserAsync(request, principal, dbContext);
+            var user = await this.GetOrCreateUserAsync(principal);
             if (user is null)
             {
                 this.log.LogInformation($"Could not get or create user from claims principal.");
@@ -61,11 +89,11 @@ namespace SafeExchange.Core.Filters
                 return result;
             }
 
-            await this.UpdateGroupsAsync(user, request, principal, dbContext);
+            await this.UpdateGroupsAsync(user, request, principal);
             return result;
         }
 
-        private async Task<User?> GetOrCreateUserAsync(HttpRequestData request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        private async Task<User?> GetOrCreateUserAsync(ClaimsPrincipal principal)
         {
             var aadObjectId = this.tokenHelper.GetObjectId(principal);
             if (string.IsNullOrEmpty(aadObjectId))
@@ -73,11 +101,11 @@ namespace SafeExchange.Core.Filters
                 return default;
             }
 
-            var user = await dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadObjectId.Equals(aadObjectId));
-            return user ?? await this.CreateUserAsync(principal, dbContext);
+            var user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadObjectId.Equals(aadObjectId));
+            return user ?? await this.CreateUserAsync(principal);
         }
 
-        private async Task<User?> CreateUserAsync(ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        private async Task<User?> CreateUserAsync(ClaimsPrincipal principal)
         {
             var objectId = this.tokenHelper.GetObjectId(principal);
             var tenantId = this.tokenHelper.GetTenantId(principal);
@@ -87,13 +115,13 @@ namespace SafeExchange.Core.Filters
             this.log.LogInformation($"Creating user '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}'.");
 
             var user = new User(displayName, objectId, tenantId, userUpn, userUpn);
-            var createdEntity = await dbContext.Users.AddAsync(user);
-            await dbContext.SaveChangesAsync();
+            var createdEntity = await this.dbContext.Users.AddAsync(user);
+            await this.dbContext.SaveChangesAsync();
 
             return createdEntity.Entity;
         }
 
-        private async ValueTask UpdateGroupsAsync(User user, HttpRequestData request, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        private async ValueTask UpdateGroupsAsync(User user, HttpRequestData request, ClaimsPrincipal principal)
         {
             if (!this.useGroups)
             {
@@ -122,8 +150,26 @@ namespace SafeExchange.Core.Filters
                 user.Groups = userGroupsResult.Groups.Select(g => new UserGroup() { AadGroupId = g }).ToList();
             }
 
-            await dbContext.SaveChangesAsync();
-            this.log.LogInformation($"User '{user.AadUpn}' ({user.AadObjectId}) groups synced from graph.");
+            await this.dbContext.SaveChangesAsync();
+            this.log.LogInformation($"User '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}) groups synced from graph.");
+        }
+
+        private async Task<bool> IsRegisteredApplicationAsync(ClaimsPrincipal principal)
+        {
+            var clientId = this.tokenHelper.GetApplicationClientId(principal);
+            if (string.IsNullOrEmpty(clientId))
+            {
+                return false;
+            }
+
+            var tenantId = this.tokenHelper.GetTenantId(principal);
+            if (string.IsNullOrEmpty(tenantId))
+            {
+                return false;
+            }
+
+            var registeredApplication = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.Enabled && a.AadClientId.Equals(clientId) && a.AadTenantId.Equals(tenantId));
+            return registeredApplication != default;
         }
     }
 }

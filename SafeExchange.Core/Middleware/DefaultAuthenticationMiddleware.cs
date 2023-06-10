@@ -1,4 +1,7 @@
-﻿
+﻿/// <summary>
+/// DefaultAuthenticationMiddleware
+/// </summary>
+
 namespace SafeExchange.Core.Middleware
 {
     using Microsoft.Azure.Functions.Worker.Middleware;

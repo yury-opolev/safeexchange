@@ -20,6 +20,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Crypto;
     using System.Text.Json.Serialization;
     using System.Text.Json;
+    using SafeExchange.Core.Middleware;
 
     public class SafeExchangeStartup
     {
@@ -40,6 +41,7 @@ namespace SafeExchange.Core
 
         public static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
         {
+            services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
             var cosmosDbConfig = new CosmosDbConfiguration();

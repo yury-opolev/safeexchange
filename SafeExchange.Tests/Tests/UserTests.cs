@@ -15,6 +15,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using System;
@@ -28,7 +29,10 @@ namespace SafeExchange.Tests
     {
         private DbContextOptions<SafeExchangeDbContext> dbContextOptions;
 
+        private ILogger<TokenMiddlewareCore> middlewareLogger;
         private ILogger logger;
+
+        private TokenMiddlewareCore tokenMiddleware;
 
         private SafeExchangeSecretMeta secretMeta;
 
@@ -109,6 +113,11 @@ namespace SafeExchange.Tests
 
             DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
 
+            this.middlewareLogger = TestFactory.CreateLogger<TokenMiddlewareCore>();
+            this.tokenMiddleware = new TokenMiddlewareCore(
+                this.testConfiguration, this.dbContext, this.tokenHelper,
+                this.graphDataProvider, this.middlewareLogger);
+
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager);
@@ -140,6 +149,7 @@ namespace SafeExchange.Tests
             var request = TestFactory.CreateHttpRequestData("get");
 
             // [WHEN] An arbitrary call to a service
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
             await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
 
             // [THEN] User is created in the database with UPN, DisplayName, TenantId and ObjectId
@@ -151,7 +161,7 @@ namespace SafeExchange.Tests
 
             Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, createdUser?.CreatedAt);
             Assert.AreEqual(DateTime.MinValue, createdUser?.ModifiedAt);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, createdUser?.GroupSyncNotBefore);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, createdUser?.GroupSyncNotBefore);
 
             // [THEN] User has his 'memberOf' groups persisted
             var userGroups = createdUser?.Groups;
@@ -180,6 +190,10 @@ namespace SafeExchange.Tests
                 this.testConfiguration, this.dbContext, this.tokenHelper,
                 localGlobalFilters, this.purger, this.permissionsManager);
 
+            var localTokenMiddleware = new TokenMiddlewareCore(
+                localConfiguration, this.dbContext, this.tokenHelper,
+                this.graphDataProvider, this.middlewareLogger);
+
             // [GIVEN] A user with valid credentials, is member of several groups in AAD
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             this.graphDataProvider.GroupMemberships
@@ -189,6 +203,7 @@ namespace SafeExchange.Tests
             var request = TestFactory.CreateHttpRequestData("get");
 
             // [WHEN] An arbitrary call to a service
+            await localTokenMiddleware.RunAsync(request, claimsPrincipal);
             await localSecretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
 
             // [THEN] User is created in the database with UPN, DisplayName, TenantId and ObjectId
@@ -219,12 +234,13 @@ namespace SafeExchange.Tests
             var request = TestFactory.CreateHttpRequestData("get");
 
             // [GIVEN] Was making calls to a service before
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
 
             // [GIVEN] User is created in the database with groups
             var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, user?.GroupSyncNotBefore);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, user?.GroupSyncNotBefore);
 
             var groupSyncNotBefore = user?.GroupSyncNotBefore;
 
@@ -240,7 +256,9 @@ namespace SafeExchange.Tests
                 new List<string> { "00000000-0000-0000-9999-ffff00000001", "00000000-0000-0000-9999-ffff00009999" };
 
             // [WHEN] Another call to a service is made within 'group refresh delay' time
-            DateTimeProvider.SpecifiedDateTime += UserTokenFilter.GroupSyncDelay - TimeSpan.FromSeconds(10);
+            DateTimeProvider.SpecifiedDateTime += TokenMiddlewareCore.GroupSyncDelay - TimeSpan.FromSeconds(10);
+
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
             await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
 
             // [THEN] Groups are not refreshed
@@ -267,12 +285,13 @@ namespace SafeExchange.Tests
             var request = TestFactory.CreateHttpRequestData("get");
 
             // [GIVEN] Was making calls to a service before
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
             var response = await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
 
             // [GIVEN] User is created in the database with groups
             var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, user?.GroupSyncNotBefore);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, user?.GroupSyncNotBefore);
 
             var groupSyncNotBefore = user?.GroupSyncNotBefore;
 
@@ -288,13 +307,14 @@ namespace SafeExchange.Tests
                 new List<string> { "00000000-0000-0000-9999-ffff00000001", "00000000-0000-0000-9999-ffff00009999", "00000000-0000-0000-9999-eeee00009999" };
 
             // [WHEN] Another call to a service is made within 'group refresh delay' time
-            DateTimeProvider.SpecifiedDateTime += UserTokenFilter.GroupSyncDelay + TimeSpan.FromSeconds(10);
+            DateTimeProvider.SpecifiedDateTime += TokenMiddlewareCore.GroupSyncDelay + TimeSpan.FromSeconds(10);
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
             await this.secretMeta.Run(request, "dummy", claimsPrincipal, this.logger);
 
             // [THEN] Groups are refreshed
             user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
             Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + UserTokenFilter.GroupSyncDelay, user?.GroupSyncNotBefore);
+            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, user?.GroupSyncNotBefore);
 
             userGroups = user?.Groups;
             Assert.IsNotNull(userGroups);
