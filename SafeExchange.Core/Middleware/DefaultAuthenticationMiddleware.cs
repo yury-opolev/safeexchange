@@ -72,6 +72,12 @@ namespace SafeExchange.Core.Middleware
                 var principal = this.tokenHandler.ValidateToken(authenticationHeader.Parameter, tokenValidationParameters, out _);
                 context.Items[ClaimsPrincipalKey] = principal;
             }
+            catch (ArgumentException exception)
+            {
+                this.log.LogWarning($"Token validation exception, {exception.GetType()}: {exception.Message}.");
+                await UnauthorizedAsync(context, httpRequestData, exception.Message);
+                return;
+            }
             catch (SecurityTokenException exception)
             {
                 this.log.LogWarning($"Token validation exception, {exception.GetType()}: {exception.Message}.");
