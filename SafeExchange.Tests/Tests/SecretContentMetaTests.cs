@@ -4,11 +4,14 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Mvc;
+    using Azure.Core.Serialization;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
-    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using Moq;
     using NUnit.Framework;
+    using NUnit.Framework.Internal;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
@@ -16,19 +19,19 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using System.Net.Http;
+    using System.Net;
     using System.Security.Claims;
-    using System.Text.Json;
     using System.Threading.Tasks;
 
     [TestFixture]
     public class SecretContentMetaTests
     {
-        private ILogger logger;
+        private Microsoft.Extensions.Logging.ILogger logger;
 
         private SafeExchangeSecretMeta secretMeta;
         private SafeExchangeSecretContentMeta secretContentMeta;
@@ -110,6 +113,13 @@ namespace SafeExchange.Tests
 
             this.imageContentFileName = "testimage_small.jpg";
             this.imageContent = File.ReadAllBytes(Path.Combine("Resources", this.imageContentFileName));
+
+            var workerOptions = Options.Create(new WorkerOptions() { Serializer = new JsonObjectSerializer() });
+            var serviceProviderMock = new Mock<IServiceProvider>();
+            serviceProviderMock
+                .Setup(x => x.GetService(typeof(IOptions<WorkerOptions>)))
+                .Returns(workerOptions);
+            TestFactory.FunctionContext.InstanceServices = serviceProviderMock.Object;
         }
 
         [OneTimeTearDown]
@@ -158,23 +168,23 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to add content to the secret.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretContentMeta.Run(request, "secret1", string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -199,23 +209,23 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to add content to the secret that not exists.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretContentMeta.Run(request, "notexists", string.Empty, claimsPrincipal, this.logger);
-            var notFoundObjectResult = response as NotFoundObjectResult;
+            var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', non-null Result and null Error.
             Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(404, notFoundObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
 
-            var responseResult = notFoundObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("not_found", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -230,23 +240,23 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to add content to the secret the not exists.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretContentMeta.Run(request, "secret2", "content", claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'bad_request', null Result and non-null Error.
             Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("bad_request", responseResult?.Status);
             Assert.IsNotNull(responseResult?.Error);
@@ -261,32 +271,32 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [GIVEN] A content is added to the secret.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
 
             var response = await this.secretContentMeta.Run(request, "secret3", string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
             // [WHEN] A request is made to get secret 'x'.
-            var getRequest = TestFactory.CreateHttpRequest("get");
+            var getRequest = TestFactory.CreateHttpRequestData("get");
             var getResponse = await this.secretMeta.Run(getRequest, "secret3", claimsPrincipal, this.logger);
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. The result contains added content.
-            okObjectResult = getResponse as OkObjectResult;
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            okObjectResult = getResponse as TestHttpResponseData;
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ObjectMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -318,42 +328,42 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to add content to the secret.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretContentMeta.Run(request, "secret4", string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
-            var createResponseResult = okObjectResult?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var createResponseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             var contentName = createResponseResult?.Result?.ContentName;
             Assert.IsNotNull(contentName);
 
             // [WHEN] A request is made to change content type and file name.
-            var patchRequest = TestFactory.CreateHttpRequest("patch");
+            var patchRequest = TestFactory.CreateHttpRequestData("patch");
             var patchInput = new ContentMetadataUpdateInput()
             {
                 ContentType = "image/bmp",
                 FileName = "image.bmp"
             };
 
-            patchRequest.Body = new StringContent(DefaultJsonSerializer.Serialize(patchInput)).ReadAsStream();
+            patchRequest.SetBodyAsJson(patchInput);
 
             response = await this.secretContentMeta.Run(patchRequest, "secret4", contentName, claimsPrincipal, this.logger);
-            okObjectResult = response as OkObjectResult;
+            okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. Content is updated in the DB.
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -384,34 +394,34 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
 
             // [WHEN] A request is made to add content to the secret.
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new ContentMetadataCreationInput()
             {
                 ContentType = "image/jpeg",
                 FileName = this.imageContentFileName
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretContentMeta.Run(request, "secret5", string.Empty, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
-            var createResponseResult = okObjectResult?.Value as BaseResponseObject<ContentMetadataOutput>;
+            var createResponseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             var contentName = createResponseResult?.Result?.ContentName;
             Assert.IsNotNull(contentName);
 
             // [WHEN] A request is made to delete existing content.
-            var deleteRequest = TestFactory.CreateHttpRequest("delete");
+            var deleteRequest = TestFactory.CreateHttpRequestData("delete");
             response = await this.secretContentMeta.Run(deleteRequest, "secret5", contentName, claimsPrincipal, this.logger);
-            okObjectResult = response as OkObjectResult;
+            okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. Content is deleted from the DB.
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
 
-            var responseResult = okObjectResult?.Value as BaseResponseObject<string>;
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("ok", responseResult?.Status);
             Assert.IsNull(responseResult?.Error);
@@ -434,15 +444,15 @@ namespace SafeExchange.Tests
             Assert.IsNotNull(mainContent);
 
             // [WHEN] A request is made to delete main content of the secret.
-            var deleteRequest = TestFactory.CreateHttpRequest("delete");
+            var deleteRequest = TestFactory.CreateHttpRequestData("delete");
             var response = await this.secretContentMeta.Run(deleteRequest, "secret6", mainContent.ContentName, claimsPrincipal, this.logger);
-            var badRequestObjectResult = response as BadRequestObjectResult;
+            var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'bad_request', null Result and non-null Error. Content is not deleted.
             Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(400, badRequestObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
 
-            var responseResult = badRequestObjectResult?.Value as BaseResponseObject<object>;
+            var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
             Assert.IsNotNull(responseResult);
             Assert.AreEqual("bad_request", responseResult?.Status);
             Assert.IsNull(responseResult?.Result);
@@ -456,7 +466,7 @@ namespace SafeExchange.Tests
         private async Task CreateSecret(string secretName)
         {
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var request = TestFactory.CreateHttpRequest("post");
+            var request = TestFactory.CreateHttpRequestData("post");
             var creationInput = new MetadataCreationInput()
             {
                 ExpirationSettings = new ExpirationSettingsInput()
@@ -468,12 +478,12 @@ namespace SafeExchange.Tests
                 }
             };
 
-            request.Body = new StringContent(DefaultJsonSerializer.Serialize(creationInput)).ReadAsStream();
+            request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
-            var okObjectResult = response as OkObjectResult;
+            var okObjectResult = response as TestHttpResponseData;
 
             Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(200, okObjectResult?.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
         }
     }
 }

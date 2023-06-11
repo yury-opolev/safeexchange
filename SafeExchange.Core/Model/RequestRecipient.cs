@@ -10,6 +10,8 @@ namespace SafeExchange.Core.Model
     {
         public string AccessRequestId { get; set; }
 
+        public SubjectType SubjectType { get; set; }
+
         public string SubjectName { get; set; }
     }
 }

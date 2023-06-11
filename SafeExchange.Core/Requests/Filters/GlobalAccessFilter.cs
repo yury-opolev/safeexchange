@@ -4,14 +4,14 @@
 
 namespace SafeExchange.Core.Filters
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -45,9 +45,9 @@ namespace SafeExchange.Core.Filters
             }
         }
 
-        public async ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
-            (bool shouldReturn, IActionResult? actionResult) result = (shouldReturn: false, actionResult: null);
+            (bool shouldReturn, HttpResponseData? response) result = (shouldReturn: false, response: null);
             if (!accessGroupIds.Any())
             {
                 return result;
@@ -58,7 +58,9 @@ namespace SafeExchange.Core.Filters
             if (existingUser is null)
             {
                 result.shouldReturn = true;
-                result.actionResult = new ObjectResult(new BaseResponseObject<object> { Status = "unauthorized", Error = $"Not a member of a global group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+                result.response = await ActionResults.CreateResponseAsync(
+                    req, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = $"Not a member of a global group." });
                 return result;
             }
 
@@ -73,7 +75,9 @@ namespace SafeExchange.Core.Filters
 
             this.log.LogInformation($"{existingUser.AadUpn} is not a member of any global access group, unauthorized.");
             result.shouldReturn = true;
-            result.actionResult = new ObjectResult(new { status = "unauthorized", error = $"Not a member of a global group." }) { StatusCode = StatusCodes.Status401Unauthorized };
+            result.response = await ActionResults.CreateResponseAsync(
+                req, HttpStatusCode.Forbidden,
+                new BaseResponseObject<object> { Status = "forbidden", Error = $"Not a member of a global group." });
             return result;
         }
     }

@@ -1,4 +1,6 @@
-﻿
+﻿/// <summary>
+/// SubjectPermissionsOutput
+/// </summary>
 
 namespace SafeExchange.Core.Model.Dto.Output
 {
@@ -7,6 +9,8 @@ namespace SafeExchange.Core.Model.Dto.Output
     public class SubjectPermissionsOutput
     {
         public string ObjectName { get; set; }
+
+        public SubjectTypeOutput SubjectType { get; set; }
 
         public string SubjectName { get; set; }
 

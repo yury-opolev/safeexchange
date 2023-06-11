@@ -5,12 +5,9 @@
 namespace SafeExchange.Core.Functions
 {
     using System.Threading.Tasks;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
     using System;
-    using System.Web.Http;
     using Microsoft.Extensions.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
@@ -19,8 +16,9 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
-    using System.Text.Json;
     using SafeExchange.Core.Model.Dto.Output;
+    using Microsoft.Azure.Functions.Worker.Http;
+    using System.Net;
 
     public class SafeExchangeSecretContentMeta
     {
@@ -58,82 +56,105 @@ namespace SafeExchange.Core.Functions
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
-        public async Task<IActionResult> Run(
-            HttpRequest req,
+        public async Task<HttpResponseData> Run(
+            HttpRequestData request,
             string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [{req.Method}].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
+
+            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretContentMetaCreation(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaCreation(request, secretId, contentId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleSecretContentMetaUpdate(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaUpdate(request, secretId, contentId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleSecretContentMetaDeletion(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaDeletion(request, secretId, contentId, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        public async Task<IActionResult> RunDrop(
-            HttpRequest req,
+        public async Task<HttpResponseData> RunDrop(
+            HttpRequestData request,
             string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(req, principal, this.dbContext);
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
-                return filterResult ?? new EmptyResult();
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {userUpn}, ID {this.tokenHelper.GetObjectId(principal)} [DROP ({req.Method})].");
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+            }
+
+            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [DROP ({request.Method})].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
 
-            switch (req.Method.ToLower())
+            switch (request.Method.ToLower())
             {
                 case "patch":
-                    return await this.HandleSecretContentMetaDrop(req, secretId, contentId, principal, log);
+                    return await this.HandleSecretContentMetaDrop(request, secretId, contentId, subjectType, subjectId, log);
 
                 default:
-                    return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
 
-        private async Task<IActionResult> HandleSecretContentMetaCreation(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
-            => await TryCatch(async () => 
+        private async Task<HttpResponseData> HandleSecretContentMetaCreation(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () => 
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot create content for secret '{secretId}', as secret not exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!string.IsNullOrEmpty(contentId))
             {
                 log.LogInformation($"Cannot create content for secret '{secretId}' with specified name.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Cannot specify content name on creation." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Cannot specify content name on creation." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -145,13 +166,17 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for '{secretId}' new content.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Content settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
             }
 
             if ((contentMetadataInput == null) || string.IsNullOrEmpty(contentMetadataInput.ContentType))
             {
                 log.LogInformation($"Content settings for '{secretId}' not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Content settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
             }
 
             var newContent = new ContentMetadata(contentMetadataInput);
@@ -159,37 +184,45 @@ namespace SafeExchange.Core.Functions
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
-            return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = newContent.ToDto() });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = newContent.ToDto() });
 
         }, nameof(HandleSecretContentMetaCreation), log);
 
-        private async Task<IActionResult> HandleSecretContentMetaUpdate(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretContentMetaUpdate(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot update content for secret '{secretId}', as secret not exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!existingMetadata.KeepInStorage)
             {
                 log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
             }
 
             if (string.IsNullOrEmpty(contentId))
             {
                 log.LogInformation($"Cannot update content for secret '{secretId}' without specified name.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify content name on update." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Must specify content name on update." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
@@ -201,13 +234,17 @@ namespace SafeExchange.Core.Functions
             catch
             {
                 log.LogInformation($"Could not parse input data for '{secretId}' new content.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Content settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
             }
 
             if ((contentMetadataInput == null) || string.IsNullOrEmpty(contentMetadataInput.ContentType))
             {
                 log.LogInformation($"Content settings for '{secretId}' content '{contentId}' not provided.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Content settings are not provided." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
             }
 
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
@@ -216,37 +253,45 @@ namespace SafeExchange.Core.Functions
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
-            return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
 
         }, nameof(HandleSecretContentMetaDeletion), log);
 
-        private async Task<IActionResult> HandleSecretContentMetaDrop(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretContentMetaDrop(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot drop content for secret '{secretId}', as secret not exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!existingMetadata.KeepInStorage)
             {
                 log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
             }
 
             if (string.IsNullOrEmpty(contentId))
             {
                 log.LogInformation($"Cannot drop content for secret '{secretId}' without specified name.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify content name on drop." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Must specify content name on drop." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
@@ -254,42 +299,52 @@ namespace SafeExchange.Core.Functions
             if (!string.IsNullOrEmpty(existingAccessTicket))
             {
                 log.LogInformation($"Content '{contentId}' for secret '{secretId}' status is being changed by other user, cannot drop.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
             }
 
             await this.DeleteAllChunksAsync(existingMetadata, existingContent, false, log);
 
-            return new OkObjectResult(new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
 
         }, nameof(HandleSecretContentMetaDeletion), log);
 
-        private async Task<IActionResult> HandleSecretContentMetaDeletion(HttpRequest request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
-            => await TryCatch(async () =>
+        private async Task<HttpResponseData> HandleSecretContentMetaDeletion(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
-            var userName = this.tokenHelper.GetUpn(principal);
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
             {
                 log.LogInformation($"Cannot delete content for secret '{secretId}', as secret not exists.");
-                return new NotFoundObjectResult(new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' not exists." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NotFound,
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
             }
 
             if (!existingMetadata.KeepInStorage)
             {
                 log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "error", Error = "Cannot use this endpoint for previous versions data." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
             }
 
             if (string.IsNullOrEmpty(contentId))
             {
                 log.LogInformation($"Cannot delete content for secret '{secretId}' without specified name.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify content name on deletion." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Must specify content name on deletion." });
             }
 
-            var userUpn = this.tokenHelper.GetUpn(principal);
-            if (!(await this.permissionsManager.IsAuthorizedAsync(userUpn, secretId, PermissionType.Write)))
+            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
             {
-                return ActionResults.InsufficientPermissionsResult(PermissionType.Write, secretId, string.Empty);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
@@ -297,19 +352,25 @@ namespace SafeExchange.Core.Functions
             if (existingContent.IsMain)
             {
                 log.LogInformation($"Cannot delete main content for secret '{secretId}'.");
-                return new BadRequestObjectResult(new BaseResponseObject<object> { Status = "bad_request", Error = $"Cannot delete main content." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Cannot delete main content." });
             }
 
             var existingAccessTicket = await this.TryGetAccessTicketAsync(existingContent, log);
             if (!string.IsNullOrEmpty(existingAccessTicket))
             {
                 log.LogInformation($"Content '{contentId}' for secret '{secretId}' status is being updated, cannot delete.");
-                return new UnprocessableEntityObjectResult(new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
             }
 
             await this.DeleteAllChunksAsync(existingMetadata, existingContent, true, log);
 
-            return new OkObjectResult(new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
 
         }, nameof(HandleSecretContentMetaDeletion), log);
 
@@ -378,7 +439,7 @@ namespace SafeExchange.Core.Functions
             return content.AccessTicket;
         }
 
-        private static async Task<IActionResult> TryCatch(Func<Task<IActionResult>> action, string actionName, ILogger log)
+        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {
             try
             {
@@ -387,7 +448,9 @@ namespace SafeExchange.Core.Functions
             catch (Exception ex)
             {
                 log.LogWarning(ex, $"{actionName} had exception {ex.GetType()}: {ex.Message}");
-                return new ExceptionResult(ex, true);
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.InternalServerError,
+                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
             }
         }
     }

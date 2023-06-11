@@ -1,12 +1,12 @@
 /// <summary>
 /// TokenHelper
 /// </summary>
-/// 
+
 namespace SafeExchange.Core
 {
     using System.Net.Http.Headers;
     using System.Security.Claims;
-    using Microsoft.AspNetCore.Http;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
 
     public class TokenHelper : ITokenHelper
@@ -21,7 +21,6 @@ namespace SafeExchange.Core
         /// <inheritdoc/>
         public TokenType GetTokenType(ClaimsPrincipal principal)
         {
-            var userName = this.GetUpn(principal);
             if (HasClaim(principal, "appid") && HasClaim(principal, "appidacr"))
             {
                 return TokenType.AccessToken;
@@ -38,7 +37,7 @@ namespace SafeExchange.Core
             var result = (tokenType == TokenType.IdToken) || 
                 (HasClaim(principal, "http://schemas.microsoft.com/identity/claims/scope") || HasClaim(principal, "scope"));
 
-            this.log.LogInformation($"Principal {userName} is authenticated as a {(result ? "user" : "app")} with {tokenType}");
+            this.log.LogInformation($"Principal {userName} is authenticated as {(result ? "a user" : "an app")} with {tokenType}");
             return result;
         }
 
@@ -67,6 +66,18 @@ namespace SafeExchange.Core
             }
 
             return result ?? string.Empty;
+        }
+
+        /// <inheritdoc/>
+        public string GetApplicationClientId(ClaimsPrincipal principal)
+        {
+            var clientId = principal?.FindFirst("azp")?.Value;
+            if (string.IsNullOrEmpty(clientId))
+            {
+                clientId = principal.FindFirst("appid")?.Value;
+            }
+
+            return clientId ?? string.Empty;
         }
 
         /// <inheritdoc/>
@@ -102,7 +113,7 @@ namespace SafeExchange.Core
         }
 
         /// <inheritdoc/>
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequest request, ClaimsPrincipal principal)
+        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal)
         {
             var accessToken = GetAccessToken(request);
             var accountId = GetAccountId(principal);
@@ -123,7 +134,7 @@ namespace SafeExchange.Core
             return objectId?.Value ?? null;
         }
 
-        public string? GetTenantId(ClaimsPrincipal? principal)
+        public string GetTenantId(ClaimsPrincipal? principal)
         {
             var tenantId = principal?.FindFirst("tid");
             if (tenantId == null)
@@ -131,7 +142,7 @@ namespace SafeExchange.Core
                 tenantId = principal?.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid");
             }
 
-            return tenantId?.Value ?? null;
+            return tenantId?.Value ?? string.Empty;
         }
 
         private static bool HasClaim(ClaimsPrincipal principal, string type)
@@ -139,10 +150,10 @@ namespace SafeExchange.Core
             return principal.HasClaim(claim => claim.Type.Equals(type));
         }
 
-        private static string GetAccessToken(HttpRequest request)
+        private static string GetAccessToken(HttpRequestData request)
         {
-            if (!request.Headers.ContainsKey("Authorization") || 
-                !AuthenticationHeaderValue.TryParse(request.Headers["Authorization"], out var authHeader))
+            if (!request.Headers.TryGetValues("Authorization", out var headerValues) || 
+                !AuthenticationHeaderValue.TryParse(headerValues.FirstOrDefault(), out var authHeader))
             {
                 return string.Empty;
             }

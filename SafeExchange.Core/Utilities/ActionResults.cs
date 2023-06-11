@@ -4,32 +4,38 @@
 
 namespace SafeExchange.Core
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using SafeExchange.Core.Permissions;
+    using System.Net;
 
     public static class ActionResults
     {
-        public static IActionResult InsufficientPermissionsResult(PermissionType permission, string secretId, string subStatus)
+        public static async Task<HttpResponseData> CreateResponseAsync<T>(HttpRequestData request, HttpStatusCode statusCode, T resultObject)
         {
-            return new ObjectResult(new BaseResponseObject<object>
-            {
-                Status = "unauthorized",
-                Error = $"Insufficient permissions to do '{permission}' action on '{secretId}'",
-                SubStatus = subStatus
-            })
-            { StatusCode = StatusCodes.Status401Unauthorized };
+            var response = request.CreateResponse();
+            await response.WriteAsJsonAsync(resultObject);
+            response.StatusCode = statusCode;
+            return response;
         }
 
-        public static IActionResult InsufficientPermissionsResult(string actionName, string secretId, string subStatus)
+        public static BaseResponseObject<object> InsufficientPermissions(PermissionType permission, string secretId, string subStatus)
         {
-            return new ObjectResult(new BaseResponseObject<object>
+            return new BaseResponseObject<object>
             {
-                Status = "unauthorized",
+                Status = "forbidden",
+                Error = $"Insufficient permissions to do '{permission}' action on '{secretId}'",
+                SubStatus = subStatus
+            };
+        }
+
+        public static BaseResponseObject<object> InsufficientPermissions(string actionName, string secretId, string subStatus)
+        {
+            return new BaseResponseObject<object>
+            {
+                Status = "forbidden",
                 Error = $"Insufficient permissions to do '{actionName}' action on '{secretId}'",
                 SubStatus = subStatus
-            })
-            { StatusCode = StatusCodes.Status401Unauthorized };
+            };
         }
 
     }

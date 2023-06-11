@@ -10,6 +10,8 @@ namespace SafeExchange.Core.Model.Dto.Output
     {
         public string Id { get; set; }
 
+        public SubjectTypeOutput SubjectType { get; set; }
+
         public string SubjectName { get; set; }
 
         public string ObjectName { get; set; }

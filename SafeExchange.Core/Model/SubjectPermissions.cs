@@ -8,15 +8,16 @@ namespace SafeExchange.Core.Model
     using SafeExchange.Core.Model.Dto.Output;
     using System;
 
-    [Index(nameof(SecretName), nameof(SubjectName))]
+    [Index(nameof(SecretName), nameof(SubjectType), nameof(SubjectName))]
     public class SubjectPermissions
     {
         public SubjectPermissions()
         { }
 
-        public SubjectPermissions(string secretName, string subjectName)
+        public SubjectPermissions(string secretName, SubjectType subjectType, string subjectName)
         {
             this.SecretName = secretName ?? throw new ArgumentNullException(nameof(secretName));
+            this.SubjectType = subjectType;
             this.SubjectName = subjectName ?? throw new ArgumentNullException(nameof(subjectName));
             this.PartitionKey = this.GetPartitionKey();
         }
@@ -24,6 +25,8 @@ namespace SafeExchange.Core.Model
         public string PartitionKey { get; set; }
 
         public string SecretName { get; set; }
+
+        public SubjectType SubjectType { get; set; } = SubjectType.User;
 
         public string SubjectName { get; set; }
 
@@ -38,6 +41,7 @@ namespace SafeExchange.Core.Model
         internal SubjectPermissionsOutput ToDto() => new()
         {
             ObjectName = this.SecretName,
+            SubjectType = this.SubjectType.ToDto(),
             SubjectName = this.SubjectName,
 
             CanRead = this.CanRead,

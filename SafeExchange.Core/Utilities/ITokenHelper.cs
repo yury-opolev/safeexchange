@@ -4,7 +4,7 @@
 
 namespace SafeExchange.Core
 {
-    using Microsoft.AspNetCore.Http;
+    using Microsoft.Azure.Functions.Worker.Http;
     using System.Security.Claims;
 
     public interface ITokenHelper
@@ -31,6 +31,13 @@ namespace SafeExchange.Core
         public string GetUpn(ClaimsPrincipal principal);
 
         /// <summary>
+        /// Get AAD application client id from ClaimsPrincipal.
+        /// </summary>
+        /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
+        /// <returns>A string, representing AAD application client id, extracted from given ClaimsPrincipal.</returns>
+        public string GetApplicationClientId(ClaimsPrincipal principal);
+
+        /// <summary>
         /// Get user display name from ClaimsPrincipal.
         /// </summary>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
@@ -45,10 +52,10 @@ namespace SafeExchange.Core
         public string? GetObjectId(ClaimsPrincipal? principal);
 
         /// <summary>
-        /// Get user 'ObjectId' from ClaimsPrincipal.
+        /// Get 'TenantId' from ClaimsPrincipal.
         /// </summary>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
-        /// <returns>A string, representing user 'ObjectId', extracted from given ClaimsPrincipal.</returns>
+        /// <returns>A string, representing 'TenantId', extracted from given ClaimsPrincipal.</returns>
         public string? GetTenantId(ClaimsPrincipal? principal);
 
         /// <summary>
@@ -57,6 +64,6 @@ namespace SafeExchange.Core
         /// <param name="request">Incoming http request.</param>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
         /// <returns><see cref="AccountIdAndToken">AccountIdAndToken</see>.</returns>
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequest request, ClaimsPrincipal principal);
+        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal);
     }
 }

@@ -11,6 +11,8 @@ namespace SafeExchange.Core
     {
         public DbSet<User> Users { get; set; }
 
+        public DbSet<Application> Applications { get; set; }
+
         public DbSet<ObjectMetadata> Objects { get; set; }
 
         public DbSet<SubjectPermissions> Permissions { get; set; }
@@ -62,7 +64,7 @@ namespace SafeExchange.Core
                 });
 
             modelBuilder.Entity<SubjectPermissions>()
-                .HasKey(sp => new { sp.SecretName, sp.SubjectName });
+                .HasKey(sp => new { sp.SecretName, sp.SubjectType, sp.SubjectName });
 
             modelBuilder.Entity<SubjectPermissions>()
                 .ToContainer("SubjectPermissions")
@@ -81,8 +83,9 @@ namespace SafeExchange.Core
                        ar => ar.Recipients,
                        rrb =>
                        {
-                           rrb.HasKey(rr => new { rr.AccessRequestId, rr.SubjectName });
+                           rrb.HasKey(rr => new { rr.AccessRequestId, rr.SubjectType, rr.SubjectName });
                            rrb.Property(rr => rr.AccessRequestId).IsRequired();
+                           rrb.Property(rr => rr.SubjectType).IsRequired();
                            rrb.Property(rr => rr.SubjectName).IsRequired();
                        });
                });
@@ -101,6 +104,11 @@ namespace SafeExchange.Core
                 .ToContainer("Users")
                 .HasNoDiscriminator()
                 .HasPartitionKey(u => u.PartitionKey);
+
+            modelBuilder.Entity<Application>()
+                .ToContainer("Applications")
+                .HasNoDiscriminator()
+                .HasPartitionKey(a => a.PartitionKey);
         }
     }
 }

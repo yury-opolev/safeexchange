@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
@@ -21,17 +19,21 @@ namespace SafeExchange.Functions
 
         private SafeExchangeNotificationSubscription notificationSubscriptionHandler;
 
-        public SafeNotificationSubscription(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        private readonly ILogger log;
+
+        public SafeNotificationSubscription(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeNotificationSubscription> log)
         {
             this.notificationSubscriptionHandler = new SafeExchangeNotificationSubscription(dbContext, tokenHelper, globalFilters);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        [FunctionName("SafeExchange-NotificationSubscription")]
-        public async Task<IActionResult> Run(
+        [Function("SafeExchange-NotificationSubscription")]
+        public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "delete", Route = $"{Version}/notificationsub/web")]
-            HttpRequest req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request)
         {
-            return await this.notificationSubscriptionHandler.Run(req, principal, log);
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.notificationSubscriptionHandler.Run(request, principal, this.log);
         }
     }
 }

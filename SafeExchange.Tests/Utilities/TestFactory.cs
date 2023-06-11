@@ -4,26 +4,18 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Http.Internal;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Logging.Abstractions;
-    using Microsoft.Extensions.Primitives;
-    using System.Collections.Generic;
+    using SafeExchange.Tests.Utilities;
 
     public class TestFactory
     {
-        public static HttpRequest CreateHttpRequest(string requestMethod, Dictionary<string, StringValues> queryValues = null)
+        public static TestFunctionContext FunctionContext = new TestFunctionContext();
+
+        public static TestHttpRequestData CreateHttpRequestData(string requestMethod)
         {
-            var context = new DefaultHttpContext();
-
-            var request = context.Request;
-            request.Method = requestMethod;
-
-            if (queryValues != null)
-            {
-                request.Query = new QueryCollection(queryValues);
-            }
+            var request = new TestHttpRequestData(FunctionContext);
+            request.SetMethod(requestMethod);
 
             return request;
         }

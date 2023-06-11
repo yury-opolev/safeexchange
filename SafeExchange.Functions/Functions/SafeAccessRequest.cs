@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
@@ -24,26 +22,31 @@ namespace SafeExchange.Functions.Functions
 
         private SafeExchangeAccessRequest accessRequestHandler;
 
-        public SafeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsMaanger)
+        private readonly ILogger log;
+
+        public SafeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsMaanger, ILogger<SafeAccessRequest> log)
         {
             this.accessRequestHandler = new SafeExchangeAccessRequest(configuration, dbContext, globalFilters, tokenHelper, purger, permissionsMaanger);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        [FunctionName("SafeExchange-AccessRequest")]
-        public async Task<IActionResult> RunSecret(
+        [Function("SafeExchange-AccessRequest")]
+        public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "patch", "delete", Route = $"{Version}/accessrequest/{{secretId}}")]
-            HttpRequest req,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string secretId)
         {
-            return await this.accessRequestHandler.Run(req, secretId, principal, log);
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.accessRequestHandler.Run(request, secretId, principal, this.log);
         }
 
-        [FunctionName("SafeExchange-ListAccessRequests")]
-        public async Task<IActionResult> RunListSecret(
+        [Function("SafeExchange-ListAccessRequests")]
+        public async Task<HttpResponseData> RunListSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/accessrequest-list")]
-            HttpRequest req, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request)
         {
-            return await this.accessRequestHandler.RunList(req, principal, log);
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.accessRequestHandler.RunList(request, principal, this.log);
         }
     }
 }

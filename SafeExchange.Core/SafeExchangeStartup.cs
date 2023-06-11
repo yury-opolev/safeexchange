@@ -2,14 +2,10 @@
 /// Startup
 /// </summary>
 
-using Microsoft.Azure.Functions.Extensions.DependencyInjection;
-
-[assembly: FunctionsStartup(typeof(SafeExchange.Core.SafeExchangeStartup))]
 namespace SafeExchange.Core
 {
     using Azure.Extensions.AspNetCore.Configuration.Secrets;
     using Azure.Identity;
-    using Microsoft.Azure.Functions.Extensions.DependencyInjection;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
@@ -22,27 +18,31 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Crypto;
+    using System.Text.Json.Serialization;
+    using System.Text.Json;
+    using SafeExchange.Core.Middleware;
 
-    public class SafeExchangeStartup : FunctionsStartup
+    public class SafeExchangeStartup
     {
-        public override void ConfigureAppConfiguration(IFunctionsConfigurationBuilder builder)
+        public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
         {
-            var interimConfiguration = builder.ConfigurationBuilder.Build();
+            var interimConfiguration = configurationBuilder.Build();
             var keyVaultUri = new Uri(interimConfiguration["KEYVAULT_BASEURI"]);
 
-            builder.ConfigurationBuilder.AddAzureKeyVault(
+            configurationBuilder.AddAzureKeyVault(
                 keyVaultUri, new DefaultAzureCredential(), new AzureKeyVaultConfigurationOptions()
                 {
                     Manager = new KeyVaultSecretManager(),
                     ReloadInterval = TimeSpan.FromMinutes(5)
                 });
 
-            builder.ConfigurationBuilder.AddCosmosDbKeysConfiguration();
+            configurationBuilder.AddCosmosDbKeysConfiguration();
         }
 
-        public override void Configure(IFunctionsHostBuilder builder)
+        public static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
         {
-            var configuration = builder.GetContext().Configuration;
+            services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
+            services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
             var cosmosDbConfig = new CosmosDbConfiguration();
             configuration.GetSection("CosmosDb").Bind(cosmosDbConfig);
@@ -50,21 +50,27 @@ namespace SafeExchange.Core
             var cosmosDbKeys = new CosmosDbKeys();
             configuration.GetSection(CosmosDbKeysProvider.CosmosDbKeysSectionName).Bind(cosmosDbKeys);
 
-            builder.Services.AddDbContext<SafeExchangeDbContext>(
+            services.AddDbContext<SafeExchangeDbContext>(
                 options => options.UseCosmos(
                     cosmosDbConfig.CosmosDbEndpoint,
                     cosmosDbKeys.PrimaryKey,
                     cosmosDbConfig.DatabaseName));
 
-            builder.Services.AddSingleton<ITokenHelper, TokenHelper>();
-            builder.Services.AddSingleton<ICryptoHelper, CryptoHelper>();
-            builder.Services.AddSingleton<IBlobHelper, BlobHelper>();
-            builder.Services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
-            builder.Services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
-            builder.Services.AddSingleton<IPurger, PurgeManager>();
-            builder.Services.AddSingleton<GlobalFilters>();
+            services.AddSingleton<ITokenHelper, TokenHelper>();
+            services.AddSingleton<ICryptoHelper, CryptoHelper>();
+            services.AddSingleton<IBlobHelper, BlobHelper>();
+            services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
+            services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
+            services.AddSingleton<IPurger, PurgeManager>();
+            services.AddSingleton<GlobalFilters>();
 
-            builder.Services.AddScoped<IPermissionsManager, PermissionsManager>();
+            services.AddScoped<IPermissionsManager, PermissionsManager>();
+
+            services.Configure<JsonSerializerOptions>(options =>
+            {
+                options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            });
         }
     }
 }

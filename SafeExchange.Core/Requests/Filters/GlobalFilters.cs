@@ -4,8 +4,7 @@
 
 namespace SafeExchange.Core.Filters
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
@@ -37,15 +36,13 @@ namespace SafeExchange.Core.Filters
                 !string.IsNullOrWhiteSpace(adminConfiguration.AdminGroups);
 
             this.currentFilters = new List<IRequestFilter>();
-            currentFilters.Add(new UserTokenFilter(tokenHelper, useGroups, graphDataProvider, log));
             currentFilters.Add(new GlobalAccessFilter(groupsConfiguration, tokenHelper, log));
 
             this.currentAdminFilters = new List<IRequestFilter>();
-            currentAdminFilters.Add(new UserTokenFilter(tokenHelper, useGroups, graphDataProvider, log));
             currentAdminFilters.Add(new AdminGroupFilter(adminConfiguration, tokenHelper, log));
         }
 
-        public async ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
             foreach (var filter in this.currentFilters)
             {
@@ -56,10 +53,10 @@ namespace SafeExchange.Core.Filters
                 }
             }
 
-            return (shouldReturn: false, actionResult: null);
+            return (shouldReturn: false, response: null);
         }
 
-        public async ValueTask<(bool shouldReturn, IActionResult? actionResult)> GetAdminFilterResultAsync(HttpRequest req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+        public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetAdminFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
             foreach (var filter in this.currentAdminFilters)
             {
@@ -70,7 +67,7 @@ namespace SafeExchange.Core.Filters
                 }
             }
 
-            return (shouldReturn: false, actionResult: null);
+            return (shouldReturn: false, response: null);
         }
     }
 }

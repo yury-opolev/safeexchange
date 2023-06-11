@@ -4,10 +4,8 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Crypto;
@@ -15,7 +13,6 @@ namespace SafeExchange.Functions
     using SafeExchange.Core.Functions.Admin;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
-    using System.Security.Claims;
     using System.Threading.Tasks;
 
     public class SafeAdminOperations
@@ -24,18 +21,22 @@ namespace SafeExchange.Functions
 
         private SafeExchangeAdminOperations adminOperationsHandler;
 
-        public SafeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly ILogger log;
+
+        public SafeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAdminOperations> log)
         {
             this.adminOperationsHandler = new SafeExchangeAdminOperations(dbContext, tokenHelper, cryptoHelper, globalFilters);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        [FunctionName("SafeExchange-AdminOperations")]
-        public async Task<IActionResult> Run(
+        [Function("SafeExchange-AdminOperations")]
+        public async Task<HttpResponseData> Run(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/admops/{{operationName}}")]
-            HttpRequest req,
-            string operationName, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request,
+            string operationName)
         {
-            return await this.adminOperationsHandler.Run(req, operationName, principal, log);
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.adminOperationsHandler.Run(request, operationName, principal, this.log);
         }
     }
 }
