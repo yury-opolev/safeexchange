@@ -8,6 +8,9 @@ namespace SafeExchange.Core.Migrations
 
     public class MigrationItem00001
     {
+        public MigrationItem00001()
+        { }
+
         public MigrationItem00001(MigrationItem00001 source)
         {
             this.SecretName = source.SecretName;
