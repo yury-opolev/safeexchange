@@ -7,18 +7,13 @@ namespace SafeExchange.Functions
     using System.Threading.Tasks;
     using Microsoft.Extensions.Hosting;
     using SafeExchange.Core;
-    using SafeExchange.Core.Middleware;
 
     class Program
     {
         static async Task Main(string[] args)
         {
             var host = new HostBuilder()
-                .ConfigureFunctionsWorkerDefaults((context, builder) =>
-                {
-                    builder.UseMiddleware<DefaultAuthenticationMiddleware>();
-                    builder.UseMiddleware<TokenFilterMiddleware>();
-                })
+                .ConfigureFunctionsWorkerDefaults(SafeExchangeStartup.ConfigureWorkerDefaults)
                 .ConfigureAppConfiguration(SafeExchangeStartup.ConfigureAppConfiguration)
                 .ConfigureServices((hostBuilderContext, serviceCollection) =>
                 {
