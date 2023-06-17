@@ -78,12 +78,15 @@ namespace SafeExchange.Core.Migrations
         {
             this.log.LogInformation($"Migrating item '{item.id}'.");
 
-            item.SubjectType = 0;
-            item.id = item.id.Replace("|", $"|{item.SubjectType}|");
+            MigrationItem00001 newItem = new MigrationItem00001(item);
+
+            newItem.SubjectType = 0;
+            newItem.id = item.id.Replace("|", $"|{item.SubjectType}|");
 
             try
             {
-                await container.UpsertItemAsync(item);
+                await container.UpsertItemAsync(newItem);
+                await container.DeleteItemAsync<MigrationItem00001>(item.id, new PartitionKey(item.PartitionKey));
             }
             catch
             {

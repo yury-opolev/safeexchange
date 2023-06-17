@@ -8,6 +8,19 @@ namespace SafeExchange.Core.Migrations
 
     public class MigrationItem00001
     {
+        public MigrationItem00001(MigrationItem00001 source)
+        {
+            this.SecretName = source.SecretName;
+            this.SubjectType = source.SubjectType;
+            this.SubjectName = source.SubjectName;
+            this.CanGrantAccess = source.CanGrantAccess;
+            this.CanRead = source.CanRead;
+            this.CanRevokeAccess = source.CanRevokeAccess;
+            this.CanWrite = source.CanWrite;
+            this.PartitionKey = source.PartitionKey;
+            this.id = source.id;
+        }
+
         public string SecretName { get; set; }
 
         public int SubjectType { get; set; }
