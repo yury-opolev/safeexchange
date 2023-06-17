@@ -21,9 +21,19 @@ namespace SafeExchange.Core
     using System.Text.Json.Serialization;
     using System.Text.Json;
     using SafeExchange.Core.Middleware;
+    using SafeExchange.Core.Migrations;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Extensions.Hosting;
 
     public class SafeExchangeStartup
     {
+        public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
+        {
+            builder.UseMiddleware<DefaultAuthenticationMiddleware>();
+            builder.UseMiddleware<TokenFilterMiddleware>();
+        }
+
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
         {
             var interimConfiguration = configurationBuilder.Build();
@@ -65,6 +75,12 @@ namespace SafeExchange.Core
             services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
+
+            services.AddScoped<IMigrationsHelper>((serviceProvider) =>
+            {
+                var log = serviceProvider.GetRequiredService<ILogger<MigrationsHelper>>();
+                return new MigrationsHelper(cosmosDbConfig, cosmosDbKeys, log);
+            });
 
             services.Configure<JsonSerializerOptions>(options =>
             {

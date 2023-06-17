@@ -11,6 +11,7 @@ namespace SafeExchange.Functions
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions.Admin;
+    using SafeExchange.Core.Migrations;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using System.Threading.Tasks;
@@ -23,9 +24,9 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAdminOperations> log)
+        public SafeAdminOperations(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, ICryptoHelper cryptoHelper, IMigrationsHelper migrationsHelper, GlobalFilters globalFilters, ILogger<SafeAdminOperations> log)
         {
-            this.adminOperationsHandler = new SafeExchangeAdminOperations(dbContext, tokenHelper, cryptoHelper, globalFilters);
+            this.adminOperationsHandler = new SafeExchangeAdminOperations(dbContext, tokenHelper, cryptoHelper, migrationsHelper, globalFilters);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
