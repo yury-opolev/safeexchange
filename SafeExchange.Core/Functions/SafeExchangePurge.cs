@@ -39,17 +39,11 @@ namespace SafeExchange.Core.Functions
             var utcNow = DateTimeProvider.UtcNow;
             var expiredSecrets = await this.dbContext.Objects.Where(o =>
                 o.KeepInStorage &&
-                o.ExpirationMetadata.ScheduleExpiration &&
-                o.ExpirationMetadata.ExpireAt <= utcNow)
+                    ((o.ExpirationMetadata.ScheduleExpiration && o.ExpirationMetadata.ExpireAt <= utcNow) ||
+                    (o.ExpirationMetadata.ExpireOnIdleTime && o.ExpireIfUnusedAt <= utcNow)))
                 .ToListAsync();
 
-            var unusedSecrets = await this.dbContext.Objects.Where(o =>
-                o.KeepInStorage &&
-                o.ExpirationMetadata.ExpireOnIdleTime &&
-                o.LastAccessedAt + o.ExpirationMetadata.IdleTimeToExpire <= utcNow)
-                .ToListAsync();
-
-            return expiredSecrets.Concat(unusedSecrets).ToList();
+            return expiredSecrets;
         }
     }
 }

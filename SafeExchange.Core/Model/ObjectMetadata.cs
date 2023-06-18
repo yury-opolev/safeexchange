@@ -73,7 +73,23 @@ namespace SafeExchange.Core.Model
 
         public string ModifiedBy { get; set; }
 
-        public DateTime LastAccessedAt { get; set; }
+        private DateTime lastAccessTime;
+
+        public DateTime LastAccessedAt
+        {
+            get => this.lastAccessTime;
+
+            set
+            {
+                this.lastAccessTime = value;
+                if (this.ExpirationMetadata?.ExpireOnIdleTime == true)
+                {
+                    this.ExpireIfUnusedAt = this.lastAccessTime + this.ExpirationMetadata.IdleTimeToExpire;
+                }
+            }
+        }
+
+        public DateTime ExpireIfUnusedAt { get; set; }
 
         internal ObjectMetadataOutput ToDto() => new ()
         {

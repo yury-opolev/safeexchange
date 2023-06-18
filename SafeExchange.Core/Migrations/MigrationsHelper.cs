@@ -4,12 +4,15 @@
 
 namespace SafeExchange.Core.Migrations
 {
+    using AngleSharp.Io;
     using Azure;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Extensions.Logging;
+    using Newtonsoft.Json.Linq;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Model;
     using System;
+    using System.Text;
     using System.Text.RegularExpressions;
     using System.Threading.Tasks;
 
@@ -37,6 +40,12 @@ namespace SafeExchange.Core.Migrations
                 if ("00001".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00001Async();
+                    return;
+                }
+
+                if ("00002".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00002Async();
                 }
             }
             finally
@@ -69,14 +78,35 @@ namespace SafeExchange.Core.Migrations
                         continue;
                     }
 
-                    await MigrateItem(container, item);
+                    await MigrateItem00001Async(container, item);
                 }
             }
         }
 
-        private async Task MigrateItem(Container container, MigrationItem00001 item)
+        private async Task RunMigration00002Async()
         {
-            this.log.LogInformation($"Migrating item '{item.id}'.");
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, new AzureKeyCredential(this.dbKeys.PrimaryKey));
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer(nameof(ObjectMetadata));
+
+            var query = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.ExpireIfUnusedAt)");
+
+            using FeedIterator<MigrationItem00002> feed =
+                container.GetItemQueryIterator<MigrationItem00002>(queryDefinition: query);
+
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00002> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00002 item in response)
+                {
+                    await MigrateItem00002Async(container, item);
+                }
+            }
+        }
+
+        private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00002Async)}, item '{item.id}'.");
 
             MigrationItem00001 newItem = new MigrationItem00001(item);
 
@@ -91,6 +121,25 @@ namespace SafeExchange.Core.Migrations
             catch
             {
                 // no-op
+            }
+        }
+
+        private async Task MigrateItem00002Async(Container container, MigrationItem00002 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00002Async)}, item '{item.id}'.");
+
+            var response = await container.ReadItemStreamAsync(item.id, new PartitionKey(item.PartitionKey));
+            using var streamReader = new StreamReader(response.Content);
+
+            var contentString = await streamReader.ReadToEndAsync();
+            var newContentString = contentString.Replace("\"KeepInStorage", "\"ExpireIfUnusedAt\": \"0001-01-01T00:00:00\", \"KeepInStorage");
+
+            using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
+            using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
+
+            if (updateResponse.IsSuccessStatusCode)
+            {
+                this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
             }
         }
     }
