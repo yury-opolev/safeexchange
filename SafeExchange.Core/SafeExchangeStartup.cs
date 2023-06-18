@@ -28,10 +28,14 @@ namespace SafeExchange.Core
 
     public class SafeExchangeStartup
     {
+        public static bool IsHttpTrigger(FunctionContext context)
+            => context.FunctionDefinition.InputBindings.Values
+                .First(a => a.Type.EndsWith("Trigger")).Type == "httpTrigger";
+
         public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
         {
-            builder.UseMiddleware<DefaultAuthenticationMiddleware>();
-            builder.UseMiddleware<TokenFilterMiddleware>();
+            builder.UseWhen<DefaultAuthenticationMiddleware>(IsHttpTrigger);
+            builder.UseWhen<TokenFilterMiddleware>(IsHttpTrigger);
         }
 
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
