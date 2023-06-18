@@ -7,19 +7,17 @@ namespace SafeExchange.Core.Middleware
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Azure.Functions.Worker.Middleware;
+    using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using System.Net;
     using System.Security.Claims;
 
     public class TokenFilterMiddleware : IFunctionsWorkerMiddleware
     {
-        private readonly ITokenMiddlewareCore middlewareCore;
-
         private readonly ILogger log;
 
-        public TokenFilterMiddleware(ITokenMiddlewareCore middlewareCore, ILogger<TokenFilterMiddleware> log)
+        public TokenFilterMiddleware(ILogger<TokenFilterMiddleware> log)
         {
-            this.middlewareCore = middlewareCore ?? throw new ArgumentNullException(nameof(middlewareCore));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -34,7 +32,8 @@ namespace SafeExchange.Core.Middleware
                 return;
             }
 
-            (bool shouldReturn, HttpResponseData? earlyResponse) = await this.middlewareCore.RunAsync(httpRequestData!, principal);
+            var middlewareCore = context.InstanceServices.GetRequiredService<ITokenMiddlewareCore>();
+            (bool shouldReturn, HttpResponseData? earlyResponse) = await middlewareCore.RunAsync(httpRequestData!, principal);
             if (shouldReturn)
             {
                 SetResponse(context, earlyResponse);
