@@ -4,11 +4,9 @@
 
 namespace SafeExchange.Core.Migrations
 {
-    using AngleSharp.Io;
     using Azure;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Extensions.Logging;
-    using Newtonsoft.Json.Linq;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Model;
     using System;
