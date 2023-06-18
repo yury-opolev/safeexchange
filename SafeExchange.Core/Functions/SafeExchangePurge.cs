@@ -37,11 +37,19 @@ namespace SafeExchange.Core.Functions
         private async Task<List<ObjectMetadata>> GetSecretsToPurgeAsync()
         {
             var utcNow = DateTimeProvider.UtcNow;
-            return await this.dbContext.Objects.Where(o =>
+            var expiredSecrets = await this.dbContext.Objects.Where(o =>
                 o.KeepInStorage &&
                 o.ExpirationMetadata.ScheduleExpiration &&
                 o.ExpirationMetadata.ExpireAt <= utcNow)
                 .ToListAsync();
+
+            var unusedSecrets = await this.dbContext.Objects.Where(o =>
+                o.KeepInStorage &&
+                o.ExpirationMetadata.ExpireOnIdleTime &&
+                o.LastAccessedAt + o.ExpirationMetadata.IdleTimeToExpire <= utcNow)
+                .ToListAsync();
+
+            return expiredSecrets.Concat(unusedSecrets).ToList();
         }
     }
 }
