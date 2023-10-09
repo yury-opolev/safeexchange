@@ -8,6 +8,7 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <FunctionsEnableExecutorSourceGen>True</FunctionsEnableExecutorSourceGen>
   </PropertyGroup>
 
   <PropertyGroup>
