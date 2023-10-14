@@ -6,11 +6,11 @@ namespace SafeExchange.Core.Model.Dto.Output
 
     public class WebhookSubscriptionOverviewOutput
 	{
+        public bool Enabled { get; set; }
+
         public WebhookEventTypeOutput EventType { get; set; }
 
         public string Url { get; set; }
-
-        public bool Enabled { get; set; }
     }
 }
 

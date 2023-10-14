@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
@@ -34,9 +35,11 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
+        private readonly IDelayedTaskScheduler delayedTaskScheduler;
+
         private readonly IWebhookNotificator webhookNotificator;
 
-        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IWebhookNotificator webhookNotificator)
+        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler, IWebhookNotificator webhookNotificator)
         {
             if (configuration == null)
             {
@@ -51,6 +54,7 @@ namespace SafeExchange.Core.Functions
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.delayedTaskScheduler = delayedTaskScheduler ?? throw new ArgumentNullException(nameof(delayedTaskScheduler));
             this.webhookNotificator = webhookNotificator ?? throw new ArgumentNullException(nameof(webhookNotificator));
         }
 
@@ -381,17 +385,30 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            // TODO: 
-
-            foreach (var webhookSubscription in this.dbContext.AccessRequests)
-
-            if (this.webhookSubscription.NotificationsDelay > TimeSpan.Zero)
+            if (accessRequest.Status != RequestStatus.InProgress)
             {
-                await this.TryPostponeNotificationAsync(accessRequest, recipients);
                 return;
             }
 
-            await this.webhookNotificator.TryNotifyAsync(accessRequest, recipients);
+            var notificationSubscriptions = this.dbContext.WebhookSubscriptions.Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled);
+            foreach (var webhookSubscription in notificationSubscriptions)
+            {
+                if (webhookSubscription.WebhookCallDelay > TimeSpan.Zero)
+                {
+                    var notifyAtUtc = DateTimeProvider.UtcNow + webhookSubscription.WebhookCallDelay;
+                    var payload = new WebhookNotificationTaskPayload()
+                    {
+                       AccessRequestId = accessRequest.Id,
+                       WebhookSubscription = webhookSubscription,
+                       Recipients = recipients
+                    };
+
+                    await this.delayedTaskScheduler.ScheduleDelayedTask(notifyAtUtc, DelayedTaskType.ExternalNotification, payload);
+                    return;
+                }
+
+                await this.webhookNotificator.TryNotifyAsync(accessRequest, webhookSubscription, recipients);
+            }
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)

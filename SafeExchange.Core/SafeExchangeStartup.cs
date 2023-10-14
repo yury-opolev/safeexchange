@@ -25,6 +25,8 @@ namespace SafeExchange.Core
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Hosting;
+    using SafeExchange.Core.DelayedTasks;
+    using SafeExchange.Core.WebhookNotifications;
 
     public class SafeExchangeStartup
     {
@@ -79,6 +81,9 @@ namespace SafeExchange.Core
             services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
+
+            services.AddScoped<IDelayedTaskScheduler, NullDelayedTaskScheduler>();
+            services.AddScoped<IWebhookNotificator, NullWebhookNotificator>();
 
             services.AddScoped<IMigrationsHelper>((serviceProvider) =>
             {

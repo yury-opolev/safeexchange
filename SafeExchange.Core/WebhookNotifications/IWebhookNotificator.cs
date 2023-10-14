@@ -1,11 +1,14 @@
-﻿using System;
-using SafeExchange.Core.Model;
+﻿/// <summary>
+/// IWebhookNotificator
+/// </summary>
 
 namespace SafeExchange.Core.WebhookNotifications
 {
-	public interface IWebhookNotificator
+    using SafeExchange.Core.Model;
+
+    public interface IWebhookNotificator
 	{
-		public ValueTask TryNotifyAsync(AccessRequest accessRequest, IList<string> recipients);
+		public ValueTask TryNotifyAsync(AccessRequest accessRequest, WebhookSubscription webhookSubscription, IList<string> recipients);
 	}
 }
 

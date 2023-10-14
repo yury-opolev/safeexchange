@@ -29,8 +29,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Remove="WebhookNotifications\" />
+    <None Remove="DelayedTasks\" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="WebhookNotifications\" />
+    <Folder Include="DelayedTasks\" />
   </ItemGroup>
 </Project>
