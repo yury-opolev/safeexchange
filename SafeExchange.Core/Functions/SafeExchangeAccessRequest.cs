@@ -37,7 +37,7 @@ namespace SafeExchange.Core.Functions
 
         private readonly IDelayedTaskScheduler delayedTaskScheduler;
 
-        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler, IWebhookNotificator webhookNotificator)
+        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler)
         {
             if (configuration == null)
             {

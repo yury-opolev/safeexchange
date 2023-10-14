@@ -4,7 +4,10 @@
       "commandName": "Project",
       "commandLineArgs": "host start --useHttps --cert %USERPROFILE%/source/azurefunc/devcert/certificate.pfx --password %USERPROFILE%/source/azurefunc/devcert/certpass.txt",
       "environmentVariables": {
-        "KEYVAULT_BASEURI": "https://safeexchange-local.vault.azure.net/"
+        "KEYVAULT_BASEURI": "https://safeexchange-local.vault.azure.net/",
+        "AZURE_TENANT_ID": "1472703e-99d8-45ee-aeac-7ec3ae9ab104",
+        "AZURE_CLIENT_ID": "06ef20bb-3058-495e-acb5-db23a2d931e2",
+        "AZURE_CLIENT_CERTIFICATE_PATH": "/Users/yuo/Documents/tmpcerts/safeexchange-local-safeexchange-local-client-certificate-20231014.pfx"
       }
     }
   }
