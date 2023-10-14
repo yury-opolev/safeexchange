@@ -8,8 +8,6 @@ namespace SafeExchange.Core.DelayedTasks
         public string AccessRequestId { get; set; }
 
         public WebhookSubscription WebhookSubscription { get; set; }
-
-        public IList<string> Recipients { get; set; }
     }
 }
 

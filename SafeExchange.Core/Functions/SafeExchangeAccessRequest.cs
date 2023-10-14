@@ -37,8 +37,6 @@ namespace SafeExchange.Core.Functions
 
         private readonly IDelayedTaskScheduler delayedTaskScheduler;
 
-        private readonly IWebhookNotificator webhookNotificator;
-
         public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler, IWebhookNotificator webhookNotificator)
         {
             if (configuration == null)
@@ -55,7 +53,6 @@ namespace SafeExchange.Core.Functions
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
             this.delayedTaskScheduler = delayedTaskScheduler ?? throw new ArgumentNullException(nameof(delayedTaskScheduler));
-            this.webhookNotificator = webhookNotificator ?? throw new ArgumentNullException(nameof(webhookNotificator));
         }
 
         public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, ClaimsPrincipal principal, ILogger log)
@@ -393,21 +390,18 @@ namespace SafeExchange.Core.Functions
             var notificationSubscriptions = this.dbContext.WebhookSubscriptions.Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled);
             foreach (var webhookSubscription in notificationSubscriptions)
             {
-                if (webhookSubscription.WebhookCallDelay > TimeSpan.Zero)
+                var utcNow = DateTimeProvider.UtcNow;
+                var notifyAtUtc = webhookSubscription.WebhookCallDelay > TimeSpan.Zero
+                    ? utcNow + webhookSubscription.WebhookCallDelay
+                    : utcNow;
+
+                var payload = new WebhookNotificationTaskPayload()
                 {
-                    var notifyAtUtc = DateTimeProvider.UtcNow + webhookSubscription.WebhookCallDelay;
-                    var payload = new WebhookNotificationTaskPayload()
-                    {
-                       AccessRequestId = accessRequest.Id,
-                       WebhookSubscription = webhookSubscription,
-                       Recipients = recipients
-                    };
+                    AccessRequestId = accessRequest.Id,
+                    WebhookSubscription = webhookSubscription,
+                };
 
-                    await this.delayedTaskScheduler.ScheduleDelayedTask(notifyAtUtc, DelayedTaskType.ExternalNotification, payload);
-                    return;
-                }
-
-                await this.webhookNotificator.TryNotifyAsync(accessRequest, webhookSubscription, recipients);
+                await this.delayedTaskScheduler.ScheduleDelayedTask(notifyAtUtc, DelayedTaskType.ExternalNotification, payload);
             }
         }
 
