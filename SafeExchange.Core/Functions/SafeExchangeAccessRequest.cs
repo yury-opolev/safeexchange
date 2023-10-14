@@ -15,6 +15,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.WebhookNotifications;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -33,7 +34,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IWebhookNotificator webhookNotificator;
+
+        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IWebhookNotificator webhookNotificator)
         {
             if (configuration == null)
             {
@@ -48,6 +51,7 @@ namespace SafeExchange.Core.Functions
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.webhookNotificator = webhookNotificator ?? throw new ArgumentNullException(nameof(webhookNotificator));
         }
 
         public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, ClaimsPrincipal principal, ILogger log)
@@ -357,12 +361,37 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            foreach (var recipient in accessRequest.Recipients)
+            var externalNotificationRecipients = new List<string>();
+            foreach (var recipient in accessRequest.Recipients.Where(r => r.SubjectType == SubjectType.User))
             {
-                // TODO ...
+                var recipientUser = await this.dbContext.Users.FindAsync(recipient.SubjectName);
+                if (recipientUser?.ReceiveExternalNotifications == true)
+                {
+                    externalNotificationRecipients.Add(recipientUser.AadUpn);
+                }
             }
 
-            await Task.CompletedTask;
+            await this.TryNotifyExternallyAsync(accessRequest, currentStatus, externalNotificationRecipients);
+        }
+
+        private async ValueTask TryNotifyExternallyAsync(AccessRequest accessRequest, RequestStatus currentStatus, IList<string> recipients)
+        {
+            if (!this.features.UseExternalWebHookNotifications || currentStatus != RequestStatus.InProgress)
+            {
+                return;
+            }
+
+            // TODO: 
+
+            foreach (var webhookSubscription in this.dbContext.AccessRequests)
+
+            if (this.webhookSubscription.NotificationsDelay > TimeSpan.Zero)
+            {
+                await this.TryPostponeNotificationAsync(accessRequest, recipients);
+                return;
+            }
+
+            await this.webhookNotificator.TryNotifyAsync(accessRequest, recipients);
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)

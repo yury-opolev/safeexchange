@@ -23,6 +23,8 @@ namespace SafeExchange.Core
 
         public DbSet<NotificationSubscription> NotificationSubscriptions { get; set; }
 
+        public DbSet<WebhookSubscription> WebhookSubscriptions { get; set; }
+
         public SafeExchangeDbContext(DbContextOptions<SafeExchangeDbContext> options)
             : base(options)
         { }
@@ -109,6 +111,11 @@ namespace SafeExchange.Core
                 .ToContainer("Applications")
                 .HasNoDiscriminator()
                 .HasPartitionKey(a => a.PartitionKey);
+
+            modelBuilder.Entity<WebhookSubscription>()
+                .ToContainer("WebhookSubscriptions")
+                .HasNoDiscriminator()
+                .HasPartitionKey(ws => ws.PartitionKey);
         }
     }
 }

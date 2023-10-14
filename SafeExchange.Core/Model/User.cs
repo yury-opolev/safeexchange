@@ -55,6 +55,8 @@ namespace SafeExchange.Core.Model
 
         public DateTime GroupSyncNotBefore { get; set; }
 
+        public bool ReceiveExternalNotifications { get; set; }
+
         /// <summary>
         /// User is required to consent in AAD to the application to allow synchronization of user group memberships in Graph.
         /// </summary>

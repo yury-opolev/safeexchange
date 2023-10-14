@@ -10,6 +10,8 @@ namespace SafeExchange.Core.Configuration
     {
         public bool UseNotifications { get; set; }
 
+        public bool UseExternalWebHookNotifications { get; set; }
+
         public bool UseGroupsAuthorization { get; set; }
 
         public Features Clone()
@@ -17,6 +19,7 @@ namespace SafeExchange.Core.Configuration
             return new Features()
             {
                 UseNotifications = this.UseNotifications,
+                UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
                 UseGroupsAuthorization = this.UseGroupsAuthorization
             };
         }
@@ -30,11 +33,13 @@ namespace SafeExchange.Core.Configuration
 
             return
                 this.UseNotifications.Equals(other.UseNotifications) &&
+                this.UseExternalWebHookNotifications.Equals(other.UseExternalWebHookNotifications) &&
                 this.UseGroupsAuthorization.Equals(other.UseGroupsAuthorization);
         }
 
         public override int GetHashCode() => HashCode.Combine(
             this.UseNotifications,
+            this.UseExternalWebHookNotifications,
             this.UseGroupsAuthorization);
     }
 }

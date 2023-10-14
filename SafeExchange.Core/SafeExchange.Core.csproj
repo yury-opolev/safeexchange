@@ -27,4 +27,10 @@
   <ItemGroup>
     <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />
   </ItemGroup>
+  <ItemGroup>
+    <None Remove="WebhookNotifications\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="WebhookNotifications\" />
+  </ItemGroup>
 </Project>
