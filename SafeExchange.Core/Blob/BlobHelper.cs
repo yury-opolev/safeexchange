@@ -26,7 +26,7 @@ namespace SafeExchange.Core.Blob
         private string containerName;
         private string cryptoKeyName;
 
-        private TokenCredential credential;
+        private readonly TokenCredential credential;
 
         private BlobContainerClient blobContainerClient;
 
