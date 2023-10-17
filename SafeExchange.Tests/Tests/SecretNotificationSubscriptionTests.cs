@@ -14,6 +14,7 @@ namespace SafeExchange.Tests
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
+    using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Model.Dto.Input;
@@ -57,6 +58,8 @@ namespace SafeExchange.Tests
 
         private IPermissionsManager permissionsManager;
 
+        private IDelayedTaskScheduler delayedTaskScheduler;
+
         private ClaimsIdentity firstIdentity;
         private ClaimsIdentity secondIdentity;
         private ClaimsIdentity thirdIdentity;
@@ -94,6 +97,8 @@ namespace SafeExchange.Tests
             this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>());
 
             this.permissionsManager = new PermissionsManager(this.testConfiguration, this.dbContext, TestFactory.CreateLogger<PermissionsManager>());
+
+            this.delayedTaskScheduler = new NullDelayedTaskScheduler();
 
             this.firstIdentity = new ClaimsIdentity(new List<Claim>()
                 {
@@ -154,7 +159,7 @@ namespace SafeExchange.Tests
 
             this.secretAccessRequest = new SafeExchangeAccessRequest(
                 this.testConfiguration, this.dbContext, this.globalFilters,
-                this.tokenHelper, this.purger, this.permissionsManager);
+                this.tokenHelper, this.purger, this.permissionsManager, this.delayedTaskScheduler);
 
             this.secretNotificationSubscription = new SafeExchangeNotificationSubscription(
                 this.dbContext, this.tokenHelper, this.globalFilters);

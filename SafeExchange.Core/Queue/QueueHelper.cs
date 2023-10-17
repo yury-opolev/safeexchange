@@ -76,9 +76,7 @@ namespace SafeExchange.Core
             }
 
             this.log.LogInformation($"Initializing queue client ('{this.queueConfiguration.QueueServiceUri}', queue name '{this.queueConfiguration.QueueName}').");
-
             var queueClient = new QueueClient(new Uri(this.queueConfiguration.QueueServiceUri, this.queueConfiguration.QueueName), this.credential)
-
             if (this.queueConfiguration.UseClientSideEncryption)
             {
                 var encryptionAlgorithm = "RSA-OAEP-256";
