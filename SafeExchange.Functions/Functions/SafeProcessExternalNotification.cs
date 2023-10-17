@@ -25,7 +25,7 @@ namespace SafeExchange.Functions
 
         [Function("SafeExchange-ProcessExternalNotification")]
         public async Task Run(
-            [QueueTrigger("myqueue-items", Connection = "testazfuncqueue_STORAGE")] QueueMessage message)
+            [QueueTrigger("delayed-webhooks", Connection = "testazfuncqueue_STORAGE")] QueueMessage message)
         {
             await this.processExternalNotificationHandler.Run(message, this.log);
         }

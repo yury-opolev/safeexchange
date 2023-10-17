@@ -16,7 +16,6 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
-    using SafeExchange.Core.WebhookNotifications;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -397,11 +396,11 @@ namespace SafeExchange.Core.Functions
 
                 var payload = new WebhookNotificationTaskPayload()
                 {
+                    SubType = WebhookNotificationTaskPayload.AccessRequestCreatedSubType,
                     AccessRequestId = accessRequest.Id,
-                    WebhookSubscription = webhookSubscription,
                 };
 
-                await this.delayedTaskScheduler.ScheduleDelayedTask(notifyAtUtc, DelayedTaskType.ExternalNotification, payload);
+                await this.delayedTaskScheduler.ScheduleDelayedTaskAsync(DelayedTaskType.ExternalNotification, notifyAtUtc, payload);
             }
         }
 

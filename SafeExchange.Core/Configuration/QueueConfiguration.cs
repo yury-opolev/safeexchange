@@ -10,9 +10,9 @@ namespace SafeExchange.Core.Configuration
     {
         public Uri QueueServiceUri { get; set; }
 
-        public string QueueName { get; set; }
+        public string QueueName => "delayed-webhooks";
 
-        public bool UseClientSideEncryption { get; set; }
+        public bool UseClientSideEncryption { get; set; } = false;
 
         public string? ClientSideEncryptionKeyName { get; set; }
     }

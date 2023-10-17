@@ -1,13 +1,17 @@
-﻿using System;
+﻿/// <summary>
+/// NullDelayedTaskScheduler
+/// </summary>
 
 namespace SafeExchange.Core.DelayedTasks
 {
+    using System;
+
 	public class NullDelayedTaskScheduler : IDelayedTaskScheduler
 	{
-        public ValueTask ScheduleDelayedTask(DateTime runAt, DelayedTaskType taskType, object payload)
+        public async ValueTask ScheduleDelayedTaskAsync<T>(DelayedTaskType taskType, DateTime runAtUtc, T payload) where T: class
         {
             // no-op
-            return ValueTask.CompletedTask;
+            await ValueTask.CompletedTask;
         }
     }
 }

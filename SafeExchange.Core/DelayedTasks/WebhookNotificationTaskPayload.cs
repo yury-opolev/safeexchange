@@ -1,13 +1,23 @@
-﻿
+﻿/// <summary>
+/// WebhookNotificationTaskPayload
+/// </summary>
+
 namespace SafeExchange.Core.DelayedTasks
 {
     using SafeExchange.Core.Model;
 
-    public class WebhookNotificationTaskPayload
+    public class WebhookNotificationTaskPayload : DelayedTaskPayload
 	{
-        public string AccessRequestId { get; set; }
+        public const string AccessRequestCreatedSubType = "AccessRequestCreated";
 
-        public WebhookSubscription WebhookSubscription { get; set; }
+        public WebhookNotificationTaskPayload()
+        {
+            this.TaskType = DelayedTaskType.ExternalNotification;
+        }
+
+        public string SubType { get; set; }
+
+        public string AccessRequestId { get; set; }
     }
 }
 

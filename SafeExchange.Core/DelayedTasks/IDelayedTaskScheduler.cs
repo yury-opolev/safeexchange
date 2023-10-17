@@ -1,9 +1,14 @@
-﻿using System;
+﻿/// <summary>
+/// IDelayedTaskScheduler
+/// </summary>
+
 namespace SafeExchange.Core.DelayedTasks
 {
+	using System;
+
 	public interface IDelayedTaskScheduler
 	{
-		public ValueTask ScheduleDelayedTask(DateTime runAt, DelayedTaskType taskType, object payload);
+		public ValueTask ScheduleDelayedTaskAsync<T>(DelayedTaskType taskType, DateTime runAtUtc, T payload) where T: class;
 	}
 }
 
