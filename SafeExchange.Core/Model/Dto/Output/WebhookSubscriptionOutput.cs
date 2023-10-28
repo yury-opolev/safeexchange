@@ -6,6 +6,8 @@ namespace SafeExchange.Core.Model.Dto.Output
 
     public class WebhookSubscriptionOutput
 	{
+        public string Id { get; set; }
+
         public WebhookEventTypeOutput EventType { get; set; }
 
         public string Url { get; set; }

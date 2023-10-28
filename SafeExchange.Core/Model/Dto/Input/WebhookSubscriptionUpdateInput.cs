@@ -8,10 +8,6 @@ namespace SafeExchange.Core.Model.Dto.Input
 
     public class WebhookSubscriptionUpdateInput
     {
-        public WebhookEventTypeInput EventType { get; set; }
-
-        public string Url { get; set; }
-
         public bool Enabled { get; set; }
 
         public bool Authenticate { get; set; }

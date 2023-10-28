@@ -34,7 +34,7 @@ namespace SafeExchange.Core.Functions.Admin
 
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
-            string applicationId, // display name
+            string webhookSubscriptionId,
             ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
@@ -51,21 +51,21 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for webhook subscription{(string.IsNullOrEmpty(webhookSubscriptionId) ? string.Empty : $" ID '{webhookSubscriptionId}'")} by {subjectType} {subjectId} [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleWebhookSubscriptionRegistration(request, applicationId, subjectType, subjectId, log);
+                    return await this.HandleWebhookSubscriptionCreation(request, subjectType, subjectId, log);
 
                 case "get":
-                    return await this.HandleWebhookSubscriptionRead(request, applicationId, subjectType, subjectId, log);
+                    return await this.HandleWebhookSubscriptionRead(request, webhookSubscriptionId, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleWebhookSubscriptionUpdate(request, applicationId, subjectType, subjectId, log);
+                    return await this.HandleWebhookSubscriptionUpdate(request, webhookSubscriptionId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandleWebhookSubscriptionDeletion(request, applicationId, subjectType, subjectId, log);
+                    return await this.HandleWebhookSubscriptionDeletion(request, webhookSubscriptionId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -74,114 +74,81 @@ namespace SafeExchange.Core.Functions.Admin
             }
         }
 
-        private async Task<HttpResponseData> HandleWebhookSubscriptionRegistration(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleWebhookSubscriptionCreation(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
-            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
-            if (existingRegistration != null)
-            {
-                log.LogInformation($"Cannot register application '{applicationId}', as already exists");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Conflict,
-                    new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with display name." });
-            }
-
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
-            ApplicationRegistrationInput? registrationInput;
+            WebhookSubscriptionCreationInput? creationInput;
             try
             {
-                registrationInput = DefaultJsonSerializer.Deserialize<ApplicationRegistrationInput>(requestBody);
+                creationInput = DefaultJsonSerializer.Deserialize<WebhookSubscriptionCreationInput>(requestBody);
             }
             catch
             {
-                log.LogInformation($"Could not parse input data for '{applicationId}'.");
+                log.LogInformation($"Could not parse input data for webhook subscription creation.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
+                    new BaseResponseObject<object> { Status = "error", Error = "Could not parse webhook subscription details." });
             }
 
-            if (registrationInput is null)
+            if (creationInput is null)
             {
-                log.LogInformation($"Input data for '{applicationId}' is not provided.");
+                log.LogInformation($"Input data for webhook subscription creation is not provided.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Application details are not provided." });
+                    new BaseResponseObject<object> { Status = "error", Error = "Webhook subscription details are not provided." });
             }
 
-            if (string.IsNullOrEmpty(registrationInput.ContactEmail))
+            if (string.IsNullOrEmpty(creationInput.ContactEmail))
             {
-                log.LogInformation($"{nameof(ApplicationRegistrationInput.ContactEmail)} for '{applicationId}' is not provided.");
+                log.LogInformation($"{nameof(WebhookSubscriptionCreationInput.ContactEmail)} for webhook subscription is not provided.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
             }
 
-            if (registrationInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength)
+            if (creationInput.ContactEmail.Length > SafeExchangeWebhookSubscriptions.MaxEmailLength)
             {
-                log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is too long.");
+                log.LogInformation($"{nameof(creationInput.ContactEmail)} for webhook subscription is too long.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is too long." });
             }
 
-            if (!Regex.IsMatch(registrationInput.ContactEmail, SafeExchangeApplications.DefaultEmailRegex))
+            if (!Regex.IsMatch(creationInput.ContactEmail, SafeExchangeWebhookSubscriptions.DefaultEmailRegex))
             {
-                log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is not in email-like format.");
+                log.LogInformation($"{nameof(creationInput.ContactEmail)} for webhook subscription is not in email-like format.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
             }
 
-            if (string.IsNullOrEmpty(registrationInput.AadTenantId))
+            if (string.IsNullOrEmpty(creationInput.Url))
             {
-                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadTenantId)} for '{applicationId}' is not provided.");
+                log.LogInformation($"{nameof(WebhookSubscriptionCreationInput.Url)} for webhook subscription is not provided.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not provided." });
+                    new BaseResponseObject<object> { Status = "error", Error = "Url is not provided." });
             }
 
-            if (!Regex.IsMatch(registrationInput.AadTenantId, DefaultGuidRegex))
+            var eventType = creationInput.EventType.ToModel();
+            var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.EventType.Equals(eventType) && whs.Url.Equals(creationInput.Url));
+            if (existingSubscription != null)
             {
-                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadTenantId)} for '{applicationId}' is in incorrect format.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Tenant Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
-            }
-
-            if (string.IsNullOrEmpty(registrationInput.AadClientId))
-            {
-                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadClientId)} for '{applicationId}' is not provided.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Client Id is not provided." });
-            }
-
-            if (!Regex.IsMatch(registrationInput.AadClientId, DefaultGuidRegex))
-            {
-                log.LogInformation($"{nameof(ApplicationRegistrationInput.AadClientId)} for '{applicationId}' is in incorrect format.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Client Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
-            }
-
-            existingRegistration = await this.dbContext.Applications
-                .FirstOrDefaultAsync(r => r.AadTenantId.Equals(registrationInput.AadTenantId) && r.AadClientId.Equals(registrationInput.AadClientId));
-            if (existingRegistration != null)
-            {
-                log.LogInformation($"Cannot register application '{applicationId}', as already exists with provided tenant and client Ids.");
+                log.LogInformation($"Cannot register webhook subscription, as it already exists with ID '{existingSubscription.Id}'.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Conflict,
-                    new BaseResponseObject<object> { Status = "conflict", Error = $"Application '{applicationId}' is already registered with tenant and client ids." });
+                    new BaseResponseObject<object> { Status = "conflict", Error = $"Webhook subscription for specified type and Url is already registered with ID '{existingSubscription.Id}'." });
             }
 
-            var registeredApplication = await this.RegisterApplicationAsync(applicationId, registrationInput, subjectType, subjectId, log);
-            log.LogInformation($"Application '{applicationId}' ({registrationInput.AadTenantId}.{registrationInput.AadClientId}) registered by {subjectType} '{subjectId}'.");
+            var createdSubscription = await this.CreateWebhookSubscriptionAsync(creationInput, subjectType, subjectId, log);
+            log.LogInformation($"Webhook subscription ID '{createdSubscription.Id}' ({creationInput.EventType}, {creationInput.Url}) created by {subjectType} '{subjectId}'.");
 
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
-                    new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = registeredApplication.ToDto() });
+                    new BaseResponseObject<WebhookSubscriptionOutput> { Status = "ok", Result = createdSubscription.ToDto() });
 
-        }, nameof(HandleWebhookSubscriptionRegistration), log);
+        }, nameof(HandleWebhookSubscriptionCreation), log);
 
         private async Task<HttpResponseData> HandleWebhookSubscriptionRead(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
@@ -281,10 +248,10 @@ namespace SafeExchange.Core.Functions.Admin
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(HandleWebhookSubscriptionDeletion), log);
 
-        private async Task<Application> RegisterApplicationAsync(string applicationId, ApplicationRegistrationInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<WebhookSubscription> CreateWebhookSubscriptionAsync(WebhookSubscriptionCreationInput creationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var appRegistration = new Application(applicationId, registrationInput, $"{subjectType} {subjectId}");
-            var entity = await this.dbContext.Applications.AddAsync(appRegistration);
+            var webhookSubscription = new WebhookSubscription(creationInput, $"{subjectType} {subjectId}");
+            var entity = await this.dbContext.WebhookSubscriptions.AddAsync(webhookSubscription);
 
             await this.dbContext.SaveChangesAsync();
 
