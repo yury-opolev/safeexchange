@@ -20,6 +20,7 @@ namespace SafeExchange.Core.Model
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = User.DefaultPartitionKey;
             this.Enabled = true;
+            this.ReceiveExternalNotifications = true;
 
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
             this.AadObjectId = aadObjectId ?? throw new ArgumentNullException(nameof(aadObjectId));
