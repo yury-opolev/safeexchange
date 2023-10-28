@@ -12,12 +12,9 @@ namespace SafeExchange.Core.Functions
     {
         private readonly SafeExchangeDbContext dbContext;
 
-        private readonly IQueueHelper queueHelper;
-
-        public SafeExchangeProcessExternalNotification(SafeExchangeDbContext dbContext, IQueueHelper queueHelper)
+        public SafeExchangeProcessExternalNotification(SafeExchangeDbContext dbContext)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            this.queueHelper = queueHelper ?? throw new ArgumentNullException(nameof(queueHelper));
         }
 
         public async Task Run(QueueMessage message, ILogger log)

@@ -181,7 +181,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"Created access request {accessRequest.Id} from {subjectType} {subjectId} for secret '{secretId}'.");
 
-            await this.TryNotifyAsync(accessRequest, RequestStatus.InProgress);
+            await this.TryNotifyAsync(accessRequest);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -295,7 +295,7 @@ namespace SafeExchange.Core.Functions
 
             await this.dbContext.SaveChangesAsync();
 
-            await this.TryNotifyAsync(existingRequest, RequestStatus.Approved);
+            await this.TryNotifyAsync(existingRequest);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -354,7 +354,7 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleAccessRequestDeletion), log);
 
-        private async ValueTask TryNotifyAsync(AccessRequest accessRequest, RequestStatus currentStatus)
+        private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
         {
             if (!this.features.UseNotifications)
             {
@@ -371,12 +371,12 @@ namespace SafeExchange.Core.Functions
                 }
             }
 
-            await this.TryNotifyExternallyAsync(accessRequest, currentStatus, externalNotificationRecipients);
+            await this.TryNotifyExternallyAsync(accessRequest, externalNotificationRecipients);
         }
 
-        private async ValueTask TryNotifyExternallyAsync(AccessRequest accessRequest, RequestStatus currentStatus, IList<string> recipients)
+        private async ValueTask TryNotifyExternallyAsync(AccessRequest accessRequest, IList<string> recipients)
         {
-            if (!this.features.UseExternalWebHookNotifications || currentStatus != RequestStatus.InProgress)
+            if (!this.features.UseExternalWebHookNotifications)
             {
                 return;
             }
