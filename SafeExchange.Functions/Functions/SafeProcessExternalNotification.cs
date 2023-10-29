@@ -17,15 +17,15 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeProcessExternalNotification(SafeExchangeDbContext dbContext, IQueueHelper queueHelper, ILogger<SafeExchangeProcessExternalNotification> log)
+        public SafeProcessExternalNotification(SafeExchangeDbContext dbContext, ILogger<SafeExchangeProcessExternalNotification> log)
         {
-            this.processExternalNotificationHandler = new SafeExchangeProcessExternalNotification(dbContext, queueHelper);
+            this.processExternalNotificationHandler = new SafeExchangeProcessExternalNotification(dbContext);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         [Function("SafeExchange-ProcessExternalNotification")]
         public async Task Run(
-            [QueueTrigger("delayed-webhooks", Connection = "testazfuncqueue_STORAGE")] QueueMessage message)
+            [QueueTrigger("delayed-webhooks", Connection = "DelayedTasksQueue")] QueueMessage message)
         {
             await this.processExternalNotificationHandler.Run(message, this.log);
         }
