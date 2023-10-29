@@ -25,6 +25,8 @@ namespace SafeExchange.Core
 
         public DbSet<WebhookSubscription> WebhookSubscriptions { get; set; }
 
+        public DbSet<WebhookNotificationData> WebhookNotificationData { get; set; }
+
         public SafeExchangeDbContext(DbContextOptions<SafeExchangeDbContext> options)
             : base(options)
         { }
@@ -114,6 +116,11 @@ namespace SafeExchange.Core
 
             modelBuilder.Entity<WebhookSubscription>()
                 .ToContainer("WebhookSubscriptions")
+                .HasNoDiscriminator()
+                .HasPartitionKey(ws => ws.PartitionKey);
+
+            modelBuilder.Entity<WebhookNotificationData>()
+                .ToContainer("WebhookNotificationData")
                 .HasNoDiscriminator()
                 .HasPartitionKey(ws => ws.PartitionKey);
         }

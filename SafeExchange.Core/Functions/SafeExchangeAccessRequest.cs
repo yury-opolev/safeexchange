@@ -381,8 +381,13 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            var notificationSubscriptions = this.dbContext.WebhookSubscriptions.Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled);
-            foreach (var webhookSubscription in notificationSubscriptions)
+            var webhookSubscriptions = this.dbContext.WebhookSubscriptions.Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled);
+            if (!webhookSubscriptions.Any())
+            {
+                return;
+            }
+
+            foreach (var webhookSubscription in webhookSubscriptions)
             {
                 var utcNow = DateTimeProvider.UtcNow;
                 var notifyAtUtc = webhookSubscription.WebhookCallDelay > TimeSpan.Zero
