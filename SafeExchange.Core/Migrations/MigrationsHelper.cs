@@ -161,10 +161,7 @@ namespace SafeExchange.Core.Migrations
             using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
             using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
 
-            if (updateResponse.IsSuccessStatusCode)
-            {
-                this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
-            }
+            this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
         }
 
         private async Task MigrateItem00003Async(Container container, MigrationItem00003 item)
@@ -175,15 +172,12 @@ namespace SafeExchange.Core.Migrations
             using var streamReader = new StreamReader(response.Content);
 
             var contentString = await streamReader.ReadToEndAsync();
-            var newContentString = contentString.Replace("\"Enabled", "\"ReceiveExternalNotifications\": true, \"\"Enabled\": true,");
+            var newContentString = contentString.Replace("\"Enabled", "\"ReceiveExternalNotifications\": true, \"Enabled");
 
             using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
             using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
 
-            if (updateResponse.IsSuccessStatusCode)
-            {
-                this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
-            }
+            this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
         }
     }
 }
