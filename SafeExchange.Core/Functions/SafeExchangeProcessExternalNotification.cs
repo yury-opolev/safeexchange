@@ -21,9 +21,9 @@ namespace SafeExchange.Core.Functions
         {
             log.LogInformation($"{nameof(SafeExchangeProcessExternalNotification)} triggered.");
 
-            await Task.CompletedTask;
-            
             // TODO
+            log.LogInformation($"Message body: {message.Body?.ToString()}.");
+            await Task.CompletedTask;
         }
     }
 }
