@@ -4,7 +4,7 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
 
-    "DelayedTasksQueue__queueServiceUri": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue-ServiceUri/)",
+    "DelayedTasksQueue__queueServiceUri": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue--ServiceUri/)",
     // "DelayedTasksQueue__credential": "managedidentity",
     "DelayedTasksQueue__tenantId": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue-TenantId/)",
     "DelayedTasksQueue__clientId": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue-ClientId/)",
