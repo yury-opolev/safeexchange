@@ -361,20 +361,15 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            var externalNotificationRecipients = new List<string>();
-            foreach (var recipient in accessRequest.Recipients.Where(r => r.SubjectType == SubjectType.User))
+            if (!accessRequest.Recipients.Any(r => r.SubjectType == SubjectType.User))
             {
-                var recipientUser = await this.dbContext.Users.FindAsync(recipient.SubjectName);
-                if (recipientUser?.ReceiveExternalNotifications == true)
-                {
-                    externalNotificationRecipients.Add(recipientUser.AadUpn);
-                }
+                return;
             }
 
-            await this.TryNotifyExternallyAsync(accessRequest, externalNotificationRecipients);
+            await this.TryNotifyExternallyAsync(accessRequest);
         }
 
-        private async ValueTask TryNotifyExternallyAsync(AccessRequest accessRequest, IList<string> recipients)
+        private async ValueTask TryNotifyExternallyAsync(AccessRequest accessRequest)
         {
             if (!this.features.UseExternalWebHookNotifications)
             {
@@ -396,8 +391,7 @@ namespace SafeExchange.Core.Functions
 
                 var payload = new WebhookNotificationTaskPayload()
                 {
-                    SubType = WebhookNotificationTaskPayload.AccessRequestCreatedSubType,
-                    AccessRequestId = accessRequest.Id,
+                    AccessRequestId = accessRequest.Id
                 };
 
                 await this.delayedTaskScheduler.ScheduleDelayedTaskAsync(DelayedTaskType.ExternalNotification, notifyAtUtc, payload);

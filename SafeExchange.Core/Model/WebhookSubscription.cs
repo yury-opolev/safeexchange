@@ -4,6 +4,7 @@ namespace SafeExchange.Core.Model
 {
     using Microsoft.EntityFrameworkCore;
     using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
     using System;
 
     [Index(nameof(EventType), nameof(Url), IsUnique = true)]
@@ -73,5 +74,29 @@ namespace SafeExchange.Core.Model
         public DateTime ModifiedAt { get; set; }
 
         public string ModifiedBy { get; set; }
+
+        internal WebhookSubscriptionOutput ToDto() => new()
+        {
+            Id = this.Id,
+
+            EventType = this.EventType.ToDto(),
+            Url = this.Url,
+
+            Enabled = this.Enabled,
+            Authenticate = this.Authenticate,
+            AuthenticationResource = this.AuthenticationResource,
+            WebhookCallDelay = this.WebhookCallDelay,
+            ContactEmail = this.ContactEmail
+        };
+
+        internal WebhookSubscriptionOverviewOutput ToOverviewDto() => new()
+        {
+            Id = this.Id,
+
+            EventType = this.EventType.ToDto(),
+            Url = this.Url,
+
+            Enabled = this.Enabled
+        };
     }
 }

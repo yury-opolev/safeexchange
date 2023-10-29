@@ -13,6 +13,7 @@ namespace SafeExchange.Core.DelayedTasks
         public WebhookNotificationTaskPayload()
         {
             this.TaskType = DelayedTaskType.ExternalNotification;
+            this.SubType = WebhookNotificationTaskPayload.AccessRequestCreatedSubType;
         }
 
         public string SubType { get; set; }
