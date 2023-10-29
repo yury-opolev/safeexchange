@@ -1,17 +1,17 @@
 ﻿/// <summary>
-/// MigrationItem00002
+/// MigrationItem00003
 /// </summary>
 
 namespace SafeExchange.Core.Migrations
 {
     using System;
 
-    public class MigrationItem00002
+    public class MigrationItem00003
     {
-        public MigrationItem00002()
+        public MigrationItem00003()
         { }
 
-        public MigrationItem00002(MigrationItem00002 source)
+        public MigrationItem00003(MigrationItem00003 source)
         {
             this.PartitionKey = source.PartitionKey;
             this.id = source.id;
