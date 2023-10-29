@@ -150,44 +150,44 @@ namespace SafeExchange.Core.Functions.Admin
 
         }, nameof(HandleWebhookSubscriptionCreation), log);
 
-        private async Task<HttpResponseData> HandleWebhookSubscriptionRead(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleWebhookSubscriptionRead(HttpRequestData request, string webhookSubscriptionId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
-            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
-            if (existingRegistration == null)
+            var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(webhookSubscriptionId));
+            if (existingSubscription == null)
             {
-                log.LogInformation($"Cannot get application registration '{applicationId}', as does not exist.");
+                log.LogInformation($"Cannot get webhook subscription '{webhookSubscriptionId}', as does not exist.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Webhook subscription '{webhookSubscriptionId}' does not exist." });
             }
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
-                new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = existingRegistration.ToDto() });
+                new BaseResponseObject<WebhookSubscriptionOutput> { Status = "ok", Result = existingSubscription.ToDto() });
         }, nameof(HandleWebhookSubscriptionRead), log);
 
-        private async Task<HttpResponseData> HandleWebhookSubscriptionUpdate(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleWebhookSubscriptionUpdate(HttpRequestData request, string webhookSubscriptionId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
-            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
-            if (existingRegistration == null)
+            var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(webhookSubscriptionId));
+            if (existingSubscription == null)
             {
-                log.LogInformation($"Cannot update application registration '{applicationId}', as it does not exist.");
+                log.LogInformation($"Cannot get webhook subscription '{webhookSubscriptionId}', as does not exist.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Application registration '{applicationId}' does not exist." });
+                    new BaseResponseObject<object> { Status = "not_found", Error = $"Webhook subscription '{webhookSubscriptionId}' does not exist." });
             }
 
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
-            ApplicationRegistrationUpdateInput? updateInput;
+            WebhookSubscriptionUpdateInput? updateInput;
             try
             {
-                updateInput = DefaultJsonSerializer.Deserialize<ApplicationRegistrationUpdateInput>(requestBody);
+                updateInput = DefaultJsonSerializer.Deserialize<WebhookSubscriptionUpdateInput>(requestBody);
             }
             catch
             {
-                log.LogInformation($"Could not parse input data for '{applicationId}' update.");
+                log.LogInformation($"Could not parse input data for '{webhookSubscriptionId}' update.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
@@ -195,35 +195,43 @@ namespace SafeExchange.Core.Functions.Admin
 
             if (updateInput is null)
             {
-                log.LogInformation($"Update input for '{applicationId}' is not provided.");
+                log.LogInformation($"Update input for '{webhookSubscriptionId}' is not provided.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
             }
 
-            if (updateInput.Enabled is null || updateInput.ExternalNotificationsReader is null || string.IsNullOrEmpty(updateInput.ContactEmail))
+            if (updateInput.Enabled is null && updateInput.Authenticate is null && updateInput.WebhookCallDelay is null && updateInput.ContactEmail is null)
             {
-                log.LogInformation($"Either {nameof(updateInput.Enabled)} or {nameof(updateInput.ExternalNotificationsReader)} or {nameof(updateInput.ContactEmail)} property for '{applicationId}' is not provided for update.");
+                log.LogInformation($"All update input properties are nulls for '{webhookSubscriptionId}' is not provided.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
+            }
+
+            if (updateInput.Authenticate == true && string.IsNullOrEmpty(updateInput.AuthenticationResource))
+            {
+                log.LogInformation($"{nameof(updateInput.AuthenticationResource)} property for '{webhookSubscriptionId}' is not provided for update, when {nameof(updateInput.Authenticate)} is set to {updateInput.Authenticate}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = $"Update data for '{nameof(updateInput.AuthenticationResource)}' is not provided." });
             }
 
             if (!string.IsNullOrEmpty(updateInput.ContactEmail) &&
-                (updateInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength || !Regex.IsMatch(updateInput.ContactEmail, DefaultEmailRegex)))
+                (updateInput.ContactEmail.Length > SafeExchangeWebhookSubscriptions.MaxEmailLength || !Regex.IsMatch(updateInput.ContactEmail, DefaultEmailRegex)))
             {
-                log.LogInformation($"{nameof(updateInput.ContactEmail)} property value for '{applicationId}' is incorrect.");
+                log.LogInformation($"{nameof(updateInput.ContactEmail)} property value for '{webhookSubscriptionId}' is incorrect.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is in incorrect format." });
             }
 
-            var updatedRegistration = await this.UpdateApplicationRegistrationAsync(existingRegistration, updateInput, log);
-            log.LogInformation($"{subjectType} '{subjectId}' updated application registration '{existingRegistration.DisplayName}'.");
+            var updatedSubscription = await this.UpdateWebhookSubscriptionAsync(existingSubscription, updateInput, log);
+            log.LogInformation($"{subjectType} '{subjectId}' updated webhook subscription '{existingSubscription.Id}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
-                new BaseResponseObject<ApplicationRegistrationOutput> { Status = "ok", Result = updatedRegistration.ToDto() });
+                new BaseResponseObject<WebhookSubscriptionOutput> { Status = "ok", Result = updatedSubscription.ToDto() });
         }, nameof(HandleWebhookSubscriptionUpdate), log);
 
         private async Task<HttpResponseData> HandleWebhookSubscriptionDeletion(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
@@ -258,27 +266,33 @@ namespace SafeExchange.Core.Functions.Admin
             return entity.Entity;
         }
 
-        private async Task<Application> UpdateApplicationRegistrationAsync(Application existingApplication, ApplicationRegistrationUpdateInput updateInput, ILogger log)
+        private async Task<WebhookSubscription> UpdateWebhookSubscriptionAsync(WebhookSubscription existingSubscription, WebhookSubscriptionUpdateInput updateInput, ILogger log)
         {
             if (updateInput.Enabled is not null)
             {
-                existingApplication.Enabled = updateInput.Enabled ?? true;
+                existingSubscription.Enabled = updateInput.Enabled ?? true;
             }
 
-            if (updateInput.ExternalNotificationsReader is not null)
+            if (updateInput.Authenticate is not null)
             {
-                existingApplication.ExternalNotificationsReader = updateInput.ExternalNotificationsReader ?? false;
+                existingSubscription.Authenticate = updateInput.Authenticate ?? false;
+                existingSubscription.AuthenticationResource = updateInput.AuthenticationResource ?? string.Empty;
+            }
+
+            if (updateInput.WebhookCallDelay is not null)
+            {
+                existingSubscription.WebhookCallDelay = updateInput.WebhookCallDelay ?? TimeSpan.Zero;
             }
 
             if (!string.IsNullOrEmpty(updateInput.ContactEmail))
             {
-                existingApplication.ContactEmail = updateInput.ContactEmail;
+                existingSubscription.ContactEmail = updateInput.ContactEmail;
             }
 
-            this.dbContext.Applications.Update(existingApplication);
+            this.dbContext.WebhookSubscriptions.Update(existingSubscription);
             await this.dbContext.SaveChangesAsync();
 
-            return existingApplication;
+            return existingSubscription;
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
