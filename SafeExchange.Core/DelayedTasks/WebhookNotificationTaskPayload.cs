@@ -18,7 +18,7 @@ namespace SafeExchange.Core.DelayedTasks
 
         public string SubType { get; set; }
 
-        public string AccessRequestId { get; set; }
+        public string WebhookNotificationDataId { get; set; }
     }
 }
 

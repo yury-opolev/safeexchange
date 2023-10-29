@@ -387,6 +387,11 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
+            var notificationData = new WebhookNotificationData(WebhookEventType.AccessRequestCreated, accessRequest.Id);
+            var savedEntity = await this.dbContext.WebhookNotificationData.AddAsync(notificationData);
+            
+            await this.dbContext.SaveChangesAsync();
+
             foreach (var webhookSubscription in webhookSubscriptions)
             {
                 var utcNow = DateTimeProvider.UtcNow;
@@ -396,7 +401,7 @@ namespace SafeExchange.Core.Functions
 
                 var payload = new WebhookNotificationTaskPayload()
                 {
-                    AccessRequestId = accessRequest.Id
+                    WebhookNotificationDataId = savedEntity.Entity.Id
                 };
 
                 await this.delayedTaskScheduler.ScheduleDelayedTaskAsync(DelayedTaskType.ExternalNotification, notifyAtUtc, payload);

@@ -28,7 +28,7 @@ namespace SafeExchange.Core.Model
             this.EventPayload = eventPayload;
 
             this.CreatedAt = DateTimeProvider.UtcNow;
-            this.ExpireAt = DateTime.MaxValue;
+            this.ExpireAt = this.CreatedAt + TimeSpan.FromDays(7); // TODO: make a setting
         }
 
         public string Id { get; set; }

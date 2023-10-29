@@ -46,11 +46,11 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            if (SubjectType.Application.Equals(subjectType))
             {
                 await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
 
             log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} {subjectId} [{request.Method}].");
