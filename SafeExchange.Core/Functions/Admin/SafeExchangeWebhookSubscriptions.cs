@@ -234,22 +234,22 @@ namespace SafeExchange.Core.Functions.Admin
                 new BaseResponseObject<WebhookSubscriptionOutput> { Status = "ok", Result = updatedSubscription.ToDto() });
         }, nameof(HandleWebhookSubscriptionUpdate), log);
 
-        private async Task<HttpResponseData> HandleWebhookSubscriptionDeletion(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleWebhookSubscriptionDeletion(HttpRequestData request, string webhookSubscriptionId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
-            var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
-            if (existingRegistration == null)
+            var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(webhookSubscriptionId));
+            if (existingSubscription == null)
             {
-                log.LogInformation($"Cannot delete application registration '{applicationId}', as it does not exist.");
+                log.LogInformation($"Cannot delete webhook subscription '{webhookSubscriptionId}', as it does not exist.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.NoContent,
-                    new BaseResponseObject<string> { Status = "no_content", Result = $"Application registration '{applicationId}' does not exist." });
+                    new BaseResponseObject<string> { Status = "no_content", Result = $"Webhook subscription '{webhookSubscriptionId}' does not exist." });
             }
 
-            this.dbContext.Applications.Remove(existingRegistration);
+            this.dbContext.WebhookSubscriptions.Remove(existingSubscription);
             await dbContext.SaveChangesAsync();
 
-            log.LogInformation($"{subjectType} '{subjectId}' deleted application registration '{applicationId}'.");
+            log.LogInformation($"{subjectType} '{subjectId}' deleted webhook subscription '{webhookSubscriptionId}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
