@@ -99,6 +99,19 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Webhook subscription details are not provided." });
             }
 
+            WebhookEventType eventType;
+            try
+            {
+                eventType = creationInput.EventType.ToModel();
+            }
+            catch
+            {
+                log.LogInformation($"Could not convert input event type to model event type, probably not specified.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Could not parse webhook subscription event type." });
+            }
+
             if (string.IsNullOrEmpty(creationInput.ContactEmail))
             {
                 log.LogInformation($"{nameof(WebhookSubscriptionCreationInput.ContactEmail)} for webhook subscription is not provided.");
@@ -131,7 +144,6 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Url is not provided." });
             }
 
-            var eventType = creationInput.EventType.ToModel();
             var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.EventType.Equals(eventType) && whs.Url.Equals(creationInput.Url));
             if (existingSubscription != null)
             {
