@@ -82,7 +82,7 @@ namespace SafeExchange.Core
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
 
-            services.AddScoped<IDelayedTaskScheduler, NullDelayedTaskScheduler>();
+            services.AddScoped<IDelayedTaskScheduler, DelayedTaskScheduler>();
             services.AddScoped<IWebhookNotificator, NullWebhookNotificator>();
 
             services.AddScoped<IMigrationsHelper>((serviceProvider) =>
