@@ -381,9 +381,11 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            var webhookSubscriptions = this.dbContext.WebhookSubscriptions.Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled);
+            var webhookSubscriptions = await this.dbContext.WebhookSubscriptions
+                .Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled)
+                .AsNoTracking().ToListAsync();
             if (!webhookSubscriptions.Any())
-            {
+            {   
                 return;
             }
 
