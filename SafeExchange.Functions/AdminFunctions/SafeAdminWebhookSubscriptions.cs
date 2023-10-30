@@ -27,7 +27,7 @@ namespace SafeExchange.Functions.AdminFunctions
         }
 
         [Function("SafeExchange-WebhookSubscriptionCreate")]
-        public async Task<HttpResponseData> Run(
+        public async Task<HttpResponseData> RunCreate(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/webhooksubscriptions")]
             HttpRequestData request)
         {
