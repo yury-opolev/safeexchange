@@ -356,11 +356,6 @@ namespace SafeExchange.Core.Functions
 
         private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
         {
-            if (!this.features.UseNotifications)
-            {
-                return;
-            }
-
             if (!accessRequest.Recipients.Any(r => r.SubjectType == SubjectType.User))
             {
                 return;
