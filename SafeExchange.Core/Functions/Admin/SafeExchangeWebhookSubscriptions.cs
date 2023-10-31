@@ -51,7 +51,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for webhook subscription{(string.IsNullOrEmpty(webhookSubscriptionId) ? string.Empty : $" ID '{webhookSubscriptionId}'")} by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeWebhookSubscriptions)} triggered for webhook subscription{(string.IsNullOrEmpty(webhookSubscriptionId) ? string.Empty : $" ID '{webhookSubscriptionId}'")} by {subjectType} {subjectId} [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
