@@ -96,7 +96,7 @@ namespace SafeExchange.Core.Functions
             bool deleteNotificationData = true;
             try
             {
-                log.LogInformation($"Processing notification, webhook subscription {webhookSubscription.Id} ({webhookSubscription.Url}), access request {accessRequest.Id} ({accessRequest.ObjectName}).");
+                log.LogInformation($"Processing notification, webhook subscription url '{webhookSubscription.Url}', access request {accessRequest.Id} to {accessRequest.ObjectName}, permission {accessRequest.Permission}.");
                 await Task.CompletedTask;
             }
             catch (Exception ex)
