@@ -9,6 +9,7 @@ namespace SafeExchange.Functions
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Purger;
     using System.Threading.Tasks;
 
     public class SafeProcessExternalNotification
@@ -17,9 +18,9 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeProcessExternalNotification(SafeExchangeDbContext dbContext, ILogger<SafeExchangeProcessExternalNotification> log)
+        public SafeProcessExternalNotification(SafeExchangeDbContext dbContext, IPurger purger, ILogger<SafeExchangeProcessExternalNotification> log)
         {
-            this.processExternalNotificationHandler = new SafeExchangeProcessExternalNotification(dbContext);
+            this.processExternalNotificationHandler = new SafeExchangeProcessExternalNotification(dbContext, purger);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

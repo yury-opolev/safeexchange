@@ -5,16 +5,22 @@
 namespace SafeExchange.Core.Functions
 {
     using Azure.Storage.Queues.Models;
+    using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.DelayedTasks;
+    using SafeExchange.Core.Model;
+    using SafeExchange.Core.Purger;
     using System;
 
     public class SafeExchangeProcessExternalNotification
     {
+        private readonly IPurger purger;
+
         private readonly SafeExchangeDbContext dbContext;
 
-        public SafeExchangeProcessExternalNotification(SafeExchangeDbContext dbContext)
+        public SafeExchangeProcessExternalNotification(SafeExchangeDbContext dbContext, IPurger purger)
         {
+            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
@@ -40,9 +46,71 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            // TODO
-            log.LogInformation($"Task payload: {webhookNotificationTaskPayload.TaskType}, {webhookNotificationTaskPayload.SubType}: {webhookNotificationTaskPayload.WebhookNotificationDataId}.");
-            await Task.CompletedTask;
+            if (webhookNotificationTaskPayload.TaskType != DelayedTaskType.ExternalNotification)
+            {
+                log.LogWarning($"Notification task payload {nameof(webhookNotificationTaskPayload.TaskType)} is '{webhookNotificationTaskPayload.TaskType}', message will be discarded.");
+                return;
+            }
+
+            if (!WebhookNotificationTaskPayload.AccessRequestCreatedSubType.Equals(webhookNotificationTaskPayload.SubType, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogWarning($"Notification task payload {nameof(webhookNotificationTaskPayload.SubType)} is '{webhookNotificationTaskPayload.SubType}', message will be discarded.");
+                return;
+            }
+
+            var notificationData = await this.dbContext.WebhookNotificationData.FirstOrDefaultAsync(wnd => wnd.Id.Equals(webhookNotificationTaskPayload.WebhookNotificationDataId));
+            if (notificationData == null)
+            {
+                log.LogWarning($"Notification data is null or {nameof(notificationData.EventId)} or {nameof(notificationData.WebhookSubscriptionId)} is empty, message will be discarded.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(notificationData.EventId) || string.IsNullOrEmpty(notificationData.WebhookSubscriptionId))
+            {
+                log.LogWarning($"Notification data {nameof(notificationData.EventId)} or {nameof(notificationData.WebhookSubscriptionId)} is empty, message will be discarded and notification data will be removed.");
+                await this.purger.PurgeNotificationDataAsync(notificationData.Id, this.dbContext);
+                return;
+            }
+
+            var webhookSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(notificationData.WebhookSubscriptionId));
+            if (webhookSubscription == null || !webhookSubscription.Enabled)
+            {
+                log.LogWarning($"Webhook subscription '{notificationData.WebhookSubscriptionId}' does not exist or is not enabled, message will be discarded and notification data will be removed.");
+                await this.purger.PurgeNotificationDataAsync(notificationData.Id, this.dbContext);
+                return;
+            }
+
+            var accessRequest = await this.dbContext.AccessRequests.FirstOrDefaultAsync(ar => ar.Id.Equals(notificationData.EventId));
+            if (accessRequest == null || accessRequest.Status != RequestStatus.InProgress)
+            {
+                log.LogWarning($"Access request '{notificationData.EventId}' does not exist or is not in progress, message will be discarded and notification data will be removed.");
+                await this.purger.PurgeNotificationDataAsync(notificationData.Id, this.dbContext);
+                return;
+            }
+
+            await this.TryProcessExternalNotificationAsync(accessRequest, webhookSubscription, notificationData.Id, log);
+        }
+
+        private async Task TryProcessExternalNotificationAsync(AccessRequest accessRequest, WebhookSubscription webhookSubscription, string notificationDataId, ILogger log)
+        {
+            bool deleteNotificationData = true;
+            try
+            {
+                log.LogInformation($"Processing notification, webhook subscription {webhookSubscription.Id} ({webhookSubscription.Url}), access request {accessRequest.Id} ({accessRequest.ObjectName}).");
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, $"Exception in {nameof(TryProcessExternalNotificationAsync)}: {ex.GetType()}: {ex.Message}, keeping notification data.");
+                deleteNotificationData = false;
+            }
+            finally
+            {
+                if (deleteNotificationData)
+                {
+                    await this.purger.PurgeNotificationDataAsync(notificationDataId, this.dbContext);
+                }
+            }
         }
     }
 }
