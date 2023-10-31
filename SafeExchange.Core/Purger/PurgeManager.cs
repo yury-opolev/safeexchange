@@ -89,5 +89,37 @@ namespace SafeExchange.Core.Purger
                 await this.blobHelper.DeleteBlobIfExistsAsync(chunk.ChunkName);
             }
         }
+
+        public async Task<bool> PurgeNotificationDataIfNeededAsync(string notificationDataId, SafeExchangeDbContext dbContext)
+        {
+            var now = DateTimeProvider.UtcNow;
+            var notificationData = await dbContext.WebhookNotificationData.FirstOrDefaultAsync(wnd => wnd.Id.Equals(notificationDataId));
+            if (notificationData == null)
+            {
+                return false;
+            }
+
+            if (notificationData.ExpireAt <= now)
+            {
+                await this.PurgeAsync(notificationDataId, dbContext);
+                return true;
+            }
+
+            return false;
+        }
+
+        public async Task PurgeNotificationDataAsync(string notificationDataId, SafeExchangeDbContext dbContext)
+        {
+            this.log.LogInformation($"Purging notification data '{notificationDataId}'.");
+
+            var dataToDelete = await dbContext.WebhookNotificationData.FirstOrDefaultAsync(wnd => wnd.Id.Equals(notificationDataId));
+            if (dataToDelete != null)
+            {
+                dbContext.WebhookNotificationData.Remove(dataToDelete);
+                await dbContext.SaveChangesAsync();
+            }
+
+            log.LogInformation($"Notification data '{notificationDataId}' deleted.");
+        }
     }
 }

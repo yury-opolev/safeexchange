@@ -30,7 +30,7 @@ namespace SafeExchange.Core.Functions
             foreach (var notificationDataItem in notificationDataItems)
             {
                 log.LogInformation($"Notification data '{notificationDataItem.Id}' is to be purged.");
-                await this.purger.PurgeIfNeededAsync(string.Empty, this.dbContext);
+                await this.purger.PurgeNotificationDataIfNeededAsync(notificationDataItem.Id, this.dbContext);
             }
         }
 

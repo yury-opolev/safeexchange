@@ -31,5 +31,21 @@ namespace SafeExchange.Core.Purger
         /// <param name="content">Content metadata with list of chunks.</param>
         /// <returns>Task, representing asynchronous operation.</returns>
         public Task DeleteContentDataAsync(ContentMetadata content);
+
+        /// <summary>
+        /// Delete notification data if it's condition for purging is true. Asynchronous.
+        /// </summary>
+        /// <param name="notificationDataId">Id of the notification data item to purge.</param>
+        /// <param name="dbContext">Database context.</param>
+        /// <returns>True if notification data was purged, false otherwise.</returns>
+        public Task<bool> PurgeNotificationDataIfNeededAsync(string notificationDataId, SafeExchangeDbContext dbContext);
+
+        /// <summary>
+        /// Delete notification data. Asynchronous.
+        /// </summary>
+        /// <param name="notificationDataId">Id of the notification data item to purge.</param>
+        /// <param name="dbContext">Database context.</param>
+        /// <returns>Task, representing asynchronous operation.</returns>
+        public Task PurgeNotificationDataAsync(string notificationDataId, SafeExchangeDbContext dbContext);
     }
 }
