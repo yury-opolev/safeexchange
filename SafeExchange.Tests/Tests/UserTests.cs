@@ -132,7 +132,6 @@ namespace SafeExchange.Tests
             this.dbContext.Objects.RemoveRange(this.dbContext.Objects.ToList());
             this.dbContext.Permissions.RemoveRange(this.dbContext.Permissions.ToList());
             this.dbContext.AccessRequests.RemoveRange(this.dbContext.AccessRequests.ToList());
-            this.dbContext.NotificationSubscriptions.RemoveRange(this.dbContext.NotificationSubscriptions.ToList());
             this.dbContext.GroupDictionary.RemoveRange(this.dbContext.GroupDictionary.ToList());
             this.dbContext.SaveChanges();
         }
