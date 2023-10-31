@@ -5,23 +5,24 @@ namespace SafeExchange.Core.Model
     using Microsoft.EntityFrameworkCore;
     using System;
 
-    [Index(nameof(EventType), nameof(EventId), IsUnique = true)]
+    [Index(nameof(WebhookSubscriptionId), nameof(EventType), nameof(EventId), IsUnique = true)]
     public class WebhookNotificationData
 	{
         public const string DefaultPartitionKey = "WEBHOOKNDAT";
 
         public WebhookNotificationData() { }
 
-        public WebhookNotificationData(WebhookEventType eventType, string eventId)
-            : this(eventType, eventId, string.Empty)
+        public WebhookNotificationData(string webhookSubscriptionId, WebhookEventType eventType, string eventId)
+            : this(webhookSubscriptionId, eventType, eventId, string.Empty)
         {
         }
 
-        public WebhookNotificationData(WebhookEventType eventType, string eventId, string eventPayload)
+        public WebhookNotificationData(string webhookSubscriptionId, WebhookEventType eventType, string eventId, string eventPayload)
         {
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = WebhookSubscription.DefaultPartitionKey;
 
+            this.WebhookSubscriptionId = webhookSubscriptionId;
             this.EventType = eventType;
             this.EventId = eventId;
 
@@ -34,6 +35,8 @@ namespace SafeExchange.Core.Model
         public string Id { get; set; }
 
         public string PartitionKey { get; set; }
+
+        public string WebhookSubscriptionId { get; set; }
 
         public WebhookEventType EventType { get; set; }
 
