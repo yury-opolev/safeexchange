@@ -21,9 +21,10 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeExternalNotificationDetails(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        public SafeExchangeExternalNotificationDetails(SafeExchangeDbContext dbContext, IPurger purger, ITokenHelper tokenHelper, GlobalFilters globalFilters)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
+            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
