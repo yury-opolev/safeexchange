@@ -4,6 +4,7 @@ namespace SafeExchange.Core.Model
 {
     using Microsoft.EntityFrameworkCore;
     using System;
+    using System.ComponentModel.DataAnnotations;
 
     [Index(nameof(WebhookSubscriptionId), nameof(EventType), nameof(EventId), IsUnique = true)]
     public class WebhookNotificationData
@@ -32,6 +33,8 @@ namespace SafeExchange.Core.Model
             this.ExpireAt = this.CreatedAt + TimeSpan.FromDays(7); // TODO: make a setting
         }
 
+        [Key]
+        [Required]
         public string Id { get; set; }
 
         public string PartitionKey { get; set; }
