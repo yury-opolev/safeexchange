@@ -18,9 +18,9 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeProcessExternalNotification(SafeExchangeDbContext dbContext, IPurger purger, ILogger<SafeExchangeProcessExternalNotification> log)
+        public SafeProcessExternalNotification(SafeExchangeDbContext dbContext, IPurger purger, IHttpClientFactory httpClientFactory, ILogger<SafeExchangeProcessExternalNotification> log)
         {
-            this.processExternalNotificationHandler = new SafeExchangeProcessExternalNotification(dbContext, purger);
+            this.processExternalNotificationHandler = new SafeExchangeProcessExternalNotification(dbContext, purger, httpClientFactory);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

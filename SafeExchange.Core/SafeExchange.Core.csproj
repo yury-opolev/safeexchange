@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Core" Version="1.15.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="7.0.0" />
   </ItemGroup>
 
 	<ItemGroup>
@@ -34,7 +35,6 @@
     <None Remove="Queue\" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="WebhookNotifications\" />
     <Folder Include="DelayedTasks\" />
     <Folder Include="Queue\" />
   </ItemGroup>

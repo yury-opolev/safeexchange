@@ -124,8 +124,7 @@ namespace SafeExchange.Core.Functions
 
                 try
                 {
-                    this.dbContext.WebhookNotificationData.Remove(existingNotificationData);
-                    await dbContext.SaveChangesAsync();
+                    await this.purger.PurgeNotificationDataAsync(webhookNotificationDataId, this.dbContext);
                 }
                 catch
                 {

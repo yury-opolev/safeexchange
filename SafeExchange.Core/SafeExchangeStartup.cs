@@ -6,27 +6,26 @@ namespace SafeExchange.Core
 {
     using Azure.Extensions.AspNetCore.Configuration.Secrets;
     using Azure.Identity;
+    using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Hosting;
     using SafeExchange.Core.AzureAd;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Filters;
-    using System;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Crypto;
-    using System.Text.Json.Serialization;
-    using System.Text.Json;
     using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Migrations;
-    using Microsoft.Extensions.Logging;
-    using Microsoft.Azure.Functions.Worker;
-    using Microsoft.Extensions.Hosting;
     using SafeExchange.Core.DelayedTasks;
-    using SafeExchange.Core.WebhookNotifications;
+    using System;
+    using System.Text.Json.Serialization;
+    using System.Text.Json;
 
     public class SafeExchangeStartup
     {
@@ -57,6 +56,8 @@ namespace SafeExchange.Core
 
         public static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
         {
+            services.AddHttpClient();
+
             services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
@@ -84,7 +85,6 @@ namespace SafeExchange.Core
 
             services.AddScoped<IQueueHelper, QueueHelper>();
             services.AddScoped<IDelayedTaskScheduler, DelayedTaskScheduler>();
-            services.AddScoped<IWebhookNotificator, NullWebhookNotificator>();
 
             services.AddScoped<IMigrationsHelper>((serviceProvider) =>
             {
