@@ -3,9 +3,12 @@ namespace SafeExchange.Core.Functions
 {
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Purger;
     using System;
     using System.Net;
@@ -13,6 +16,8 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangeExternalNotificationDetails
     {
+        private readonly GeneralConfiguration generalConfiguration;
+
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -21,8 +26,11 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeExternalNotificationDetails(SafeExchangeDbContext dbContext, IPurger purger, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        public SafeExchangeExternalNotificationDetails(IConfiguration configuration, SafeExchangeDbContext dbContext, IPurger purger, ITokenHelper tokenHelper, GlobalFilters globalFilters)
         {
+            this.generalConfiguration = new GeneralConfiguration();
+            configuration.GetSection("GeneralConfiguration").Bind(generalConfiguration);
+
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
@@ -89,7 +97,7 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "error", Error = $"Notification data '{webhookNotificationDataId}' is not of type '{WebhookEventType.AccessRequestCreated}'." });
                 }
 
-                var existingAccessRequest = await this.dbContext.AccessRequests.FirstOrDefaultAsync(ar => ar.Id.Equals(existingNotificationData.EventId));
+                var existingAccessRequest = await this.dbContext.AccessRequests.FindAsync(existingNotificationData.EventId);
                 if (existingAccessRequest == default)
                 {
                     log.LogInformation($"Cannot get access request '{existingNotificationData.EventId}', as does not exist.");
@@ -106,14 +114,30 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "gone", Error = $"Access request for notification data '{webhookNotificationDataId}' is not '{RequestStatus.InProgress}'." });
                 }
 
-                // TODO: ...
+                var responseData = new NotificationDataOutput()
+                {
+                    Url = $"{this.generalConfiguration.WebClientBaseUri.TrimEnd('/')}/accessrequests",
+                    RecipientUpns = new List<string>(existingAccessRequest.Recipients
+                        .Where(r => r.SubjectType.Equals(SubjectType.User))
+                        .Select(r => r.SubjectName))
+                };
+
+                try
+                {
+                    this.dbContext.WebhookNotificationData.Remove(existingNotificationData);
+                    await dbContext.SaveChangesAsync();
+                }
+                catch
+                {
+                    // no-op
+                }
 
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
-                    new BaseResponseObject<string>
+                    new BaseResponseObject<NotificationDataOutput>
                     {
                         Status = "ok",
-                        Result = existingNotificationData.EventId
+                        Result = responseData
                     });
             }, nameof(HandleExternalNotificationDetailsRead), log);
 

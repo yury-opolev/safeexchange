@@ -14,6 +14,6 @@ namespace SafeExchange.Core.Configuration
 
         public bool UseClientSideEncryption { get; set; } = false;
 
-        public string? ClientSideEncryptionKeyName { get; set; }
+        public string? ClientSideEncryptionKeyName { get; set; } = null;
     }
 }
