@@ -115,7 +115,7 @@ namespace SafeExchange.Core
             modelBuilder.Entity<WebhookNotificationData>()
                 .ToContainer("WebhookNotificationData")
                 .HasNoDiscriminator()
-                .HasPartitionKey(ws => ws.PartitionKey);
+                .HasPartitionKey(wnd => wnd.PartitionKey);
         }
     }
 }
