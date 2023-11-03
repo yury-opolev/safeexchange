@@ -80,7 +80,7 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            var accessRequest = await this.dbContext.AccessRequests.FirstOrDefaultAsync(ar => ar.Id.Equals(notificationData.EventId));
+            var accessRequest = await this.dbContext.AccessRequests.FindAsync(notificationData.EventId);
             if (accessRequest == null || accessRequest.Status != RequestStatus.InProgress)
             {
                 log.LogWarning($"Access request '{notificationData.EventId}' does not exist or is not in progress, message will be discarded and notification data will be removed.");
