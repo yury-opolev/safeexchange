@@ -63,7 +63,7 @@ namespace SafeExchange.Core.Functions
                 return;
             }
 
-            var notificationData = await this.dbContext.WebhookNotificationData.FindAsync(webhookNotificationTaskPayload.WebhookNotificationDataId);
+            var notificationData = await this.dbContext.WebhookNotificationData.FirstOrDefaultAsync(wnd => wnd.Id.Equals(webhookNotificationTaskPayload.WebhookNotificationDataId));
             if (notificationData == null)
             {
                 log.LogWarning($"Notification data is null or {nameof(notificationData.EventId)} or {nameof(notificationData.WebhookSubscriptionId)} is empty, message will be discarded.");

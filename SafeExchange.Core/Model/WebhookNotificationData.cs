@@ -34,7 +34,6 @@ namespace SafeExchange.Core.Model
         }
 
         [Key]
-        [Required]
         public string Id { get; set; }
 
         public string PartitionKey { get; set; }
