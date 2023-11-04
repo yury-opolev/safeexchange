@@ -10,6 +10,8 @@ namespace SafeExchange.Core.Model.Dto.Input
     {
         public bool Enabled { get; set; } = true;
 
+        public bool ExternalNotificationsReader { get; set; } = false;
+
         public string AadTenantId { get; set; }
 
         public string AadClientId { get; set; }

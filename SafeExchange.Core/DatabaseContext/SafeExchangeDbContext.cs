@@ -21,7 +21,9 @@ namespace SafeExchange.Core
 
         public DbSet<GroupDictionaryItem> GroupDictionary { get; set; }
 
-        public DbSet<NotificationSubscription> NotificationSubscriptions { get; set; }
+        public DbSet<WebhookSubscription> WebhookSubscriptions { get; set; }
+
+        public DbSet<WebhookNotificationData> WebhookNotificationData { get; set; }
 
         public SafeExchangeDbContext(DbContextOptions<SafeExchangeDbContext> options)
             : base(options)
@@ -95,11 +97,6 @@ namespace SafeExchange.Core
                 .HasNoDiscriminator()
                 .HasPartitionKey(gd => gd.PartitionKey);
 
-            modelBuilder.Entity<NotificationSubscription>()
-                .ToContainer("NotificationSubscriptions")
-                .HasNoDiscriminator()
-                .HasPartitionKey(ns => ns.PartitionKey);
-
             modelBuilder.Entity<User>()
                 .ToContainer("Users")
                 .HasNoDiscriminator()
@@ -109,6 +106,16 @@ namespace SafeExchange.Core
                 .ToContainer("Applications")
                 .HasNoDiscriminator()
                 .HasPartitionKey(a => a.PartitionKey);
+
+            modelBuilder.Entity<WebhookSubscription>()
+                .ToContainer("WebhookSubscriptions")
+                .HasNoDiscriminator()
+                .HasPartitionKey(ws => ws.PartitionKey);
+
+            modelBuilder.Entity<WebhookNotificationData>()
+                .ToContainer("WebhookNotificationData")
+                .HasNoDiscriminator()
+                .HasPartitionKey(wnd => wnd.PartitionKey);
         }
     }
 }

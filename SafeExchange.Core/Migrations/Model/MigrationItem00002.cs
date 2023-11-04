@@ -1,5 +1,5 @@
 ﻿/// <summary>
-/// MigrationItem00001
+/// MigrationItem00002
 /// </summary>
 
 namespace SafeExchange.Core.Migrations

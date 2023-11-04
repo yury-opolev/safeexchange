@@ -74,7 +74,7 @@ namespace SafeExchange.Core
             var clientId = principal?.FindFirst("azp")?.Value;
             if (string.IsNullOrEmpty(clientId))
             {
-                clientId = principal.FindFirst("appid")?.Value;
+                clientId = principal?.FindFirst("appid")?.Value;
             }
 
             return clientId ?? string.Empty;

@@ -20,6 +20,7 @@ namespace SafeExchange.Core.Model
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = User.DefaultPartitionKey;
             this.Enabled = true;
+            this.ReceiveExternalNotifications = true;
 
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
             this.AadObjectId = aadObjectId ?? throw new ArgumentNullException(nameof(aadObjectId));
@@ -54,6 +55,8 @@ namespace SafeExchange.Core.Model
         public List<UserGroup> Groups { get; set; }
 
         public DateTime GroupSyncNotBefore { get; set; }
+
+        public bool ReceiveExternalNotifications { get; set; }
 
         /// <summary>
         /// User is required to consent in AAD to the application to allow synchronization of user group memberships in Graph.

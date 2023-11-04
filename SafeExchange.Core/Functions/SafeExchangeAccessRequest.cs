@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
@@ -33,7 +34,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IDelayedTaskScheduler delayedTaskScheduler;
+
+        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler)
         {
             if (configuration == null)
             {
@@ -48,6 +51,7 @@ namespace SafeExchange.Core.Functions
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.delayedTaskScheduler = delayedTaskScheduler ?? throw new ArgumentNullException(nameof(delayedTaskScheduler));
         }
 
         public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, ClaimsPrincipal principal, ILogger log)
@@ -177,7 +181,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"Created access request {accessRequest.Id} from {subjectType} {subjectId} for secret '{secretId}'.");
 
-            await this.TryNotifyAsync(accessRequest, RequestStatus.InProgress);
+            await this.TryNotifyAsync(accessRequest);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -291,7 +295,7 @@ namespace SafeExchange.Core.Functions
 
             await this.dbContext.SaveChangesAsync();
 
-            await this.TryNotifyAsync(existingRequest, RequestStatus.Approved);
+            await this.TryNotifyAsync(existingRequest);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -350,19 +354,54 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleAccessRequestDeletion), log);
 
-        private async ValueTask TryNotifyAsync(AccessRequest accessRequest, RequestStatus currentStatus)
+        private async ValueTask TryNotifyAsync(AccessRequest accessRequest)
         {
-            if (!this.features.UseNotifications)
+            if (!accessRequest.Recipients.Any(r => r.SubjectType == SubjectType.User))
             {
                 return;
             }
 
-            foreach (var recipient in accessRequest.Recipients)
+            await this.TryNotifyExternallyAsync(accessRequest);
+        }
+
+        private async ValueTask TryNotifyExternallyAsync(AccessRequest accessRequest)
+        {
+            if (!this.features.UseExternalWebHookNotifications)
             {
-                // TODO ...
+                return;
             }
 
-            await Task.CompletedTask;
+            if (accessRequest.Status != RequestStatus.InProgress)
+            {
+                return;
+            }
+
+            var webhookSubscriptions = await this.dbContext.WebhookSubscriptions
+                .Where(ws => ws.EventType == WebhookEventType.AccessRequestCreated && ws.Enabled)
+                .AsNoTracking().ToListAsync();
+            if (!webhookSubscriptions.Any())
+            {   
+                return;
+            }
+
+            foreach (var webhookSubscription in webhookSubscriptions)
+            {
+                var notificationData = new WebhookNotificationData(webhookSubscription.Id, WebhookEventType.AccessRequestCreated, accessRequest.Id);
+                var savedEntity = await this.dbContext.WebhookNotificationData.AddAsync(notificationData);
+                await this.dbContext.SaveChangesAsync();
+
+                var payload = new WebhookNotificationTaskPayload()
+                {
+                    WebhookNotificationDataId = savedEntity.Entity.Id
+                };
+
+                var utcNow = DateTimeProvider.UtcNow;
+                var notifyAtUtc = webhookSubscription.WebhookCallDelay > TimeSpan.Zero
+                    ? utcNow + webhookSubscription.WebhookCallDelay
+                    : utcNow;
+
+                await this.delayedTaskScheduler.ScheduleDelayedTaskAsync(DelayedTaskType.ExternalNotification, notifyAtUtc, payload);
+            }
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)

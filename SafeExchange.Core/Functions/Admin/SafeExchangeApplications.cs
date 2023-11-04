@@ -46,11 +46,11 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            if (SubjectType.Application.Equals(subjectType))
             {
                 await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
 
             log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} {subjectId} [{request.Method}].");
@@ -236,9 +236,9 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
             }
 
-            if (updateInput.Enabled is null || string.IsNullOrEmpty(updateInput.ContactEmail))
+            if (updateInput.Enabled is null || updateInput.ExternalNotificationsReader is null || string.IsNullOrEmpty(updateInput.ContactEmail))
             {
-                log.LogInformation($"Either {nameof(updateInput.Enabled)} or {nameof(updateInput.ContactEmail)} property for '{applicationId}' is not provided for update.");
+                log.LogInformation($"Either {nameof(updateInput.Enabled)} or {nameof(updateInput.ExternalNotificationsReader)} or {nameof(updateInput.ContactEmail)} property for '{applicationId}' is not provided for update.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
@@ -298,6 +298,11 @@ namespace SafeExchange.Core.Functions.Admin
             if (updateInput.Enabled is not null)
             {
                 existingApplication.Enabled = updateInput.Enabled ?? true;
+            }
+
+            if (updateInput.ExternalNotificationsReader is not null)
+            {
+                existingApplication.ExternalNotificationsReader = updateInput.ExternalNotificationsReader ?? false;
             }
 
             if (!string.IsNullOrEmpty(updateInput.ContactEmail))

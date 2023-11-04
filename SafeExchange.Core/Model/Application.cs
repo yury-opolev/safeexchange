@@ -23,6 +23,7 @@ namespace SafeExchange.Core.Model
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = Application.DefaultPartitionKey;
             this.Enabled = true;
+            this.ExternalNotificationsReader = input.ExternalNotificationsReader;
 
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
             this.AadClientId = input.AadClientId ?? throw new ArgumentNullException(nameof(input.AadClientId));
@@ -41,6 +42,8 @@ namespace SafeExchange.Core.Model
         public string PartitionKey { get; set; }
 
         public bool Enabled { get; set; }
+
+        public bool ExternalNotificationsReader { get; set; }
 
         [Required]
         [StringLength(150, ErrorMessage = "Value too long (150 character limit).")]
@@ -72,7 +75,8 @@ namespace SafeExchange.Core.Model
             AadTenantId = this.AadTenantId,
             AadClientId = this.AadClientId,
 
-            Enabled = this.Enabled
+            Enabled = this.Enabled,
+            ExternalNotificationsReader = this.ExternalNotificationsReader
         };
 
         internal ApplicationRegistrationOverviewOutput ToOverviewDto() => new()

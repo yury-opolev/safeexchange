@@ -14,6 +14,7 @@ namespace SafeExchange.Tests
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
+    using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Model;
@@ -56,6 +57,8 @@ namespace SafeExchange.Tests
 
         private IPermissionsManager permissionsManager;
 
+        private IDelayedTaskScheduler delayedTaskScheduler;
+
         private ClaimsIdentity firstIdentity;
         private ClaimsIdentity secondIdentity;
         private ClaimsIdentity thirdIdentity;
@@ -93,6 +96,8 @@ namespace SafeExchange.Tests
             this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>());
 
             this.permissionsManager = new PermissionsManager(this.testConfiguration, this.dbContext, TestFactory.CreateLogger<PermissionsManager>());
+
+            this.delayedTaskScheduler = new NullDelayedTaskScheduler();
 
             this.firstIdentity = new ClaimsIdentity(new List<Claim>()
                 {
@@ -153,7 +158,7 @@ namespace SafeExchange.Tests
 
             this.secretAccessRequest = new SafeExchangeAccessRequest(
                 this.testConfiguration, this.dbContext, this.globalFilters,
-                this.tokenHelper, this.purger, this.permissionsManager);
+                this.tokenHelper, this.purger, this.permissionsManager, this.delayedTaskScheduler);
         }
 
         [TearDown]
@@ -166,7 +171,6 @@ namespace SafeExchange.Tests
             this.dbContext.Objects.RemoveRange(this.dbContext.Objects.ToList());
             this.dbContext.Permissions.RemoveRange(this.dbContext.Permissions.ToList());
             this.dbContext.AccessRequests.RemoveRange(this.dbContext.AccessRequests.ToList());
-            this.dbContext.NotificationSubscriptions.RemoveRange(this.dbContext.NotificationSubscriptions.ToList());
             this.dbContext.GroupDictionary.RemoveRange(this.dbContext.GroupDictionary.ToList());
             this.dbContext.SaveChanges();
         }
