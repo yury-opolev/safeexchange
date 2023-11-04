@@ -13,6 +13,8 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Purger;
     using System;
     using System.Net.Http.Json;
+    using System.Text;
+    using System.Text.Json;
 
     public class SafeExchangeProcessExternalNotification
     {
@@ -103,8 +105,11 @@ namespace SafeExchange.Core.Functions
             try
             {
                 using var httpClient = this.httpClientFactory.CreateClient();
-                var content = JsonContent.Create(new WebhookPayloadData() { NotificationDataId = notificationDataId });
+
+                var payloadData = new WebhookPayloadData() { NotificationDataId = notificationDataId };
+                var content = new StringContent(JsonSerializer.Serialize(payloadData), Encoding.UTF8, "application/json");
                 var responseMessage = await httpClient.PostAsync(webhookSubscription.Url, content);
+
                 log.LogInformation($"Webhook subscription url call finished with status code: {responseMessage.StatusCode}.");
             }
             catch (Exception ex)
