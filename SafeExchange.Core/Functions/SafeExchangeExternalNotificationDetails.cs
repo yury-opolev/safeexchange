@@ -61,6 +61,14 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
 
+            var application = this.dbContext.Applications.FirstOrDefault(a => a.DisplayName.Equals(subjectId));
+            if (application?.ExternalNotificationsReader != true)
+            {
+                await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Forbidden,
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered as external notifications reader." });
+            }
+
             log.LogInformation($"{nameof(SafeExchangeExternalNotificationDetails)} triggered by {subjectType} {subjectId}, [{request.Method}].");
 
             switch (request.Method.ToLower())
