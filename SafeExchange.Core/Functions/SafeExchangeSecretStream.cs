@@ -16,10 +16,10 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
     using System.Net.Mime;
-    using Ganss.XSS;
     using System.Text;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Net;
+    using Ganss.Xss;
 
     public class SafeExchangeSecretStream
     {
