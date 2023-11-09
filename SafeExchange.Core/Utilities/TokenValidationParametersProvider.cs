@@ -12,6 +12,7 @@ namespace SafeExchange.Core
     using System.Configuration;
     using Microsoft.Extensions.Logging;
     using System.Text;
+    using Microsoft.IdentityModel.Validators;
 
     public class TokenValidationParametersProvider : ITokenValidationParametersProvider
     {
@@ -36,6 +37,8 @@ namespace SafeExchange.Core
                 ValidateAudience = authConfig.ValidateAudience,
                 ValidateIssuer = authConfig.ValidateIssuer,
             };
+
+            this.tokenValidationParameters.EnableAadSigningKeyIssuerValidation();
 
             if (authConfig.ValidateAudience)
             {
