@@ -24,6 +24,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="7.0.13" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Cosmos" Version="7.0.13" />
     <PackageReference Include="Microsoft.Graph" Version="5.33.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Validators" Version="7.0.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
   <ItemGroup>
