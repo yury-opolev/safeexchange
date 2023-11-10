@@ -8,12 +8,6 @@
         "safeexchange_cdnprofile_endpoint_name": {
             "value": null
         },
-        "safeexchange_kv_name": {
-            "value": null
-        },
-        "safeexchange_appinsights_name": {
-            "value": null
-        },
         "safeexchange_webclientstorage_name": {
             "value": null
         },
@@ -24,9 +18,6 @@
             "value": null
         },
         "safeexchange_dbaccount_name": {
-            "value": null
-        },
-        "safeexchange_serverfarm_name": {
             "value": null
         },
         "appinsights_workspace_resource_group": {

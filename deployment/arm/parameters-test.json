@@ -8,12 +8,6 @@
         "safeexchange_cdnprofile_endpoint_name": {
             "value": "safeexch-test"
         },
-        "safeexchange_kv_name": {
-            "value": "safeexch-test-kv"
-        },
-        "safeexchange_appinsights_name": {
-            "value": "safeexch-test-insights"
-        },
         "safeexchange_webclientstorage_name": {
             "value": "safeexchtestweb"
         },
@@ -25,9 +19,6 @@
         },
         "safeexchange_dbaccount_name": {
             "value": "safeexchtestdb"
-        },
-        "safeexchange_serverfarm_name": {
-            "value": "safeexch-test-serverfarm"
         },
         "appinsights_workspace_resource_group": {
             "value": "defaultresourcegroup-neu"
