@@ -13,7 +13,7 @@
             "defaultValue": "safeexchange-stg",
             "type": "String"
         },
-        "safeexchange_cdnprofile_name": {
+        "safeexchange_cdnprofile_endpoint_name": {
             "defaultValue": "safeex-stg",
             "type": "String"
         },
@@ -53,17 +53,31 @@
         },
         "cdn_endpoint_origin_host": {
             "type": "String"
+        },
+        "settings-aadClient-clientId": {
+            "type": "String"
+        },
+        "settings-aadClient-clientSecret": {
+            "type": "String"
+        },
+        "settings-authentication-validAudiences": {
+            "type": "String"
+        },
+        "settings-authentication-validIssuers": {
+            "type": "String"
         }
     },
     "variables": {
+        "safeexchange_cdnprofile_name": "safeexchange-cdn",
         "appinsights_workspace_resource_id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', parameters('appinsights_workspace_resource_group'), '/providers/microsoft.operationalinsights/workspaces/', parameters('appinsights_workspace_name')) ]",
-        "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref"
+        "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
+        "settings-cosmosDb-databaseName": "safeexchange"
     },
     "resources": [
         {
             "type": "Microsoft.Cdn/profiles",
             "apiVersion": "2022-11-01-preview",
-            "name": "[parameters('safeexchange_cdnprofile_name')]",
+            "name": "[variables('safeexchange_cdnprofile_name')]",
             "location": "Global",
             "sku": {
                 "name": "Standard_Microsoft"
@@ -326,10 +340,10 @@
         {
             "type": "Microsoft.Cdn/profiles/endpoints",
             "apiVersion": "2022-11-01-preview",
-            "name": "[concat(parameters('safeexchange_cdnprofile_name'), '/safeexchange-endpoint')]",
+            "name": "[concat(variables('safeexchange_cdnprofile_name'), '/', parameters('safeexchange_cdnprofile_endpoint_name'))]",
             "location": "Global",
             "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles', parameters('safeexchange_cdnprofile_name'))]"
+                "[resourceId('Microsoft.Cdn/profiles', variables('safeexchange_cdnprofile_name'))]"
             ],
             "properties": {
                 "originHostHeader": "[parameters('cdn_endpoint_origin_host')]",
@@ -488,7 +502,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-clientId')]"
             }
         },
         {
@@ -503,7 +518,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-clientSecret')]"
             }
         },
         {
@@ -518,7 +534,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[subscription().tenantId]"
             }
         },
         {
@@ -533,7 +550,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "00:05:00.000"
             }
         },
         {
@@ -548,7 +566,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "00000000-0000-0000-0000-000000000000"
             }
         },
         {
@@ -563,7 +582,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[concat('https://login.microsoftonline.com/', subscription().tenantId, '/v2.0/.well-known/openid-configuration')]"
             }
         },
         {
@@ -578,7 +598,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "True"
             }
         },
         {
@@ -593,7 +614,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "True"
             }
         },
         {
@@ -608,7 +630,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[parameters('settings-authentication-validAudiences')]"
             }
         },
         {
@@ -623,7 +646,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[parameters('settings-authentication-validIssuers')]"
             }
         },
         {
@@ -638,7 +662,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[parameters('safeexchange_dbaccount_name')]"
             }
         },
         {
@@ -653,7 +678,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_dbaccount_name'), '.documents.azure.com:443/')]"
             }
         },
         {
@@ -668,7 +694,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[variables('settings-cosmosDb-databaseName')]"
             }
         },
         {
@@ -683,7 +710,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[resourceGroup().name]"
             }
         },
         {
@@ -698,7 +726,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[subscription().id]"
             }
         },
         {
@@ -713,7 +742,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_data_storage_name'), '.blob.core.windows.net/')]"
             }
         },
         {
@@ -728,7 +758,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "cryptoblobs"
             }
         },
         {
@@ -743,7 +774,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "CryptoKeyEncryptionKey"
             }
         },
         {
@@ -758,7 +790,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "True"
             }
         },
         {
@@ -773,22 +806,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
-            }
-        },
-        {
-            "type": "Microsoft.KeyVault/vaults/secrets",
-            "apiVersion": "2023-02-01",
-            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseNotifications')]",
-            "location": "[parameters('default_location')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
-            ],
-            "properties": {
-                "attributes": {
-                    "enabled": true
-                },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "True"
             }
         },
         {
@@ -803,7 +822,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_cdnprofile_endpoint_name'), '.azureedge.net/')]"
             }
         },
         {
@@ -818,7 +838,8 @@
                 "attributes": {
                     "enabled": true
                 },
-                "contentType": "text/plain"
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_data_storage_name'), '.queue.core.windows.net/')]"
             }
         },
         {
@@ -1144,10 +1165,10 @@
         {
             "type": "Microsoft.Cdn/profiles/endpoints/origins",
             "apiVersion": "2022-11-01-preview",
-            "name": "[concat(parameters('safeexchange_cdnprofile_name'), '/safeexchange-endpoint/', replace(parameters('cdn_endpoint_origin_host'), '.', '-'))]",
+            "name": "[concat(variables('safeexchange_cdnprofile_name'), '/', parameters('safeexchange_cdnprofile_endpoint_name'), '/', replace(parameters('cdn_endpoint_origin_host'), '.', '-'))]",
             "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles/endpoints', parameters('safeexchange_cdnprofile_name'), 'safeexchange-endpoint')]",
-                "[resourceId('Microsoft.Cdn/profiles', parameters('safeexchange_cdnprofile_name'))]"
+                "[resourceId('Microsoft.Cdn/profiles/endpoints', variables('safeexchange_cdnprofile_name'), parameters('safeexchange_cdnprofile_endpoint_name'))]",
+                "[resourceId('Microsoft.Cdn/profiles', variables('safeexchange_cdnprofile_name'))]"
             ],
             "properties": {
                 "hostName": "[parameters('cdn_endpoint_origin_host')]",

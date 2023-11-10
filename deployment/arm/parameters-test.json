@@ -3,52 +3,52 @@
     "contentVersion": "1.0.0.0",
     "parameters": {
         "safeexchange_site_name": {
-            "value": null
+            "value": "safeexch-test"
         },
         "safeexchange_cdnprofile_endpoint_name": {
-            "value": null
+            "value": "safeexch-test"
         },
         "safeexchange_kv_name": {
-            "value": null
+            "value": "safeexch-test-kv"
         },
         "safeexchange_appinsights_name": {
-            "value": null
+            "value": "safeexch-test-insights"
         },
         "safeexchange_webclientstorage_name": {
-            "value": null
+            "value": "safeexchtestweb"
         },
         "safeexchange_webjobsstorage_name": {
-            "value": null
+            "value": "safeexchtestwj"
         },
         "safeexchange_data_storage_name": {
-            "value": null
+            "value": "safeexchtestdata"
         },
         "safeexchange_dbaccount_name": {
-            "value": null
+            "value": "safeexchtestdb"
         },
         "safeexchange_serverfarm_name": {
-            "value": null
+            "value": "safeexch-test-serverfarm"
         },
         "appinsights_workspace_resource_group": {
-            "value": null
+            "value": "defaultresourcegroup-neu"
         },
         "appinsights_workspace_name": {
-            "value": null
+            "value": "DefaultWorkspace-f5fb4670-5cc6-4391-8132-36a5c97ac3b2-NEU"
         },
         "cdn_endpoint_origin_host": {
-            "value": null
+            "value": "none"
         },
         "settings-aadClient-clientId": {
-            "value": null
+            "value": "00000000-0000-0000-0000-000000000001"
         },
         "settings-aadClient-clientSecret": {
-            "value": null
+            "value": "none"
         },
         "settings-authentication-validAudiences": {
-            "value": null
+            "value": "00000000-0000-0000-0000-000000000001"
         },
         "settings-authentication-validIssuers": {
-            "value": null
+            "value": "00000000-0000-0000-0000-000000000001"
         }
     }
 }
