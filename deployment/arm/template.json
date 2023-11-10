@@ -68,12 +68,22 @@
         }
     },
     "variables": {
+        "safeexchange_userassigned_mi_name": "[concat(parameters('safeexchange_site_name'), '-mi')]",
+        "safeexchange_userassigned_mi_resourceid": "[resourceId(resourceGroup().name, 'Microsoft.ManagedIdentity/userAssignedIdentities/', variables('safeexchange_userassigned_mi_name'))]",
+        "keyVault_role_secretsOfficer": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7",
+        "keyVault_role_cryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
         "safeexchange_cdnprofile_name": "safeexchange-cdn",
         "appinsights_workspace_resource_id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', parameters('appinsights_workspace_resource_group'), '/providers/microsoft.operationalinsights/workspaces/', parameters('appinsights_workspace_name')) ]",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
         "settings-cosmosDb-databaseName": "safeexchange"
     },
     "resources": [
+        {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "name": "[variables('safeexchange_userassigned_mi_name')]",
+            "apiVersion": "2018-11-30",
+            "location": "[resourceGroup().location]"
+        },
         {
             "type": "Microsoft.Cdn/profiles",
             "apiVersion": "2022-11-01-preview",
@@ -161,8 +171,6 @@
             "kind": "web",
             "properties": {
                 "Application_Type": "web",
-                "Flow_Type": "Redfield",
-                "Request_Source": "IbizaWebAppExtensionCreate",
                 "RetentionInDays": 90,
                 "WorkspaceResourceId": "[variables('appinsights_workspace_resource_id')]",
                 "IngestionMode": "LogAnalytics",
@@ -188,8 +196,37 @@
                 "softDeleteRetentionInDays": 90,
                 "enableRbacAuthorization": true,
                 "vaultUri": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]",
-                "provisioningState": "Succeeded",
                 "publicNetworkAccess": "Enabled"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[concat(variables('safeexchange_userassigned_mi_name'), '-secrets-officer')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                "[variables('safeexchange_userassigned_mi_name')]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[variables('keyVault_role_secretsOfficer')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name')), '2018-11-30').principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[concat(variables('safeexchange_userassigned_mi_name'), '-crypto-officer')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                "[variables('safeexchange_userassigned_mi_name')]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[variables('keyVault_role_cryptoOfficer')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name')), '2018-11-30').principalId]",
+                "principalType": "ServicePrincipal"
             }
         },
         {
@@ -993,12 +1030,17 @@
             "location": "[parameters('default_location')]",
             "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
-                "[variables('safeexchange_kv_deployment_name')]"
+                "[variables('safeexchange_kv_deployment_name')]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', concat(variables('safeexchange_userassigned_mi_name'), '-secrets-officer'))]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', concat(variables('safeexchange_userassigned_mi_name'), '-crypto-officer'))]"
             ],
             "tags": {},
             "kind": "functionapp",
             "identity": {
-                "type": "SystemAssigned"
+                "type": "userAssigned",
+                "userAssignedIdentities": {
+                    "[variables('safeexchange_userassigned_mi_resourceid')]": {}
+                }
             },
             "properties": {
                 "enabled": true,
@@ -1061,7 +1103,7 @@
                 "httpsOnly": true,
                 "redundancyMode": "None",
                 "storageAccountRequired": false,
-                "keyVaultReferenceIdentity": "SystemAssigned"
+                "keyVaultReferenceIdentity": "[variables('safeexchange_userassigned_mi_resourceid')]",
             }
         },
         {
