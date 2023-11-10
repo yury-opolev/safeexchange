@@ -1053,7 +1053,7 @@
             "tags": {},
             "kind": "functionapp",
             "identity": {
-                "type": "UserAssigned",
+                "type": "SystemAssigned, UserAssigned",
                 "userAssignedIdentities": {
                     "[variables('safeexchange_userassigned_mi_resourceid')]": {}
                 }
