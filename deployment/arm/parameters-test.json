@@ -1,0 +1,45 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "safeexchange_site_name": {
+            "value": "safeexch-test"
+        },
+        "safeexchange_cdnprofile_endpoint_name": {
+            "value": "safeexch-test"
+        },
+        "safeexchange_webclientstorage_name": {
+            "value": "safeexchtestweb"
+        },
+        "safeexchange_webjobsstorage_name": {
+            "value": "safeexchtestwj"
+        },
+        "safeexchange_data_storage_name": {
+            "value": "safeexchtestdata"
+        },
+        "safeexchange_dbaccount_name": {
+            "value": "safeexchtestdb"
+        },
+        "appinsights_workspace_resource_group": {
+            "value": "defaultresourcegroup-neu"
+        },
+        "appinsights_workspace_name": {
+            "value": "DefaultWorkspace-f5fb4670-5cc6-4391-8132-36a5c97ac3b2-NEU"
+        },
+        "cdn_endpoint_origin_host": {
+            "value": "safeexchtestweb.z20.web.core.windows.net"
+        },
+        "settings-aadClient-clientId": {
+            "value": "00000000-0000-0000-0000-000000000000"
+        },
+        "settings-aadClient-clientSecret": {
+            "value": "none"
+        },
+        "settings-authentication-validAudiences": {
+            "value": "00000000-0000-0000-0000-000000000000"
+        },
+        "settings-authentication-validIssuers": {
+            "value": "00000000-0000-0000-0000-000000000000"
+        }
+    }
+}

@@ -1,0 +1,45 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "safeexchange_site_name": {
+            "value": null
+        },
+        "safeexchange_cdnprofile_endpoint_name": {
+            "value": null
+        },
+        "safeexchange_webclientstorage_name": {
+            "value": null
+        },
+        "safeexchange_webjobsstorage_name": {
+            "value": null
+        },
+        "safeexchange_data_storage_name": {
+            "value": null
+        },
+        "safeexchange_dbaccount_name": {
+            "value": null
+        },
+        "appinsights_workspace_resource_group": {
+            "value": null
+        },
+        "appinsights_workspace_name": {
+            "value": null
+        },
+        "cdn_endpoint_origin_host": {
+            "value": null
+        },
+        "settings-aadClient-clientId": {
+            "value": null
+        },
+        "settings-aadClient-clientSecret": {
+            "value": null
+        },
+        "settings-authentication-validAudiences": {
+            "value": null
+        },
+        "settings-authentication-validIssuers": {
+            "value": null
+        }
+    }
+}
