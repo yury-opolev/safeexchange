@@ -1090,6 +1090,18 @@
                         {
                             "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
                             "value": "[concat('@Microsoft.KeyVault(SecretUri=', reference(variables('safeexchange_kv_deployment_name')).outputs.secretUri.value, ')')]"
+                        },
+                        {
+                            "name": "KEYVAULT_BASEURI",
+                            "value": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]"
+                        },
+                        {
+                            "name": "DelayedTasksQueue__credential",
+                            "value": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]"
+                        },
+                        {
+                            "name": "DelayedTasksQueue__queueServiceUri",
+                            "value": "[concat('@Microsoft.KeyVault(SecretUri=https://', parameters('safeexchange_kv_name'), '.vault.azure.net/secrets/Queue--QueueServiceUri/)')]"
                         }
                     ]
                 },
