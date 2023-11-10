@@ -36,19 +36,19 @@
             "value": "DefaultWorkspace-f5fb4670-5cc6-4391-8132-36a5c97ac3b2-NEU"
         },
         "cdn_endpoint_origin_host": {
-            "value": "none"
+            "value": "safeexchtestweb.z20.web.core.windows.net"
         },
         "settings-aadClient-clientId": {
-            "value": "00000000-0000-0000-0000-000000000001"
+            "value": "00000000-0000-0000-0000-000000000000"
         },
         "settings-aadClient-clientSecret": {
             "value": "none"
         },
         "settings-authentication-validAudiences": {
-            "value": "00000000-0000-0000-0000-000000000001"
+            "value": "00000000-0000-0000-0000-000000000000"
         },
         "settings-authentication-validIssuers": {
-            "value": "00000000-0000-0000-0000-000000000001"
+            "value": "00000000-0000-0000-0000-000000000000"
         }
     }
 }

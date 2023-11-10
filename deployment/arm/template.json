@@ -1103,7 +1103,7 @@
                 "httpsOnly": true,
                 "redundancyMode": "None",
                 "storageAccountRequired": false,
-                "keyVaultReferenceIdentity": "[variables('safeexchange_userassigned_mi_resourceid')]",
+                "keyVaultReferenceIdentity": "[variables('safeexchange_userassigned_mi_resourceid')]"
             }
         },
         {
