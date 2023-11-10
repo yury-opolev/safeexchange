@@ -1143,7 +1143,7 @@
         {
             "type": "Microsoft.Cdn/profiles/endpoints/origins",
             "apiVersion": "2022-11-01-preview",
-            "name": "[concat(parameters('safeexchange_cdnprofile_name'), '/safeexchange-endpoint', '/', '[replace(parameters('cdn_endpoint_origin_host'), '.', '-')]')]",
+            "name": "[concat(parameters('safeexchange_cdnprofile_name'), '/safeexchange-endpoint/', replace(parameters('cdn_endpoint_origin_host'), '.', '-'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Cdn/profiles/endpoints', parameters('safeexchange_cdnprofile_name'), 'safeexchange-endpoint')]",
                 "[resourceId('Microsoft.Cdn/profiles', parameters('safeexchange_cdnprofile_name'))]"
