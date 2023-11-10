@@ -56,7 +56,7 @@
         }
     },
     "variables": {
-        "appinsights_workspace_resource_id": "[concat('/subscriptions/', subscription().subscriptionId, /resourceGroups/', parameters('appinsights_workspace_resource_group'), '/providers/microsoft.operationalinsights/workspaces/', parameters('appinsights_workspace_name')) ]",
+        "appinsights_workspace_resource_id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', parameters('appinsights_workspace_resource_group'), '/providers/microsoft.operationalinsights/workspaces/', parameters('appinsights_workspace_name')) ]",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref"
     },
     "resources": [
@@ -900,8 +900,68 @@
             }
         },
         {
-            // TODO ...
-        }
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-10-01",
+            "name": "[variables('safeexchange_kv_deployment_name')]",
+            "resourceGroup": "[resourceGroup().name]",
+            "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                    "scope": "inner"
+                },
+                "parameters": {
+                    "keyVaultName": {
+                        "value": "[parameters('safeexchange_kv_name')]"
+                    },
+                    "storageAccessKey": {
+                        "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',parameters('safeexchange_webjobsstorage_name'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
+                    },
+                    "storageAccessKeyExpiryTime": {
+                        "value": "[dateTimeToEpoch(dateTimeAdd(listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2023-01-01').keys[0].creationTime, 'P2Y'))]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "keyVaultName": {
+                            "type": "string"
+                        },
+                        "storageAccessKey": {
+                            "type": "securestring"
+                        },
+                        "storageAccessKeyExpiryTime": {
+                            "type": "int"
+                        }
+                    },
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.KeyVault/vaults/secrets",
+                            "name": "[concat(parameters('keyVaultName'), '/StorageAccountConnectionString')]",
+                            "apiVersion": "2016-10-01",
+                            "properties": {
+                                "attributes": {
+                                    "enabled": true,
+                                    "exp": "[parameters('storageAccessKeyExpiryTime')]"
+                                },
+                                "contentType": "application/vnd.ms-StorageAccountAccessKey",
+                                "value": "[parameters('storageAccessKey')]"
+                            }
+                        }
+                    ],
+                    "outputs": {
+                        "secretUri": {
+                            "type": "string",
+                            "value": "[reference(resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), 'StorageAccountConnectionString')).secretUri]"
+                        }
+                    }
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
         {
             "type": "Microsoft.Web/sites",
             "apiVersion": "2022-09-01",
