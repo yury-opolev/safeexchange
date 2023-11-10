@@ -967,7 +967,7 @@
                                     "enabled": true,
                                     "exp": "[parameters('storageAccessKeyExpiryTime')]"
                                 },
-                                "contentType": "application/vnd.ms-StorageAccountAccessKey",
+                                "contentType": "text/plain",
                                 "value": "[parameters('storageAccessKey')]"
                             }
                         }
