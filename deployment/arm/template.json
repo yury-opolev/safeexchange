@@ -487,7 +487,9 @@
             "properties": {
                 "attributes": {
                     "enabled": true
-                }
+                },
+                "kty": "RSA",
+                "keySize": 4096
             }
         },
         {
