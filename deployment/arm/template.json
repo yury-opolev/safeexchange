@@ -882,6 +882,22 @@
             }
         },
         {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--DefaultMIClientId')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name'))).clientId]"
+            }
+        },
+        {
             "type": "Microsoft.Storage/storageAccounts/blobServices",
             "apiVersion": "2023-01-01",
             "name": "[concat(parameters('safeexchange_webclientstorage_name'), '/default')]",
