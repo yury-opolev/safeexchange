@@ -1,7 +1,5 @@
 **Steps to deploy new instance of safeexchange:**
 
-As a prerequisite, you must have **Log Analytics Workspace** created before, it will require to specify its group and name in the deployment parameters.
-
 1. Create Entra ID Application for authentication and information querying.
 2. Create resource group **{GROUP NAME}** in Azure.
 3. Fill out corresponsding parameters in parameters.json, can keep **'cdn_endpoint_origin_host'** value as is, it will be replaced later.
