@@ -108,7 +108,7 @@
         "safeexchange_cdnprofile_name": "safeexchange-cdn",
         "appinsights_workspace_resource_id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', parameters('appinsights_workspace_resource_group'), '/providers/microsoft.operationalinsights/workspaces/', parameters('appinsights_workspace_name')) ]",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
-        "settings-cosmosDb-databaseName": "safeexchange"
+        "settings-cosmosDb-databaseName": "safeexchange-database"
     },
     "resources": [
         {
