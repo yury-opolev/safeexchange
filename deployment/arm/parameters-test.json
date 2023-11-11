@@ -8,12 +8,6 @@
         "safeexchange_cdnprofile_endpoint_name": {
             "value": "safeexchange-staging"
         },
-        "appinsights_workspace_resource_group": {
-            "value": "DefaultResourceGroup-EUS2"
-        },
-        "appinsights_workspace_name": {
-            "value": "DefaultWorkspace-f5fb4670-5cc6-4391-8132-36a5c97ac3b2-EUS2"
-        },
         "cdn_endpoint_origin_host": {
             "value": "safeexchweb.z20.web.core.windows.net"
         },
