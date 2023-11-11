@@ -889,7 +889,7 @@
                     "enabled": true
                 },
                 "contentType": "text/plain",
-                "value": "[subscription().id]"
+                "value": "[subscription().subscriptionId]"
             }
         },
         {
