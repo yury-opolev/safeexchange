@@ -40,7 +40,7 @@
             "defaultValue": "[concat(parameters('safeexchange_site_name'), '-insights')]",
             "type": "string",
             "metadata": {
-                "description": "Azure Cosmos DB Account name."
+                "description": "Azure App Insights name."
             }
         },
         "safeexchange_cdnprofile_endpoint_name": {
@@ -70,11 +70,12 @@
                 "description": "Azure storage account name for data blobs and queues."
             }
         },
-        "appinsights_workspace_resource_group": {
-            "type": "string"
-        },
         "appinsights_workspace_name": {
-            "type": "string"
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-la-workspace')]",
+            "type": "string",
+            "metadata": {
+                "description": "Log analytics workspace name."
+            }
         },
         "cdn_endpoint_origin_host": {
             "type": "string"
@@ -106,11 +107,39 @@
         "storage_role_queueDataReader": "19e7f393-937e-4f77-808e-94535e297925",
         "documentDb_role_accountContributor": "5bd9cd88-fe45-4216-938b-f97437e15450",
         "safeexchange_cdnprofile_name": "safeexchange-cdn",
-        "appinsights_workspace_resource_id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', parameters('appinsights_workspace_resource_group'), '/providers/microsoft.operationalinsights/workspaces/', parameters('appinsights_workspace_name')) ]",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
-        "settings-cosmosDb-databaseName": "safeexchange-database"
+        "settings-cosmosDb-databaseName": "safeexchange-database",
+        "appinsights_workspace_retention_days": 90,
+        "appinsights_workspace_resource_permissions": true,
+        "appinsights_workspace_heartbeat_retention_days": 30
     },
     "resources": [
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2021-12-01-preview",
+            "name": "[parameters('appinsights_workspace_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "sku": {
+                    "name": "PerGB2018"
+                },
+                "retentionInDays": "[variables('appinsights_workspace_retention_days')]",
+                "features": {
+                    "enableLogAccessUsingOnlyResourcePermissions": "[variables('appinsights_workspace_resource_permissions')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces/tables",
+            "apiVersion": "2021-12-01-preview",
+            "name": "[format('{0}/{1}', parameters('appinsights_workspace_name'), 'Heartbeat')]",
+            "properties": {
+                "retentionInDays": "[variables('appinsights_workspace_heartbeat_retention_days')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            ]
+        },
         {
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
             "name": "[variables('safeexchange_userassigned_mi_name')]",
@@ -197,7 +226,7 @@
             }
         },
         {
-            "type": "microsoft.insights/components",
+            "type": "Microsoft.Insights/components",
             "apiVersion": "2020-02-02",
             "name": "[parameters('safeexchange_appinsights_name')]",
             "location": "[parameters('default_location')]",
@@ -205,11 +234,14 @@
             "properties": {
                 "Application_Type": "web",
                 "RetentionInDays": 90,
-                "WorkspaceResourceId": "[variables('appinsights_workspace_resource_id')]",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]",
                 "IngestionMode": "LogAnalytics",
                 "publicNetworkAccessForIngestion": "Enabled",
                 "publicNetworkAccessForQuery": "Enabled"
-            }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            ]
         },
         {
             "type": "Microsoft.KeyVault/vaults",
@@ -1169,6 +1201,7 @@
             "location": "[parameters('default_location')]",
             "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
+                "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]",
                 "[variables('safeexchange_kv_deployment_name')]",
                 "[guid('roleassignment-mi-kv-secrets-officer')]"
             ],
@@ -1223,7 +1256,7 @@
                         },
                         {
                             "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-                            "value": "[reference(concat('microsoft.insights/components/', parameters('safeexchange_appinsights_name'))).InstrumentationKey]"
+                            "value": "[reference(concat('Microsoft.Insights/components/', parameters('safeexchange_appinsights_name'))).InstrumentationKey]"
                         },
                         {
                             "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
