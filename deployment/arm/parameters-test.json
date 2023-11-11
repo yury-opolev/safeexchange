@@ -3,22 +3,10 @@
     "contentVersion": "1.0.0.0",
     "parameters": {
         "safeexchange_site_name": {
-            "value": "safeexch-test"
+            "value": "safeexchange-staging"
         },
         "safeexchange_cdnprofile_endpoint_name": {
-            "value": "safeexch-test"
-        },
-        "safeexchange_webclientstorage_name": {
-            "value": "safeexchtestweb"
-        },
-        "safeexchange_webjobsstorage_name": {
-            "value": "safeexchtestwj"
-        },
-        "safeexchange_data_storage_name": {
-            "value": "safeexchtestdata"
-        },
-        "safeexchange_dbaccount_name": {
-            "value": "safeexchtestdb"
+            "value": "safeexchange-staging"
         },
         "appinsights_workspace_resource_group": {
             "value": "defaultresourcegroup-neu"
@@ -30,16 +18,19 @@
             "value": "safeexchtestweb.z20.web.core.windows.net"
         },
         "settings-aadClient-clientId": {
-            "value": "00000000-0000-0000-0000-000000000000"
+            "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39"
         },
         "settings-aadClient-clientSecret": {
-            "value": "none"
+            "value": "-"
+        },
+        "settings-aadClient-tenantId": {
+            "value": "1472703e-99d8-45ee-aeac-7ec3ae9ab104"
         },
         "settings-authentication-validAudiences": {
-            "value": "00000000-0000-0000-0000-000000000000"
+            "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39,api://safeexchange-staging.onmicrosoft.com"
         },
         "settings-authentication-validIssuers": {
-            "value": "00000000-0000-0000-0000-000000000000"
+            "value": "https://sts.windows.net/1472703e-99d8-45ee-aeac-7ec3ae9ab104/"
         }
     }
 }

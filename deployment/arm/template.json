@@ -10,55 +10,92 @@
             }
         },
         "safeexchange_site_name": {
-            "defaultValue": "safeexchange-stg",
-            "type": "String"
-        },
-        "safeexchange_cdnprofile_endpoint_name": {
-            "defaultValue": "safeex-stg",
-            "type": "String"
-        },
-        "safeexchange_webclientstorage_name": {
-            "defaultValue": "safeexstgweb",
-            "type": "String"
-        },
-        "safeexchange_webjobsstorage_name": {
-            "defaultValue": "safeexwjstgacc",
-            "type": "String"
-        },
-        "safeexchange_data_storage_name": {
-            "defaultValue": "safeexstgdata",
-            "type": "String"
+            "type": "string",
+            "metadata": {
+                "description": "Name for backend service site."
+            }
         },
         "safeexchange_dbaccount_name": {
-            "defaultValue": "safeex-stg-db",
-            "type": "String"
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-db')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure Cosmos DB Account name."
+            }
+        },
+        "safeexchange_kv_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-kv')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure KeyVault name."
+            }
+        },
+        "safeexchange_serverfarm_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-srvfarm')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure App Service Plan name."
+            }
+        },
+        "safeexchange_appinsights_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-insights')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure Cosmos DB Account name."
+            }
+        },
+        "safeexchange_cdnprofile_endpoint_name": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of CDN endpoint for web client."
+            }
+        },
+        "safeexchange_webclientstorage_name": {
+            "defaultValue": "safeexchweb",
+            "type": "string",
+            "metadata": {
+                "description": "Azure storage account name for static web client."
+            }
+        },
+        "safeexchange_webjobsstorage_name": {
+            "defaultValue": "safeexchwjstg",
+            "type": "string",
+            "metadata": {
+                "description": "Azure storage account name for webjobs (as backend for Azure Functions)."
+            }
+        },
+        "safeexchange_data_storage_name": {
+            "defaultValue": "safeexchdatastg",
+            "type": "string",
+            "metadata": {
+                "description": "Azure storage account name for data blobs and queues."
+            }
         },
         "appinsights_workspace_resource_group": {
-            "type": "String"
+            "type": "string"
         },
         "appinsights_workspace_name": {
-            "type": "String"
+            "type": "string"
         },
         "cdn_endpoint_origin_host": {
-            "type": "String"
+            "type": "string"
         },
         "settings-aadClient-clientId": {
-            "type": "String"
+            "type": "string"
         },
         "settings-aadClient-clientSecret": {
-            "type": "String"
+            "type": "securestring"
+        },
+        "settings-aadClient-tenantId": {
+            "type": "string"
         },
         "settings-authentication-validAudiences": {
-            "type": "String"
+            "type": "string"
         },
         "settings-authentication-validIssuers": {
-            "type": "String"
+            "type": "string"
         }
     },
     "variables": {
-        "safeexchange_appinsights_name": "[concat(parameters('safeexchange_site_name'), '-insights')]",
-        "safeexchange_kv_name": "[concat(parameters('safeexchange_site_name'), '-kv')]",
-        "safeexchange_serverfarm_name": "[concat(parameters('safeexchange_site_name'), '-srvfarm')]",
         "safeexchange_userassigned_mi_name": "[concat(parameters('safeexchange_site_name'), '-mi')]",
         "safeexchange_userassigned_mi_resourceid": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('safeexchange_userassigned_mi_name'))]",
         "keyVault_role_secretsOfficer": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7",
@@ -161,7 +198,7 @@
         {
             "type": "microsoft.insights/components",
             "apiVersion": "2020-02-02",
-            "name": "[variables('safeexchange_appinsights_name')]",
+            "name": "[parameters('safeexchange_appinsights_name')]",
             "location": "[parameters('default_location')]",
             "kind": "web",
             "properties": {
@@ -176,7 +213,7 @@
         {
             "type": "Microsoft.KeyVault/vaults",
             "apiVersion": "2023-02-01",
-            "name": "[variables('safeexchange_kv_name')]",
+            "name": "[parameters('safeexchange_kv_name')]",
             "location": "[parameters('default_location')]",
             "properties": {
                 "tenantId": "[subscription().tenantId]",
@@ -190,7 +227,7 @@
                 "enableSoftDelete": true,
                 "softDeleteRetentionInDays": 90,
                 "enableRbacAuthorization": true,
-                "vaultUri": "[concat('https://', variables('safeexchange_kv_name'), '.vault.azure.net/')]",
+                "vaultUri": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]",
                 "publicNetworkAccess": "Enabled"
             }
         },
@@ -198,9 +235,9 @@
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
             "name": "[guid('roleassignment-mi-kv-secrets-officer')]",
-            "scope": "[concat('Microsoft.KeyVault/vaults/', variables('safeexchange_kv_name'))]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
                 "[variables('safeexchange_userassigned_mi_name')]"
             ],
             "properties": {
@@ -213,9 +250,9 @@
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
             "name": "[guid('roleassignment-system-mi-kv-secrets-officer')]",
-            "scope": "[concat('Microsoft.KeyVault/vaults/', variables('safeexchange_kv_name'))]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
                 "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
             ],
             "properties": {
@@ -228,9 +265,9 @@
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
             "name": "[guid('roleassignment-system-mi-kv-crypto-officer')]",
-            "scope": "[concat('Microsoft.KeyVault/vaults/', variables('safeexchange_kv_name'))]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
                 "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
             ],
             "properties": {
@@ -421,7 +458,7 @@
         {
             "type": "Microsoft.Web/serverfarms",
             "apiVersion": "2022-09-01",
-            "name": "[variables('safeexchange_serverfarm_name')]",
+            "name": "[parameters('safeexchange_serverfarm_name')]",
             "location": "[parameters('default_location')]",
             "sku": {
                 "name": "Y1",
@@ -586,10 +623,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/keys",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/CryptoKeyEncryptionKey')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CryptoKeyEncryptionKey')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -602,10 +639,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/AADClient--ClientId')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--ClientId')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -618,10 +655,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/AADClient--ClientSecret')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--ClientSecret')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -634,26 +671,26 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/AADClient--TenantId')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--TenantId')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
                     "enabled": true
                 },
                 "contentType": "text/plain",
-                "value": "[subscription().tenantId]"
+                "value": "[parameters('settings-aadClient-tenantId')]"
             }
         },
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/AccessTickets--AccessTicketTimeout')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AccessTickets--AccessTicketTimeout')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -666,10 +703,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/AdminConfiguration--AdminUsers')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AdminConfiguration--AdminUsers')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -682,10 +719,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Authentication--MetadataAddress')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--MetadataAddress')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -698,10 +735,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Authentication--ValidateAudience')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidateAudience')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -714,10 +751,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Authentication--ValidateIssuer')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidateIssuer')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -730,10 +767,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Authentication--ValidAudiences')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidAudiences')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -746,10 +783,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Authentication--ValidIssuers')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidIssuers')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -762,10 +799,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/CosmosDb--AccountName')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--AccountName')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -778,10 +815,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/CosmosDb--CosmosDbEndpoint')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--CosmosDbEndpoint')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -794,10 +831,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/CosmosDb--DatabaseName')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--DatabaseName')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -810,10 +847,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/CosmosDb--ResourceGroupName')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--ResourceGroupName')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -826,10 +863,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/CosmosDb--SubscriptionId')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--SubscriptionId')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -842,10 +879,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Crypto--BlobServiceUri')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Crypto--BlobServiceUri')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -858,10 +895,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Crypto--ContainerName')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Crypto--ContainerName')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -874,10 +911,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Crypto--KeyName')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Crypto--KeyName')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -890,10 +927,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Features--UseExternalWebHookNotifications')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseExternalWebHookNotifications')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -906,10 +943,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Features--UseGroupsAuthorization')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseGroupsAuthorization')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -922,10 +959,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/GeneralConfiguration--WebClientBaseUri')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--WebClientBaseUri')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -938,10 +975,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/Queue--QueueServiceUri')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Queue--QueueServiceUri')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -954,10 +991,10 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
-            "name": "[concat(variables('safeexchange_kv_name'), '/GeneralConfiguration--DefaultMIClientId')]",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--DefaultMIClientId')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.KeyVault/vaults', variables('safeexchange_kv_name'))]"
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
             ],
             "properties": {
                 "attributes": {
@@ -1058,7 +1095,7 @@
                 },
                 "parameters": {
                     "keyVaultName": {
-                        "value": "[variables('safeexchange_kv_name')]"
+                        "value": "[parameters('safeexchange_kv_name')]"
                     },
                     "storageAccessKey": {
                         "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',parameters('safeexchange_webjobsstorage_name'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
@@ -1115,7 +1152,7 @@
             "name": "[parameters('safeexchange_site_name')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Web/serverfarms', variables('safeexchange_serverfarm_name'))]",
+                "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
                 "[variables('safeexchange_kv_deployment_name')]",
                 "[guid('roleassignment-mi-kv-secrets-officer')]"
             ],
@@ -1141,7 +1178,7 @@
                         "hostType": "Repository"
                     }
                 ],
-                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('safeexchange_serverfarm_name'))]",
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
                 "reserved": false,
                 "isXenon": false,
                 "hyperV": false,
@@ -1170,7 +1207,7 @@
                         },
                         {
                             "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-                            "value": "[reference(concat('microsoft.insights/components/', variables('safeexchange_appinsights_name'))).InstrumentationKey]"
+                            "value": "[reference(concat('microsoft.insights/components/', parameters('safeexchange_appinsights_name'))).InstrumentationKey]"
                         },
                         {
                             "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
@@ -1178,7 +1215,7 @@
                         },
                         {
                             "name": "KEYVAULT_BASEURI",
-                            "value": "[concat('https://', variables('safeexchange_kv_name'), '.vault.azure.net/')]"
+                            "value": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]"
                         },
                         {
                             "name": "DelayedTasksQueue__credential",
@@ -1186,7 +1223,7 @@
                         },
                         {
                             "name": "DelayedTasksQueue__queueServiceUri",
-                            "value": "[concat('@Microsoft.KeyVault(SecretUri=https://', variables('safeexchange_kv_name'), '.vault.azure.net/secrets/Queue--QueueServiceUri/)')]"
+                            "value": "[concat('@Microsoft.KeyVault(SecretUri=https://', parameters('safeexchange_kv_name'), '.vault.azure.net/secrets/Queue--QueueServiceUri/)')]"
                         }
                     ]
                 },
