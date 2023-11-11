@@ -1,11 +1,11 @@
 # safeexchange
-  This repo is holding sources for SafeExchange backend service, used for safe storage and exchange of secrets.
+  This repo is holding sources for SafeExchange backend service, used to store and exchange secrets in a secure way.
 
-  SafeExchange backend consists of Azure Key Vault, Azure AD Application, and Azure Function App.
+  SafeExchange backend consists of various Azure services and Microsoft Entra ID application.
 
-  Function App is used as backend API service in SafeExchange. In order to work properly, it needs a specific setup, where it is accessible for users with Azure AD Application, and where it can access Azure KeyVault.
+  Function App is used as backend API service in SafeExchange, and is accessible for authorized users/applications with Microsoft Entra ID.
 
-  All sensitive data is stored in Azure KeyVault, buit it is not accessible to users directly. Instead, an Azure Function App is used to access it. Azure Function has kind of an 'authorization layer', where it has a set of permissions. In order to access secret value, a user must have a specific permission registered in Azure Function App.
+  All sensitive data is stored in Azure Storage account Blobs, encrypted via Azure KeyVault. In order to access a secret value, aa a prerequisite, a user must have a specific permissions configured in the backend service.
 
 Here are wiki pages to set up Azure AD App and resources for SafeExchange backend:
 
