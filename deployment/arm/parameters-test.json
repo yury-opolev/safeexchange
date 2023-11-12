@@ -8,9 +8,6 @@
         "safeexchange_cdnprofile_endpoint_name": {
             "value": "safeexchange-staging"
         },
-        "cdn_endpoint_origin_host": {
-            "value": "safeexchweb.z20.web.core.windows.net"
-        },
         "settings-aadClient-clientId": {
             "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39"
         },

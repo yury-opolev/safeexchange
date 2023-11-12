@@ -77,9 +77,6 @@
                 "description": "Log analytics workspace name."
             }
         },
-        "cdn_endpoint_origin_host": {
-            "type": "string"
-        },
         "settings-aadClient-clientId": {
             "type": "string"
         },
@@ -108,6 +105,7 @@
         "documentDb_role_accountContributor": "5bd9cd88-fe45-4216-938b-f97437e15450",
         "safeexchange_cdnprofile_name": "safeexchange-cdn",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
+        "safeexchange_staticwebsite_deployment_name": "safeexchange-blob-static-website",
         "settings-cosmosDb-databaseName": "safeexchange-database",
         "appinsights_workspace_retention_days": 90,
         "appinsights_workspace_resource_permissions": true,
@@ -145,6 +143,100 @@
             "name": "[variables('safeexchange_userassigned_mi_name')]",
             "apiVersion": "2018-11-30",
             "location": "[resourceGroup().location]"
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-10-01",
+            "name": "[variables('safeexchange_staticwebsite_deployment_name')]",
+            "resourceGroup": "[resourceGroup().name]",
+            "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                    "scope": "inner"
+                },
+                "parameters": {
+                    "staticwebsite_deployment_storage_name": {
+                        "value": "[parameters('safeexchange_webclientstorage_name')]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "staticwebsite_deployment_storage_name": {
+                            "type": "string"
+                        }
+                    },
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+                            "name": "DeploymentScript-MI",
+                            "apiVersion": "2018-11-30",
+                            "location": "[resourceGroup().location]"
+                        },
+                        {
+                            "type": "Microsoft.Authorization/roleAssignments",
+                            "apiVersion": "2020-04-01-preview",
+                            "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('staticwebsite_deployment_storage_name'))]",
+                            "name": "[guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '17d1049b-9a84-46fb-8f53-869881c3d3ab'))]",
+                            "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '17d1049b-9a84-46fb-8f53-869881c3d3ab')]",
+                                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')).principalId]",
+                                "principalType": "ServicePrincipal"
+                            },
+                            "dependsOn": [
+                                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]"
+                            ]
+                        },
+                        {
+                            "type": "Microsoft.Resources/deploymentScripts",
+                            "apiVersion": "2020-10-01",
+                            "name": "deploymentScript-static-webSite",
+                            "location": "[resourceGroup().location]",
+                            "kind": "AzurePowerShell",
+                            "identity": {
+                                "type": "UserAssigned",
+                                "userAssignedIdentities": {
+                                    "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'))]": {}
+                                }
+                            },
+                            "properties": {
+                                "azPowerShellVersion": "3.0",
+                                "scriptContent": "$ErrorActionPreference = 'Stop'\n$storageAccount = Get-AzStorageAccount -ResourceGroupName $env:ResourceGroupName -AccountName $env:StorageAccountName\n\n# Enable the static website feature on the storage account.\n$ctx = $storageAccount.Context\nEnable-AzStorageStaticWebsite -Context $ctx -IndexDocument $env:IndexDocumentPath -ErrorDocument404Path $env:IndexDocumentPath\n",
+                                "retentionInterval": "PT4H",
+                                "environmentVariables": [
+                                    {
+                                        "name": "ResourceGroupName",
+                                        "value": "[resourceGroup().name]"
+                                    },
+                                    {
+                                        "name": "StorageAccountName",
+                                        "value": "[parameters('staticwebsite_deployment_storage_name')]"
+                                    },
+                                    {
+                                        "name": "IndexDocumentPath",
+                                        "value": "index.html"
+                                    }
+                                ]
+                            },
+                            "dependsOn": [
+                                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]",
+                                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '17d1049b-9a84-46fb-8f53-869881c3d3ab')))]"
+                            ]
+                        }
+                    ],
+                    "outputs": {
+                        "staticWebsiteDomain": {
+                            "type": "string",
+                            "value": "[replace(replace(reference(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), '2023-01-01', 'Full').properties.primaryEndpoints.web, 'https://' ,''), '/', '')]"
+                        }
+                    }
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
         },
         {
             "type": "Microsoft.Cdn/profiles",
@@ -535,10 +627,11 @@
             "name": "[concat(variables('safeexchange_cdnprofile_name'), '/', parameters('safeexchange_cdnprofile_endpoint_name'))]",
             "location": "Global",
             "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles', variables('safeexchange_cdnprofile_name'))]"
+                "[resourceId('Microsoft.Cdn/profiles', variables('safeexchange_cdnprofile_name'))]",
+                "[variables('safeexchange_staticwebsite_deployment_name')]"
             ],
             "properties": {
-                "originHostHeader": "[parameters('cdn_endpoint_origin_host')]",
+                "originHostHeader": "[reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value]",
                 "contentTypesToCompress": [
                     "application/eot",
                     "application/font",
@@ -588,12 +681,12 @@
                 "queryStringCachingBehavior": "IgnoreQueryString",
                 "origins": [
                     {
-                        "name": "[replace(parameters('cdn_endpoint_origin_host'), '.', '-')]",
+                        "name": "[replace(reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value, '.', '-')]",
                         "properties": {
-                            "hostName": "[parameters('cdn_endpoint_origin_host')]",
+                            "hostName": "[reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value]",
                             "httpPort": 80,
                             "httpsPort": 443,
-                            "originHostHeader": "[parameters('cdn_endpoint_origin_host')]",
+                            "originHostHeader": "[reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value]",
                             "priority": 1,
                             "weight": 1000,
                             "enabled": true
@@ -1387,24 +1480,6 @@
             "properties": {
                 "siteName": "[parameters('safeexchange_site_name')]",
                 "hostNameType": "Verified"
-            }
-        },
-        {
-            "type": "Microsoft.Cdn/profiles/endpoints/origins",
-            "apiVersion": "2022-11-01-preview",
-            "name": "[concat(variables('safeexchange_cdnprofile_name'), '/', parameters('safeexchange_cdnprofile_endpoint_name'), '/', replace(parameters('cdn_endpoint_origin_host'), '.', '-'))]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles/endpoints', variables('safeexchange_cdnprofile_name'), parameters('safeexchange_cdnprofile_endpoint_name'))]",
-                "[resourceId('Microsoft.Cdn/profiles', variables('safeexchange_cdnprofile_name'))]"
-            ],
-            "properties": {
-                "hostName": "[parameters('cdn_endpoint_origin_host')]",
-                "httpPort": 80,
-                "httpsPort": 443,
-                "originHostHeader": "[parameters('cdn_endpoint_origin_host')]",
-                "priority": 1,
-                "weight": 1000,
-                "enabled": true
             }
         },
         {
