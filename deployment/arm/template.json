@@ -22,6 +22,13 @@
                 "description": "Azure Cosmos DB Account name."
             }
         },
+        "safeexchange_cosmosdb_database_name": {
+            "defaultValue": "safeexchange-database",
+            "type": "string",
+            "metadata": {
+                "description": "Azure Cosmos DB database name."
+            }
+        },
         "safeexchange_kv_name": {
             "defaultValue": "[concat(parameters('safeexchange_site_name'), '-kv')]",
             "type": "string",
@@ -111,7 +118,6 @@
         "safeexchange_cdnprofile_name": "safeexchange-cdn",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
         "safeexchange_staticwebsite_deployment_name": "safeexchange-blob-static-website",
-        "settings-cosmosDb-databaseName": "safeexchange-database",
         "appinsights_workspace_retention_days": 90,
         "appinsights_workspace_resource_permissions": true,
         "appinsights_workspace_heartbeat_retention_days": 30
@@ -705,13 +711,13 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
                 "resource": {
-                    "id": "safeexchange-database"
+                    "id": "[parameters('safeexchange_cosmosdb_database_name')]"
                 }
             }
         },
@@ -988,7 +994,7 @@
                     "enabled": true
                 },
                 "contentType": "text/plain",
-                "value": "[variables('settings-cosmosDb-databaseName')]"
+                "value": "[parameters('safeexchange_cosmosdb_database_name')]"
             }
         },
         {
@@ -1491,9 +1497,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/AccessRequests')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/AccessRequests')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1530,9 +1536,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/Applications')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/Applications')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1584,9 +1590,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/GroupDictionary')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/GroupDictionary')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1623,9 +1629,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/ObjectMetadata')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/ObjectMetadata')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1662,9 +1668,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/SubjectPermissions')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/SubjectPermissions')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1701,9 +1707,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/Users')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/Users')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1754,9 +1760,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/WebhookNotificationData')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/WebhookNotificationData')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
@@ -1793,9 +1799,9 @@
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
-            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/safeexchange-database/WebhookSubscriptions')]",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/WebhookSubscriptions')]",
             "dependsOn": [
-                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), 'safeexchange-database')]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
             ],
             "properties": {
