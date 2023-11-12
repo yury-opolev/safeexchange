@@ -882,7 +882,7 @@
                     "enabled": true
                 },
                 "contentType": "text/plain",
-                "value": "[concat('https://login.microsoftonline.com/', subscription().tenantId, '/v2.0/.well-known/openid-configuration')]"
+                "value": "[concat('https://login.microsoftonline.com/', parameters('settings-aadClient-tenantId'), '/v2.0/.well-known/openid-configuration')]"
             }
         },
         {
