@@ -5,14 +5,8 @@
         "safeexchange_site_name": {
             "value": "safeexchange-staging"
         },
-        "safeexchange_cdnprofile_endpoint_name": {
-            "value": "safeexchange-staging"
-        },
         "settings-aadClient-clientId": {
             "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39"
-        },
-        "settings-aadClient-clientSecret": {
-            "value": "-"
         },
         "settings-aadClient-tenantId": {
             "value": "1472703e-99d8-45ee-aeac-7ec3ae9ab104"
