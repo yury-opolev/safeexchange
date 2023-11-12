@@ -5,13 +5,7 @@
         "safeexchange_site_name": {
             "value": null
         },
-        "safeexchange_cdnprofile_endpoint_name": {
-            "value": null
-        },
         "settings-aadClient-clientId": {
-            "value": null
-        },
-        "settings-aadClient-clientSecret": {
             "value": null
         },
         "settings-aadClient-tenantId": {

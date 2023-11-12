@@ -44,9 +44,10 @@
             }
         },
         "safeexchange_cdnprofile_endpoint_name": {
+            "defaultValue": "[parameters('safeexchange_site_name')]",
             "type": "string",
             "metadata": {
-                "description": "Name of CDN endpoint for web client."
+                "description": "Name of CDN endpoint for web client. Defaults to 'safeexchange_site_name' parameter."
             }
         },
         "safeexchange_webclientstorage_name": {
@@ -81,7 +82,11 @@
             "type": "string"
         },
         "settings-aadClient-clientSecret": {
-            "type": "securestring"
+            "defaultValue": "",
+            "type": "securestring",
+            "metadata": {
+                "description": "Microsoft Entra ID application secret. If not specified, client certificate 'AADClient--ClientCertificate' will be used instead."
+            }
         },
         "settings-aadClient-tenantId": {
             "type": "string"
@@ -794,6 +799,7 @@
             }
         },
         {
+            "condition": "[not(empty(parameters('settings-aadClient-clientSecret')))]",
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
             "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--ClientSecret')]",
