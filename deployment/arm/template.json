@@ -11,8 +11,10 @@
         },
         "safeexchange_site_name": {
             "type": "string",
+            "minLength": 3,
+            "maxLength": 20,
             "metadata": {
-                "description": "Name for backend service site."
+                "description": "Name for backend service site. Should only contain letters, numbers and hyphens, length from 3 to 20 symbols."
             }
         },
         "safeexchange_dbaccount_name": {
@@ -58,21 +60,21 @@
             }
         },
         "safeexchange_webclientstorage_name": {
-            "defaultValue": "safeexchweb",
+            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'web')]",
             "type": "string",
             "metadata": {
                 "description": "Azure storage account name for static web client."
             }
         },
         "safeexchange_webjobsstorage_name": {
-            "defaultValue": "safeexchwjstg",
+            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'wj')]",
             "type": "string",
             "metadata": {
                 "description": "Azure storage account name for webjobs (as backend for Azure Functions)."
             }
         },
         "safeexchange_data_storage_name": {
-            "defaultValue": "safeexchdatastg",
+            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'data')]",
             "type": "string",
             "metadata": {
                 "description": "Azure storage account name for data blobs and queues."
@@ -103,6 +105,14 @@
         },
         "settings-authentication-validIssuers": {
             "type": "string"
+        },
+        "settings-features-useGroupsAuthorization": {
+            "defaultValue": "True",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
         }
     },
     "variables": {
@@ -153,7 +163,7 @@
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
             "name": "[variables('safeexchange_userassigned_mi_name')]",
             "apiVersion": "2018-11-30",
-            "location": "[resourceGroup().location]"
+            "location": "[parameters('default_location')]"
         },
         {
             "type": "Microsoft.Resources/deployments",
@@ -168,6 +178,9 @@
                 "parameters": {
                     "staticwebsite_deployment_storage_name": {
                         "value": "[parameters('safeexchange_webclientstorage_name')]"
+                    },
+                    "staticwebsite_deployment_location": {
+                        "value": "[parameters('default_location')]"
                     }
                 },
                 "template": {
@@ -175,6 +188,9 @@
                     "contentVersion": "1.0.0.0",
                     "parameters": {
                         "staticwebsite_deployment_storage_name": {
+                            "type": "string"
+                        },
+                        "staticwebsite_deployment_location": {
                             "type": "string"
                         }
                     },
@@ -184,7 +200,7 @@
                             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
                             "name": "DeploymentScript-MI",
                             "apiVersion": "2018-11-30",
-                            "location": "[resourceGroup().location]"
+                            "location": "[parameters('staticwebsite_deployment_location')]"
                         },
                         {
                             "type": "Microsoft.Authorization/roleAssignments",
@@ -204,7 +220,7 @@
                             "type": "Microsoft.Resources/deploymentScripts",
                             "apiVersion": "2020-10-01",
                             "name": "deploymentScript-static-webSite",
-                            "location": "[resourceGroup().location]",
+                            "location": "[parameters('staticwebsite_deployment_location')]",
                             "kind": "AzurePowerShell",
                             "identity": {
                                 "type": "UserAssigned",
@@ -1106,7 +1122,7 @@
                     "enabled": true
                 },
                 "contentType": "text/plain",
-                "value": "True"
+                "value": "[parameters('settings-features-useGroupsAuthorization')]"
             }
         },
         {
