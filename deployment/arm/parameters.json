@@ -8,9 +8,6 @@
         "safeexchange_cdnprofile_endpoint_name": {
             "value": null
         },
-        "cdn_endpoint_origin_host": {
-            "value": null
-        },
         "settings-aadClient-clientId": {
             "value": null
         },
