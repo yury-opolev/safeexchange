@@ -111,19 +111,32 @@ namespace SafeExchange.Core.Migrations
         {
             using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, new AzureKeyCredential(this.dbKeys.PrimaryKey));
             var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
-            var container = database.GetContainer("Users");
 
-            var query = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.ReceiveExternalNotifications)");
+            var container1 = database.GetContainer("Users");
+            var query1 = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.ReceiveExternalNotifications)");
+            using FeedIterator<MigrationItem00003> feed1 =
+                container1.GetItemQueryIterator<MigrationItem00003>(queryDefinition: query1);
 
-            using FeedIterator<MigrationItem00003> feed =
-                container.GetItemQueryIterator<MigrationItem00003>(queryDefinition: query);
-
-            while (feed.HasMoreResults)
+            while (feed1.HasMoreResults)
             {
-                FeedResponse<MigrationItem00003> response = await feed.ReadNextAsync();
-                foreach (MigrationItem00003 item in response)
+                FeedResponse<MigrationItem00003> response1 = await feed1.ReadNextAsync();
+                foreach (MigrationItem00003 item1 in response1)
                 {
-                    await MigrateItem00003Async(container, item);
+                    await MigrateItem00003_01_Async(container1, item1);
+                }
+            }
+
+            var container2 = database.GetContainer("Applications");
+            var query2 = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.ExternalNotificationsReader)");
+            using FeedIterator<MigrationItem00003> feed2 =
+                container2.GetItemQueryIterator<MigrationItem00003>(queryDefinition: query2);
+
+            while (feed2.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00003> response2 = await feed2.ReadNextAsync();
+                foreach (MigrationItem00003 item2 in response2)
+                {
+                    await MigrateItem00003_02_Async(container2, item2);
                 }
             }
         }
@@ -164,15 +177,31 @@ namespace SafeExchange.Core.Migrations
             this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
         }
 
-        private async Task MigrateItem00003Async(Container container, MigrationItem00003 item)
+        private async Task MigrateItem00003_01_Async(Container container, MigrationItem00003 item)
         {
-            this.log.LogInformation($"{nameof(MigrateItem00003Async)}, item '{item.id}'.");
+            this.log.LogInformation($"{nameof(MigrateItem00003_01_Async)}, item '{item.id}'.");
 
             var response = await container.ReadItemStreamAsync(item.id, new PartitionKey(item.PartitionKey));
             using var streamReader = new StreamReader(response.Content);
 
             var contentString = await streamReader.ReadToEndAsync();
             var newContentString = contentString.Replace("\"Enabled", "\"ReceiveExternalNotifications\": true, \"Enabled");
+
+            using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
+            using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
+
+            this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
+        }
+
+        private async Task MigrateItem00003_02_Async(Container container, MigrationItem00003 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00003_02_Async)}, item '{item.id}'.");
+
+            var response = await container.ReadItemStreamAsync(item.id, new PartitionKey(item.PartitionKey));
+            using var streamReader = new StreamReader(response.Content);
+
+            var contentString = await streamReader.ReadToEndAsync();
+            var newContentString = contentString.Replace("\"Enabled", "\"ExternalNotificationsReader\": false, \"Enabled");
 
             using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
             using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
