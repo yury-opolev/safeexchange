@@ -386,7 +386,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-mi-kv-secrets-officer')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-mi-kv-secrets-officer')]",
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
@@ -401,7 +401,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-kv-secrets-officer')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-kv-secrets-officer')]",
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
@@ -416,7 +416,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-kv-crypto-officer')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-kv-crypto-officer')]",
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
@@ -431,7 +431,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-blob-data-contributor')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-blob-data-contributor')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -446,7 +446,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-queue-data-messageprocessor')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-queue-data-messageprocessor')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -461,7 +461,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-queue-data-messagesender')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-queue-data-messagesender')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -476,7 +476,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-queue-data-reader')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-queue-data-reader')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -491,7 +491,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid('roleassignment-system-mi-documentdb-account-contributor')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-documentdb-account-contributor')]",
             "scope": "[concat('Microsoft.DocumentDB/databaseAccounts/', parameters('safeexchange_dbaccount_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]",
@@ -1296,7 +1296,7 @@
                 "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
                 "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]",
                 "[variables('safeexchange_kv_deployment_name')]",
-                "[guid('roleassignment-mi-kv-secrets-officer')]"
+                "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-mi-kv-secrets-officer')]"
             ],
             "tags": {},
             "kind": "functionapp",
