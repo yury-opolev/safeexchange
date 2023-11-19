@@ -145,6 +145,7 @@
         "storage_role_queueDataMessageProcessor": "8a0f0c08-91a1-4084-bc3d-661d67233fed",
         "storage_role_queueDataMessageSender": "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a",
         "storage_role_queueDataReader": "19e7f393-937e-4f77-808e-94535e297925",
+        "storage_role_storageAccountContributor": "17d1049b-9a84-46fb-8f53-869881c3d3ab",
         "documentDb_role_accountContributor": "5bd9cd88-fe45-4216-938b-f97437e15450",
         "safeexchange_cdnprofile_name": "safeexchange-cdn",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
@@ -202,6 +203,9 @@
                     },
                     "staticwebsite_deployment_location": {
                         "value": "[parameters('default_location')]"
+                    },
+                    "template_storage_role_storageAccountContributor": {
+                        "value": "[variables('storage_role_storageAccountContributor')]"
                     }
                 },
                 "template": {
@@ -212,6 +216,9 @@
                             "type": "string"
                         },
                         "staticwebsite_deployment_location": {
+                            "type": "string"
+                        },
+                        "template_storage_role_storageAccountContributor": {
                             "type": "string"
                         }
                     },
@@ -227,9 +234,9 @@
                             "type": "Microsoft.Authorization/roleAssignments",
                             "apiVersion": "2020-04-01-preview",
                             "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('staticwebsite_deployment_storage_name'))]",
-                            "name": "[guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '17d1049b-9a84-46fb-8f53-869881c3d3ab'))]",
+                            "name": "[guid(resourceGroup().id, parameters('staticwebsite_deployment_storage_name'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor')))]",
                             "properties": {
-                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '17d1049b-9a84-46fb-8f53-869881c3d3ab')]",
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor'))]",
                                 "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')).principalId]",
                                 "principalType": "ServicePrincipal"
                             },
@@ -270,7 +277,7 @@
                             },
                             "dependsOn": [
                                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]",
-                                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '17d1049b-9a84-46fb-8f53-869881c3d3ab')))]"
+                                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('staticwebsite_deployment_storage_name'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor'))))]"
                             ]
                         }
                     ],
@@ -407,7 +414,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-mi-kv-secrets-officer')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]",
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
@@ -422,7 +429,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-kv-secrets-officer')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
@@ -437,7 +444,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-kv-crypto-officer')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'crypto-officer', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
@@ -452,7 +459,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-blob-data-contributor')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'blob-data-contributor', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -467,7 +474,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-queue-data-messageprocessor')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-messageprocessor', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -482,7 +489,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-queue-data-messagesender')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-messagesender', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -497,7 +504,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-queue-data-reader')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-reader', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
@@ -512,7 +519,7 @@
         {
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-system-mi-documentdb-account-contributor')]",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'documentdb-account-contributor', 'systemassigned-mi')]",
             "scope": "[concat('Microsoft.DocumentDB/databaseAccounts/', parameters('safeexchange_dbaccount_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]",
@@ -1307,7 +1314,7 @@
                 "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
                 "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]",
                 "[variables('safeexchange_kv_deployment_name')]",
-                "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'roleassignment-mi-kv-secrets-officer')]"
+                "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]"
             ],
             "tags": {},
             "kind": "functionapp",
