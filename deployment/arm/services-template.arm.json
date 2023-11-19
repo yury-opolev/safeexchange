@@ -80,6 +80,23 @@
                 "description": "Azure storage account name for data blobs and queues."
             }
         },
+        "safeexchange_data_storage_sku": {
+            "defaultValue": "Standard_RAGRS",
+            "type": "string",
+            "allowedValues": [
+                "Premium_LRS",
+                "Premium_ZRS",
+                "Standard_GRS",
+                "Standard_GZRS",
+                "Standard_LRS",
+                "Standard_RAGRS",
+                "Standard_RAGZRS",
+                "Standard_ZRS"
+            ],
+            "metadata": {
+                "description": "Azure storage account SKU name for data blobs and queues."
+            }
+        },
         "appinsights_workspace_name": {
             "defaultValue": "[concat(parameters('safeexchange_site_name'), '-la-workspace')]",
             "type": "string",
@@ -113,6 +130,10 @@
                 "True",
                 "False"
             ]
+        },
+        "settings-adminConfiguration-adminUsers": {
+            "defaultValue": "00000000-0000-0000-0000-000000000000",
+            "type": "string"
         }
     },
     "variables": {
@@ -544,8 +565,7 @@
             "name": "[parameters('safeexchange_webclientstorage_name')]",
             "location": "[parameters('default_location')]",
             "sku": {
-                "name": "Standard_RAGRS",
-                "tier": "Standard"
+                "name": "Standard_RAGRS"
             },
             "kind": "StorageV2",
             "properties": {
@@ -572,8 +592,7 @@
             "name": "[parameters('safeexchange_data_storage_name')]",
             "location": "[parameters('default_location')]",
             "sku": {
-                "name": "Standard_RAGRS",
-                "tier": "Standard"
+                "name": "[parameters('safeexchange_data_storage_sku')]"
             },
             "kind": "StorageV2",
             "properties": {
@@ -854,7 +873,7 @@
                     "enabled": true
                 },
                 "contentType": "text/plain",
-                "value": "00000000-0000-0000-0000-000000000000"
+                "value": "[parameters('settings-adminConfiguration-adminUsers')]"
             }
         },
         {
@@ -1152,10 +1171,6 @@
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webclientstorage_name'))]"
             ],
-            "sku": {
-                "name": "Standard_RAGRS",
-                "tier": "Standard"
-            },
             "properties": {
                 "cors": {
                     "corsRules": []
@@ -1185,10 +1200,6 @@
             "dependsOn": [
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
             ],
-            "sku": {
-                "name": "Standard_RAGRS",
-                "tier": "Standard"
-            },
             "properties": {
                 "cors": {
                     "corsRules": []
@@ -1434,7 +1445,7 @@
                     "allowedOrigins": [
                         "https://portal.azure.com",
                         "https://localhost:5001",
-                        "[concat('https://', parameters('safeexchange_site_name'), '.azureedge.net')]"
+                        "[concat('https://', parameters('safeexchange_cdnprofile_endpoint_name'), '.azureedge.net')]"
                     ],
                     "supportCredentials": false
                 },
