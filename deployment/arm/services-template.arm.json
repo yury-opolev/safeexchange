@@ -117,6 +117,14 @@
         "settings-aadClient-tenantId": {
             "type": "string"
         },
+        "settings-aadClient-sendX5C": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
         "settings-authentication-validAudiences": {
             "type": "string"
         },
@@ -849,6 +857,22 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-aadClient-tenantId')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--SendX5C')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-sendX5C')]"
             }
         },
         {
