@@ -61,12 +61,12 @@ namespace SafeExchange.Core.AzureAd
                     this.log.LogInformation($"{nameof(ConfidentialClientProvider)} is creating Microsoft Entra ID client '{clientId}' with specified certificate.");
                     var clientCertificate = this.GetClientCertificate();
 
-                    var sendX5CSetting = aadClientSettings["SendX5C"];
-                    if (string.IsNullOrEmpty(sendX5CSetting) || !bool.TryParse(aadClientSettings["SendX5C"], out var sendX5C))
+                    if (!bool.TryParse(aadClientSettings["SendX5C"], out var sendX5C))
                     {
                         sendX5C = false;
                     }
 
+                    this.log.LogInformation($"{nameof(ConfidentialClientProvider)} is creating Microsoft Entra ID client '{clientId}' with sendX5C='{sendX5C}'.");
                     clientBuilder.WithCertificate(clientCertificate, sendX5C);
                 }
                 else
