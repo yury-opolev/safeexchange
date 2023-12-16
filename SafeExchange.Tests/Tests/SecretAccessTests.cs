@@ -176,13 +176,13 @@ namespace SafeExchange.Tests
             // [THEN] UnauthorizedObjectResult is returned with Status = 'unauthorized', null Result and non-null Error.
             var forbiddenObjectResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(forbiddenObjectResult);
-            Assert.AreEqual(HttpStatusCode.Forbidden, forbiddenObjectResult?.StatusCode);
+            Assert.That(forbiddenObjectResult, Is.Not.Null);
+            Assert.That(forbiddenObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
 
             var responseResult = forbiddenObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.AreEqual("forbidden", responseResult?.Status);
-            Assert.IsNull(responseResult?.Result);
-            Assert.IsNotNull(responseResult?.Error);
+            Assert.That(responseResult?.Status, Is.EqualTo("forbidden"));
+            Assert.That(responseResult?.Result, Is.Null);
+            Assert.That(responseResult?.Error, Is.Not.Null);
         }
 
         [Test]
@@ -202,12 +202,12 @@ namespace SafeExchange.Tests
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result with a list of permissions and null Error.
             var okObjectResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var permissions = responseResult?.Result;
             if (permissions == null)
@@ -215,18 +215,18 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Returned permissions are null.");
             }
 
-            Assert.AreEqual(2, permissions.Count);
+            Assert.That(permissions.Count, Is.EqualTo(2));
             var firstUserPermissions = permissions.First(p => p.ObjectName.Equals("sunshine") && p.SubjectName.Equals("first@test.test"));
-            Assert.IsTrue(firstUserPermissions.CanRead);
-            Assert.IsTrue(firstUserPermissions.CanWrite);
-            Assert.IsTrue(firstUserPermissions.CanGrantAccess);
-            Assert.IsTrue(firstUserPermissions.CanRevokeAccess);
+            Assert.That(firstUserPermissions.CanRead, Is.True);
+            Assert.That(firstUserPermissions.CanWrite, Is.True);
+            Assert.That(firstUserPermissions.CanGrantAccess, Is.True);
+            Assert.That(firstUserPermissions.CanRevokeAccess, Is.True);
 
             var secondUserPermissions = permissions.First(p => p.ObjectName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"));
-            Assert.IsTrue(secondUserPermissions.CanRead);
-            Assert.IsFalse(secondUserPermissions.CanWrite);
-            Assert.IsFalse(secondUserPermissions.CanGrantAccess);
-            Assert.IsFalse(secondUserPermissions.CanRevokeAccess);
+            Assert.That(secondUserPermissions.CanRead, Is.True);
+            Assert.That(secondUserPermissions.CanWrite, Is.False);
+            Assert.That(secondUserPermissions.CanGrantAccess, Is.False);
+            Assert.That(secondUserPermissions.CanRevokeAccess, Is.False);
         }
 
         [Test]
@@ -246,12 +246,12 @@ namespace SafeExchange.Tests
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result with a list of permissions and null Error.
             var okObjectResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var permissions = responseResult?.Result;
             if (permissions == null)
@@ -259,18 +259,18 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Returned permissions are null.");
             }
 
-            Assert.AreEqual(2, permissions.Count);
+            Assert.That(permissions.Count, Is.EqualTo(2));
             var firstUserPermissions = permissions.First(p => p.ObjectName.Equals("sunshine") && p.SubjectName.Equals("first@test.test"));
-            Assert.IsTrue(firstUserPermissions.CanRead);
-            Assert.IsTrue(firstUserPermissions.CanWrite);
-            Assert.IsTrue(firstUserPermissions.CanGrantAccess);
-            Assert.IsTrue(firstUserPermissions.CanRevokeAccess);
+            Assert.That(firstUserPermissions.CanRead, Is.True);
+            Assert.That(firstUserPermissions.CanWrite, Is.True);
+            Assert.That(firstUserPermissions.CanGrantAccess, Is.True);
+            Assert.That(firstUserPermissions.CanRevokeAccess, Is.True);
 
             var secondUserPermissions = permissions.First(p => p.ObjectName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"));
-            Assert.IsTrue(secondUserPermissions.CanRead);
-            Assert.IsTrue(secondUserPermissions.CanWrite);
-            Assert.IsTrue(secondUserPermissions.CanGrantAccess);
-            Assert.IsFalse(secondUserPermissions.CanRevokeAccess);
+            Assert.That(secondUserPermissions.CanRead, Is.True);
+            Assert.That(secondUserPermissions.CanWrite, Is.True);
+            Assert.That(secondUserPermissions.CanGrantAccess, Is.True);
+            Assert.That(secondUserPermissions.CanRevokeAccess, Is.False);
         }
 
         [Test]
@@ -303,19 +303,19 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [THEN] OkObjectResult is returned with Status = 'ok', but third user has only 'Read, Write, GrantAccess' permissions.
             var okObjectResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var dbPermissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("third@test.test"))
@@ -323,10 +323,10 @@ namespace SafeExchange.Tests
 
             var thirdUserPermissions = dbPermissions.First();
 
-            Assert.IsTrue(thirdUserPermissions.CanRead);
-            Assert.IsTrue(thirdUserPermissions.CanWrite);
-            Assert.IsTrue(thirdUserPermissions.CanGrantAccess);
-            Assert.IsFalse(thirdUserPermissions.CanRevokeAccess);
+            Assert.That(thirdUserPermissions.CanRead, Is.True);
+            Assert.That(thirdUserPermissions.CanWrite, Is.True);
+            Assert.That(thirdUserPermissions.CanGrantAccess, Is.True);
+            Assert.That(thirdUserPermissions.CanRevokeAccess, Is.False);
         }
 
         [Test]
@@ -359,19 +359,19 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [THEN] OkObjectResult is returned with Status = 'ok', third user has full permissions.
             var okObjectResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var dbPermissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("third@test.test"))
@@ -379,10 +379,10 @@ namespace SafeExchange.Tests
 
             var thirdUserPermissions = dbPermissions.First();
 
-            Assert.IsTrue(thirdUserPermissions.CanRead);
-            Assert.IsTrue(thirdUserPermissions.CanWrite);
-            Assert.IsTrue(thirdUserPermissions.CanGrantAccess);
-            Assert.IsTrue(thirdUserPermissions.CanRevokeAccess);
+            Assert.That(thirdUserPermissions.CanRead, Is.True);
+            Assert.That(thirdUserPermissions.CanWrite, Is.True);
+            Assert.That(thirdUserPermissions.CanGrantAccess, Is.True);
+            Assert.That(thirdUserPermissions.CanRevokeAccess, Is.True);
         }
 
         [Test]
@@ -403,8 +403,8 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = getResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var getResponseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             var mainContent = getResponseResult?.Result?.Content.FirstOrDefault();
@@ -413,8 +413,8 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Main content is null.");
             }
 
-            Assert.IsTrue(mainContent.IsMain);
-            Assert.IsFalse(string.IsNullOrEmpty(mainContent.ContentName));
+            Assert.That(mainContent.IsMain, Is.True);
+            Assert.That(string.IsNullOrEmpty(mainContent.ContentName), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
@@ -426,7 +426,7 @@ namespace SafeExchange.Tests
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
                 .ToListAsync();
 
-            Assert.IsFalse(dbPermissions.Any());
+            Assert.That(dbPermissions.Any(), Is.False);
         }
 
         [Test]
@@ -447,8 +447,8 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = getResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var getResponseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
             var mainContent = getResponseResult?.Result?.Content.FirstOrDefault();
@@ -457,8 +457,8 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Main content is null.");
             }
 
-            Assert.IsTrue(mainContent.IsMain);
-            Assert.IsFalse(string.IsNullOrEmpty(mainContent.ContentName));
+            Assert.That(mainContent.IsMain, Is.True);
+            Assert.That(string.IsNullOrEmpty(mainContent.ContentName), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
@@ -470,12 +470,12 @@ namespace SafeExchange.Tests
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
                 .ToListAsync();
 
-            Assert.AreEqual(1, dbPermissions?.Count);
+            Assert.That(dbPermissions?.Count, Is.EqualTo(1));
 
-            Assert.IsTrue(dbPermissions?.First().CanRead);
-            Assert.IsFalse(dbPermissions?.First().CanWrite);
-            Assert.IsFalse(dbPermissions?.First().CanGrantAccess);
-            Assert.IsFalse(dbPermissions?.First().CanRevokeAccess);
+            Assert.That(dbPermissions?.First().CanRead, Is.True);
+            Assert.That(dbPermissions?.First().CanWrite, Is.False);
+            Assert.That(dbPermissions?.First().CanGrantAccess, Is.False);
+            Assert.That(dbPermissions?.First().CanRevokeAccess, Is.False);
         }
 
         [Test]
@@ -502,21 +502,21 @@ namespace SafeExchange.Tests
             var response = await this.secretMeta.Run(request, "sunshine", claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [THEN] Database contains persisted permissions only for the initial user to the created secret.
             var permissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals("sunshine")).ToListAsync();
 
-            Assert.AreEqual(1, permissions.Count);
+            Assert.That(permissions.Count, Is.EqualTo(1));
 
-            Assert.AreEqual("first@test.test", permissions.First().SubjectName);
-            Assert.AreEqual("sunshine", permissions.First().SecretName);
+            Assert.That(permissions.First().SubjectName, Is.EqualTo("first@test.test"));
+            Assert.That(permissions.First().SecretName, Is.EqualTo("sunshine"));
 
-            Assert.IsTrue(permissions.First().CanRead);
-            Assert.IsTrue(permissions.First().CanWrite);
-            Assert.IsTrue(permissions.First().CanGrantAccess);
-            Assert.IsTrue(permissions.First().CanRevokeAccess);
+            Assert.That(permissions.First().CanRead, Is.True);
+            Assert.That(permissions.First().CanWrite, Is.True);
+            Assert.That(permissions.First().CanGrantAccess, Is.True);
+            Assert.That(permissions.First().CanRevokeAccess, Is.True);
         }
 
         [Test]
@@ -532,12 +532,12 @@ namespace SafeExchange.Tests
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var permissions = responseResult?.Result;
             if (permissions == null)
@@ -545,15 +545,15 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Permissions list is null.");
             }
 
-            Assert.AreEqual(1, permissions.Count);
+            Assert.That(permissions.Count, Is.EqualTo(1));
 
-            Assert.AreEqual("first@test.test", permissions.First().SubjectName);
-            Assert.AreEqual("sunshine", permissions.First().ObjectName);
+            Assert.That(permissions.First().SubjectName, Is.EqualTo("first@test.test"));
+            Assert.That(permissions.First().ObjectName, Is.EqualTo("sunshine"));
 
-            Assert.IsTrue(permissions.First().CanRead);
-            Assert.IsTrue(permissions.First().CanWrite);
-            Assert.IsTrue(permissions.First().CanGrantAccess);
-            Assert.IsTrue(permissions.First().CanRevokeAccess);
+            Assert.That(permissions.First().CanRead, Is.True);
+            Assert.That(permissions.First().CanWrite, Is.True);
+            Assert.That(permissions.First().CanGrantAccess, Is.True);
+            Assert.That(permissions.First().CanRevokeAccess, Is.True);
         }
 
         private async Task CreateSecret(ClaimsIdentity identity, string secretName)
@@ -575,8 +575,8 @@ namespace SafeExchange.Tests
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
 
         private async Task GrantAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
@@ -607,13 +607,13 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
         }
     }
 }
