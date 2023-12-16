@@ -436,8 +436,8 @@ namespace SafeExchange.Tests
             var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult2 = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult2);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult2?.StatusCode);
+            Assert.That(okObjectResult2, Is.Not.Null);
+            Assert.That(okObjectResult2?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var attachmentContent = objectMetadata.Content.FirstOrDefault(c => !c.IsMain);
             if (attachmentContent == null)
@@ -465,10 +465,10 @@ namespace SafeExchange.Tests
             var dataBuffer = new byte[this.imageContent.Length * 2];
             var bytesRead = await dataStream.ReadAsync(dataBuffer, 0, dataBuffer.Length);
 
-            Assert.AreEqual(this.imageContent.Length, bytesRead);
+            Assert.That(bytesRead, Is.EqualTo(this.imageContent.Length));
             for (var pos = 0; pos < this.imageContent.Length; pos++)
             {
-                Assert.AreEqual(this.imageContent[pos], dataBuffer[pos]);
+                Assert.That(dataBuffer[pos], Is.EqualTo(this.imageContent[pos]));
             }
         }
 
@@ -497,11 +497,11 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var blob = this.blobHelper as TestBlobHelper;
-            Assert.IsTrue(blob?.Blobs.ContainsKey($"{mainContent.ContentName}-{0:00000000}"));
+            Assert.That(blob?.Blobs.ContainsKey($"{mainContent.ContentName}-{0:00000000}"), Is.True);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(15);
 
@@ -516,16 +516,16 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"UnprocessableEntityObjectResult result is null.");
             }
 
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, unprocessableEntityObjectResult?.StatusCode);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(unprocessableEntityObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
 
             var responseResult = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("unprocessable", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("unprocessable"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
 
-            Assert.IsFalse(blob?.Blobs.ContainsKey($"{mainContent.ContentName}-{0:00000000}"));
+            Assert.That(blob?.Blobs.ContainsKey($"{mainContent.ContentName}-{0:00000000}"), Is.False);
         }
 
         [Test]
@@ -554,16 +554,16 @@ namespace SafeExchange.Tests
             var dropResponse = await this.secretContentMeta.RunDrop(dropRequest, DefaultSecretName, mainContent.ContentName, claimsPrincipal, this.logger);
             var okObjectResult = dropResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var metadata = responseResult?.Result;
-            Assert.AreEqual(0, metadata?.Chunks.Count);
+            Assert.That(metadata?.Chunks.Count, Is.EqualTo(0));
         }
 
         private async Task<(ChunkCreationOutput, HttpHeadersCollection?)> UploadDataAsync(string secretName, string contentName, int expectedContentLength)
@@ -575,13 +575,13 @@ namespace SafeExchange.Tests
             var response = await this.secretStream.Run(request, secretName, contentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var chunkMetadata = responseResult?.Result;
             if (chunkMetadata == null)
@@ -589,9 +589,9 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Chunk metadata is null.");
             }
 
-            Assert.AreEqual($"{contentName}-{0:00000000}", chunkMetadata.ChunkName);
-            Assert.AreEqual(expectedContentLength, chunkMetadata.Length);
-            Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata.AccessTicket));
+            Assert.That(chunkMetadata.ChunkName, Is.EqualTo($"{contentName}-{0:00000000}"));
+            Assert.That(chunkMetadata.Length, Is.EqualTo(expectedContentLength));
+            Assert.That(string.IsNullOrEmpty(chunkMetadata.AccessTicket), Is.True);
 
             return (chunkMetadata, okObjectResult?.Headers);
         }
@@ -617,22 +617,22 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult1);
-            Assert.AreEqual("ok", responseResult1?.Status);
-            Assert.IsNull(responseResult1?.Error);
+            Assert.That(responseResult1, Is.Not.Null);
+            Assert.That(responseResult1?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult1?.Error, Is.Null);
 
             var chunkMetadata1 = responseResult1?.Result;
-            Assert.IsNotNull(chunkMetadata1);
-            Assert.AreEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata1?.ChunkName);
-            Assert.AreEqual(this.mainContent_part_1.Length, chunkMetadata1?.Length);
+            Assert.That(chunkMetadata1, Is.Not.Null);
+            Assert.That(chunkMetadata1?.ChunkName, Is.EqualTo($"{mainContent.ContentName}-{0:00000000}"));
+            Assert.That(chunkMetadata1?.Length, Is.EqualTo(this.mainContent_part_1.Length));
 
             // [GIVEN] After first upload an access ticket was returned.
             var accessTicket1 = chunkMetadata1?.AccessTicket;
-            Assert.IsFalse(string.IsNullOrEmpty(accessTicket1));
+            Assert.That(string.IsNullOrEmpty(accessTicket1), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
@@ -646,27 +646,27 @@ namespace SafeExchange.Tests
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult2 = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult2);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult2?.StatusCode);
+            Assert.That(okObjectResult2, Is.Not.Null);
+            Assert.That(okObjectResult2?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             response2.Headers.TryGetValues(SafeExchangeSecretStream.AccessTicketHeaderName, out var ticketResponseHeader2);
             var accessTicket2 = ticketResponseHeader2?.FirstOrDefault();
-            Assert.IsTrue(string.IsNullOrEmpty(accessTicket2));
+            Assert.That(string.IsNullOrEmpty(accessTicket2), Is.True);
 
             var responseResult2 = okObjectResult2?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult2);
-            Assert.AreEqual("ok", responseResult2?.Status);
-            Assert.IsNull(responseResult2?.Error);
+            Assert.That(responseResult2, Is.Not.Null);
+            Assert.That(responseResult2?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult2?.Error, Is.Null);
 
             var chunkMetadata2 = responseResult2?.Result;
-            Assert.IsNotNull(chunkMetadata2);
-            Assert.AreEqual($"{mainContent.ContentName}-{1:00000000}", chunkMetadata2?.ChunkName);
-            Assert.AreEqual(this.mainContent_part_2.Length, chunkMetadata2?.Length);
-            Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata2?.AccessTicket));
+            Assert.That(chunkMetadata2, Is.Not.Null);
+            Assert.That(chunkMetadata2?.ChunkName, Is.EqualTo($"{mainContent.ContentName}-{1:00000000}"));
+            Assert.That(chunkMetadata2?.Length, Is.EqualTo(this.mainContent_part_2.Length));
+            Assert.That(string.IsNullOrEmpty(chunkMetadata2?.AccessTicket), Is.True);
 
             // [THEN] Two blobs are created with uploaded data
-            Assert.IsTrue(await this.blobHelper.BlobExistsAsync($"{mainContent.ContentName}-{"00000000"}"));
-            Assert.IsTrue(await this.blobHelper.BlobExistsAsync($"{mainContent.ContentName}-{"00000001"}"));
+            Assert.That(await this.blobHelper.BlobExistsAsync($"{mainContent.ContentName}-{"00000000"}"), Is.True);
+            Assert.That(await this.blobHelper.BlobExistsAsync($"{mainContent.ContentName}-{"00000001"}"), Is.True);
         }
 
         [Test]
@@ -690,8 +690,8 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [GIVEN] A second content is added to the secret.
             var request2 = TestFactory.CreateHttpRequestData("post");
@@ -706,12 +706,12 @@ namespace SafeExchange.Tests
             var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult2 = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult2);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult2?.StatusCode);
+            Assert.That(okObjectResult2, Is.Not.Null);
+            Assert.That(okObjectResult2?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var content2 = okObjectResult2?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             var content2Name = content2?.Result?.ContentName;
-            Assert.IsFalse(string.IsNullOrEmpty(content2Name));
+            Assert.That(string.IsNullOrEmpty(content2Name), Is.False);
 
             // [WHEN] A request is made to upload data for second content.
             var request3 = TestFactory.CreateHttpRequestData("post");
@@ -721,22 +721,22 @@ namespace SafeExchange.Tests
             var response3 = await this.secretStream.Run(request3, DefaultSecretName, content2Name, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult3 = response3 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult3);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult3?.StatusCode);
+            Assert.That(okObjectResult3, Is.Not.Null);
+            Assert.That(okObjectResult3?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult3 = okObjectResult3?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult3);
-            Assert.AreEqual("ok", responseResult3?.Status);
-            Assert.IsNull(responseResult3?.Error);
+            Assert.That(responseResult3, Is.Not.Null);
+            Assert.That(responseResult3?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult3?.Error, Is.Null);
 
             var chunkMetadata2 = responseResult3?.Result;
-            Assert.IsNotNull(chunkMetadata2);
-            Assert.AreEqual($"{content2Name}-{0:00000000}", chunkMetadata2?.ChunkName);
-            Assert.AreEqual(this.imageContent.Length, chunkMetadata2?.Length);
-            Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata2?.AccessTicket));
+            Assert.That(chunkMetadata2, Is.Not.Null);
+            Assert.That(chunkMetadata2?.ChunkName, Is.EqualTo($"{content2Name}-{0:00000000}"));
+            Assert.That(chunkMetadata2?.Length, Is.EqualTo(this.imageContent.Length));
+            Assert.That(string.IsNullOrEmpty(chunkMetadata2?.AccessTicket), Is.True);
 
-            Assert.IsTrue(await this.blobHelper.BlobExistsAsync($"{mainContent.ContentName}-{0:00000000}"));
-            Assert.IsTrue(await this.blobHelper.BlobExistsAsync($"{content2Name}-{0:00000000}"));
+            Assert.That(await this.blobHelper.BlobExistsAsync($"{mainContent.ContentName}-{0:00000000}"), Is.True);
+            Assert.That(await this.blobHelper.BlobExistsAsync($"{content2Name}-{0:00000000}"), Is.True);
         }
 
         [Test]
@@ -760,17 +760,17 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult1);
-            Assert.AreEqual("ok", responseResult1?.Status);
-            Assert.IsNull(responseResult1?.Error);
+            Assert.That(responseResult1, Is.Not.Null);
+            Assert.That(responseResult1?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult1?.Error, Is.Null);
 
             // [GIVEN] After first upload an access ticket was returned.
             var accessTicket1 = responseResult1?.Result?.AccessTicket;
-            Assert.IsFalse(string.IsNullOrEmpty(accessTicket1));
+            Assert.That(string.IsNullOrEmpty(accessTicket1), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
@@ -782,14 +782,14 @@ namespace SafeExchange.Tests
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var unprocessableEntityObjectResult = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, unprocessableEntityObjectResult?.StatusCode);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(unprocessableEntityObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
 
             var responseResult2 = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual("unprocessable", responseResult2?.Status);
-            Assert.IsNotNull(responseResult2?.Error);
-            Assert.IsNull(responseResult2?.Result);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(responseResult2?.Status, Is.EqualTo("unprocessable"));
+            Assert.That(responseResult2?.Error, Is.Not.Null);
+            Assert.That(responseResult2?.Result, Is.Null);
         }
 
         [Test]
@@ -813,17 +813,17 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult1);
-            Assert.AreEqual("ok", responseResult1?.Status);
-            Assert.IsNull(responseResult1?.Error);
+            Assert.That(responseResult1, Is.Not.Null);
+            Assert.That(responseResult1?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult1?.Error, Is.Null);
 
             // [GIVEN] After first upload an access ticket was returned.
             var accessTicket1 = responseResult1?.Result?.AccessTicket;
-            Assert.IsFalse(string.IsNullOrEmpty(accessTicket1));
+            Assert.That(string.IsNullOrEmpty(accessTicket1), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
@@ -834,14 +834,14 @@ namespace SafeExchange.Tests
             var response2 = await this.secretStream.Run(request2, DefaultSecretName, mainContent.ContentName, $"{0:00000000}", claimsPrincipal, this.logger);
             var unprocessableEntityObjectResult = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, unprocessableEntityObjectResult?.StatusCode);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(unprocessableEntityObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
 
             var responseResult2 = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual("unprocessable", responseResult2?.Status);
-            Assert.IsNotNull(responseResult2?.Error);
-            Assert.IsNull(responseResult2?.Result);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(responseResult2?.Status, Is.EqualTo("unprocessable"));
+            Assert.That(responseResult2?.Error, Is.Not.Null);
+            Assert.That(responseResult2?.Result, Is.Null);
         }
 
         [Test]
@@ -865,17 +865,17 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult1);
-            Assert.AreEqual("ok", responseResult1?.Status);
-            Assert.IsNull(responseResult1?.Error);
+            Assert.That(responseResult1, Is.Not.Null);
+            Assert.That(responseResult1?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult1?.Error, Is.Null);
 
             // [GIVEN] After first upload an access ticket was returned.
             var accessTicket1 = responseResult1?.Result?.AccessTicket;
-            Assert.IsFalse(string.IsNullOrEmpty(accessTicket1));
+            Assert.That(string.IsNullOrEmpty(accessTicket1), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
@@ -886,14 +886,14 @@ namespace SafeExchange.Tests
             var response2 = await this.secretContentMeta.RunDrop(request2, DefaultSecretName, mainContent.ContentName, claimsPrincipal, this.logger);
             var unprocessableEntityObjectResult = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual(HttpStatusCode.UnprocessableEntity, unprocessableEntityObjectResult?.StatusCode);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(unprocessableEntityObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
 
             var responseResult2 = unprocessableEntityObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(unprocessableEntityObjectResult);
-            Assert.AreEqual("unprocessable", responseResult2?.Status);
-            Assert.IsNotNull(responseResult2?.Error);
-            Assert.IsNull(responseResult2?.Result);
+            Assert.That(unprocessableEntityObjectResult, Is.Not.Null);
+            Assert.That(responseResult2?.Status, Is.EqualTo("unprocessable"));
+            Assert.That(responseResult2?.Error, Is.Not.Null);
+            Assert.That(responseResult2?.Result, Is.Null);
         }
 
         [Test]
@@ -917,17 +917,17 @@ namespace SafeExchange.Tests
             var response1 = await this.secretStream.Run(request1, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult1 = response1 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult1);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult1?.StatusCode);
+            Assert.That(okObjectResult1, Is.Not.Null);
+            Assert.That(okObjectResult1?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult1 = okObjectResult1?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult1);
-            Assert.AreEqual("ok", responseResult1?.Status);
-            Assert.IsNull(responseResult1?.Error);
+            Assert.That(responseResult1, Is.Not.Null);
+            Assert.That(responseResult1?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult1?.Error, Is.Null);
 
             // [GIVEN] After first upload an access ticket was returned.
             var accessTicket1 = responseResult1?.Result?.AccessTicket;
-            Assert.IsFalse(string.IsNullOrEmpty(accessTicket1));
+            Assert.That(string.IsNullOrEmpty(accessTicket1), Is.False);
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(15);
 
@@ -938,16 +938,16 @@ namespace SafeExchange.Tests
             var response2 = await this.secretContentMeta.RunDrop(request2, DefaultSecretName, mainContent.ContentName, claimsPrincipal, this.logger);
             var okObjectResult2 = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult2);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult2?.StatusCode);
+            Assert.That(okObjectResult2, Is.Not.Null);
+            Assert.That(okObjectResult2?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult2 = okObjectResult2?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
-            Assert.IsNotNull(responseResult2);
-            Assert.AreEqual("ok", responseResult2?.Status);
-            Assert.IsNull(responseResult2?.Error);
+            Assert.That(responseResult2, Is.Not.Null);
+            Assert.That(responseResult2?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult2?.Error, Is.Null);
 
             var chunks = responseResult2?.Result?.Chunks;
-            Assert.AreEqual(0, chunks?.Count);
+            Assert.That(chunks?.Count, Is.EqualTo(0));
         }
 
         private async Task CreateSecret(string secretName)
@@ -969,8 +969,8 @@ namespace SafeExchange.Tests
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
     }
 }
