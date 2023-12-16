@@ -157,14 +157,14 @@ namespace SafeExchange.Tests
             var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', Error message and null Result
-            Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
+            Assert.That(notFoundObjectResult, Is.Not.Null);
+            Assert.That(notFoundObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("not_found", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("not_found"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -179,14 +179,14 @@ namespace SafeExchange.Tests
             var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', Error message and null Result
-            Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
+            Assert.That(notFoundObjectResult, Is.Not.Null);
+            Assert.That(notFoundObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("not_found", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("not_found"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -201,14 +201,14 @@ namespace SafeExchange.Tests
             var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', Error message and null Result
-            Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
+            Assert.That(notFoundObjectResult, Is.Not.Null);
+            Assert.That(notFoundObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("not_found", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("not_found"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -236,14 +236,14 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -258,14 +258,14 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -289,8 +289,8 @@ namespace SafeExchange.Tests
             request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, "badrequest2", claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [WHEN] A request to update secret 'x' is made, without body specified.
             request = TestFactory.CreateHttpRequestData("patch");
@@ -298,14 +298,14 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -322,14 +322,14 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -353,8 +353,8 @@ namespace SafeExchange.Tests
             request.SetBodyAsJson(creationInput);
             var response = await this.secretMeta.Run(request, "badrequest3", claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [WHEN] A request to update secret 'x' is made, without expiration settings specified.
             request = TestFactory.CreateHttpRequestData("patch");
@@ -364,14 +364,14 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'error', null Result and non-null Error.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -399,39 +399,39 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var metadata = responseResult?.Result;
-            Assert.IsNotNull(metadata);
-            Assert.AreEqual("sunshine", metadata?.ObjectName);
+            Assert.That(metadata, Is.Not.Null);
+            Assert.That(metadata?.ObjectName, Is.EqualTo("sunshine"));
 
-            Assert.AreEqual(creationInput.ExpirationSettings.ScheduleExpiration, metadata?.ExpirationSettings?.ScheduleExpiration);
-            Assert.AreEqual(creationInput.ExpirationSettings.ExpireAt, metadata?.ExpirationSettings?.ExpireAt);
-            Assert.AreEqual(creationInput.ExpirationSettings.ExpireOnIdleTime, metadata?.ExpirationSettings?.ExpireOnIdleTime);
-            Assert.AreEqual(creationInput.ExpirationSettings.IdleTimeToExpire, metadata?.ExpirationSettings?.IdleTimeToExpire);
+            Assert.That(metadata?.ExpirationSettings?.ScheduleExpiration, Is.EqualTo(creationInput.ExpirationSettings.ScheduleExpiration));
+            Assert.That(metadata?.ExpirationSettings?.ExpireAt, Is.EqualTo(creationInput.ExpirationSettings.ExpireAt));
+            Assert.That(metadata?.ExpirationSettings?.ExpireOnIdleTime, Is.EqualTo(creationInput.ExpirationSettings.ExpireOnIdleTime));
+            Assert.That(metadata?.ExpirationSettings?.IdleTimeToExpire, Is.EqualTo(creationInput.ExpirationSettings.IdleTimeToExpire));
 
             var contentList = metadata?.Content;
-            Assert.IsNotNull(contentList);
-            Assert.AreEqual(1, contentList?.Count);
+            Assert.That(contentList, Is.Not.Null);
+            Assert.That(contentList?.Count, Is.EqualTo(1));
 
             var mainContent = contentList?[0];
-            Assert.AreEqual(string.Empty, mainContent?.ContentType);
-            Assert.AreEqual(string.Empty, mainContent?.FileName);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(mainContent?.ContentName));
-            Assert.IsTrue(mainContent?.IsMain);
-            Assert.IsFalse(mainContent?.IsReady);
+            Assert.That(mainContent?.ContentType, Is.EqualTo(string.Empty));
+            Assert.That(mainContent?.FileName, Is.EqualTo(string.Empty));
+            Assert.That(string.IsNullOrWhiteSpace(mainContent?.ContentName), Is.False);
+            Assert.That(mainContent?.IsMain, Is.True);
+            Assert.That(mainContent?.IsReady, Is.False);
 
             var createdSecret = await this.dbContext.Objects.FindAsync("sunshine");
-            Assert.AreEqual("User first@test.test", createdSecret?.CreatedBy);
-            Assert.AreEqual(DateTimeProvider.UtcNow, createdSecret?.CreatedAt);
-            Assert.AreEqual(string.Empty, createdSecret?.ModifiedBy);
-            Assert.AreEqual(DateTime.MinValue, createdSecret?.ModifiedAt);
+            Assert.That(createdSecret?.CreatedBy, Is.EqualTo("User first@test.test"));
+            Assert.That(createdSecret?.CreatedAt, Is.EqualTo(DateTimeProvider.UtcNow));
+            Assert.That(createdSecret?.ModifiedBy, Is.EqualTo(string.Empty));
+            Assert.That(createdSecret?.ModifiedAt, Is.EqualTo(DateTime.MinValue));
         }
 
         [Test]
@@ -458,28 +458,28 @@ namespace SafeExchange.Tests
                 var response = await this.secretMeta.Run(request, $"somesecret{i}", claimsPrincipal, this.logger);
                 var okObjectResult = response as TestHttpResponseData;
 
-                Assert.IsNotNull(okObjectResult);
-                Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+                Assert.That(okObjectResult, Is.Not.Null);
+                Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             }
 
             var secrets = await this.dbContext.Objects.Where(o => o.ObjectName.StartsWith("somesecret")).ToListAsync();
-            Assert.AreEqual(secretCount, secrets.Count);
+            Assert.That(secrets.Count, Is.EqualTo(secretCount));
 
             var getRequest = TestFactory.CreateHttpRequestData("get");
             var getResponse = await this.secretMeta.RunList(getRequest, claimsPrincipal, this.logger);
             var okObjectListResult = getResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectListResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectListResult?.StatusCode);
+            Assert.That(okObjectListResult, Is.Not.Null);
+            Assert.That(okObjectListResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var listResponseResult = okObjectListResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
-            Assert.IsNotNull(listResponseResult);
-            Assert.AreEqual("ok", listResponseResult?.Status);
-            Assert.IsNull(listResponseResult?.Error);
+            Assert.That(listResponseResult, Is.Not.Null);
+            Assert.That(listResponseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(listResponseResult?.Error, Is.Null);
 
             var list = listResponseResult?.Result;
-            Assert.IsNotNull(list);
-            Assert.AreEqual(secretCount, list?.Count);
+            Assert.That(list, Is.Not.Null);
+            Assert.That(list?.Count, Is.EqualTo(secretCount));
         }
 
         [Test]
@@ -506,8 +506,8 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             // [GIVEN] A secret 'x' exists.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             // [WHEN] A request is made to create secret with then same name 'x'.
             request = TestFactory.CreateHttpRequestData("post");
@@ -516,14 +516,14 @@ namespace SafeExchange.Tests
             var conflictObjectResult = response as TestHttpResponseData;
 
             // [THEN] ConflictObjectResult is returned with Status = 'conflict', null Result and non-null Error.
-            Assert.IsNotNull(conflictObjectResult);
-            Assert.AreEqual(HttpStatusCode.Conflict, conflictObjectResult?.StatusCode);
+            Assert.That(conflictObjectResult, Is.Not.Null);
+            Assert.That(conflictObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.Conflict));
 
             var responseResult = conflictObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("conflict", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("conflict"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -550,8 +550,8 @@ namespace SafeExchange.Tests
             var okObjectResult = postResponse as TestHttpResponseData;
 
             // [GIVEN] Secret is created with name 'x'.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
@@ -561,32 +561,32 @@ namespace SafeExchange.Tests
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             okObjectResult = getResponse as TestHttpResponseData;
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var metadata = responseResult?.Result;
-            Assert.IsNotNull(metadata);
-            Assert.AreEqual("sunshine2", metadata?.ObjectName);
+            Assert.That(metadata, Is.Not.Null);
+            Assert.That(metadata?.ObjectName, Is.EqualTo("sunshine2"));
 
-            Assert.AreEqual(creationInput.ExpirationSettings.ScheduleExpiration, metadata?.ExpirationSettings?.ScheduleExpiration);
-            Assert.AreEqual(creationInput.ExpirationSettings.ExpireAt, metadata?.ExpirationSettings?.ExpireAt);
-            Assert.AreEqual(creationInput.ExpirationSettings.ExpireOnIdleTime, metadata?.ExpirationSettings?.ExpireOnIdleTime);
-            Assert.AreEqual(creationInput.ExpirationSettings.IdleTimeToExpire, metadata?.ExpirationSettings?.IdleTimeToExpire);
+            Assert.That(metadata?.ExpirationSettings?.ScheduleExpiration, Is.EqualTo(creationInput.ExpirationSettings.ScheduleExpiration));
+            Assert.That(metadata?.ExpirationSettings?.ExpireAt, Is.EqualTo(creationInput.ExpirationSettings.ExpireAt));
+            Assert.That(metadata?.ExpirationSettings?.ExpireOnIdleTime, Is.EqualTo(creationInput.ExpirationSettings.ExpireOnIdleTime));
+            Assert.That(metadata?.ExpirationSettings?.IdleTimeToExpire, Is.EqualTo(creationInput.ExpirationSettings.IdleTimeToExpire));
 
             var contentList = metadata?.Content;
-            Assert.IsNotNull(contentList);
-            Assert.AreEqual(1, contentList?.Count);
+            Assert.That(contentList, Is.Not.Null);
+            Assert.That(contentList?.Count, Is.EqualTo(1));
 
             var mainContent = contentList?[0];
-            Assert.AreEqual(string.Empty, mainContent?.ContentType);
-            Assert.AreEqual(string.Empty, mainContent?.FileName);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(mainContent?.ContentName));
-            Assert.IsTrue(mainContent?.IsMain);
-            Assert.IsFalse(mainContent?.IsReady);
+            Assert.That(mainContent?.ContentType, Is.EqualTo(string.Empty));
+            Assert.That(mainContent?.FileName, Is.EqualTo(string.Empty));
+            Assert.That(string.IsNullOrWhiteSpace(mainContent?.ContentName), Is.False);
+            Assert.That(mainContent?.IsMain, Is.True);
+            Assert.That(mainContent?.IsReady, Is.False);
         }
 
         [Test]
@@ -613,8 +613,8 @@ namespace SafeExchange.Tests
             var okObjectResult = postResponse as TestHttpResponseData;
 
             // [GIVEN] Secret is created with name 'x'.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
@@ -636,32 +636,32 @@ namespace SafeExchange.Tests
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
             okObjectResult = patchResponse as TestHttpResponseData;
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var metadata = responseResult?.Result;
-            Assert.IsNotNull(metadata);
-            Assert.AreEqual("sunshine3", metadata?.ObjectName);
+            Assert.That(metadata, Is.Not.Null);
+            Assert.That(metadata?.ObjectName, Is.EqualTo("sunshine3"));
 
-            Assert.AreEqual(updateInput.ExpirationSettings.ScheduleExpiration, metadata?.ExpirationSettings?.ScheduleExpiration);
-            Assert.AreEqual(updateInput.ExpirationSettings.ExpireAt, metadata?.ExpirationSettings?.ExpireAt);
-            Assert.AreEqual(updateInput.ExpirationSettings.ExpireOnIdleTime, metadata?.ExpirationSettings?.ExpireOnIdleTime);
-            Assert.AreEqual(updateInput.ExpirationSettings.IdleTimeToExpire, metadata?.ExpirationSettings?.IdleTimeToExpire);
+            Assert.That(metadata?.ExpirationSettings?.ScheduleExpiration, Is.EqualTo(updateInput.ExpirationSettings.ScheduleExpiration));
+            Assert.That(metadata?.ExpirationSettings?.ExpireAt, Is.EqualTo(updateInput.ExpirationSettings.ExpireAt));
+            Assert.That(metadata?.ExpirationSettings?.ExpireOnIdleTime, Is.EqualTo(updateInput.ExpirationSettings.ExpireOnIdleTime));
+            Assert.That(metadata?.ExpirationSettings?.IdleTimeToExpire, Is.EqualTo(updateInput.ExpirationSettings.IdleTimeToExpire));
 
             var contentList = metadata?.Content;
-            Assert.IsNotNull(contentList);
-            Assert.AreEqual(1, contentList?.Count);
+            Assert.That(contentList, Is.Not.Null);
+            Assert.That(contentList?.Count, Is.EqualTo(1));
 
             var mainContent = contentList?[0];
-            Assert.AreEqual(string.Empty, mainContent?.ContentType);
-            Assert.AreEqual(string.Empty, mainContent?.FileName);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(mainContent?.ContentName));
-            Assert.IsTrue(mainContent?.IsMain);
-            Assert.IsFalse(mainContent?.IsReady);
+            Assert.That(mainContent?.ContentType, Is.EqualTo(string.Empty));
+            Assert.That(mainContent?.FileName, Is.EqualTo(string.Empty));
+            Assert.That(string.IsNullOrWhiteSpace(mainContent?.ContentName), Is.False);
+            Assert.That(mainContent?.IsMain, Is.True);
+            Assert.That(mainContent?.IsReady, Is.False);
         }
 
         [Test]
@@ -688,8 +688,8 @@ namespace SafeExchange.Tests
             var okObjectResult = postResponse as TestHttpResponseData;
 
             // [GIVEN] Secret is created with name 'x'.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
@@ -699,16 +699,16 @@ namespace SafeExchange.Tests
 
             // [THEN] OkObjectResult is returned with Status = 'ok', Result = 'ok' and null Error.
             okObjectResult = deleteResponse as TestHttpResponseData;
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var deletedSecret = await this.dbContext.Objects.FindAsync("sunshine4");
-            Assert.IsNull(deletedSecret);
+            Assert.That(deletedSecret, Is.Null);
         }
     }
 }
