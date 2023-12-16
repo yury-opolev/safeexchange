@@ -214,14 +214,14 @@ namespace SafeExchange.Tests
             var response = await this.secretStream.Run(request, "inexistent", "default", string.Empty, claimsPrincipal, this.logger);
             var notFoundObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
+            Assert.That(notFoundObjectResult, Is.Not.Null);
+            Assert.That(notFoundObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("not_found", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("not_found"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -242,14 +242,14 @@ namespace SafeExchange.Tests
             var response = await this.secretStream.Run(request, objectMetadata.ObjectName, "inexistent", string.Empty, claimsPrincipal, this.logger);
             var notFoundObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
+            Assert.That(notFoundObjectResult, Is.Not.Null);
+            Assert.That(notFoundObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("not_found", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("not_found"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -272,30 +272,30 @@ namespace SafeExchange.Tests
             var response = await this.secretStream.Run(request, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var chunkMetadata = responseResult?.Result;
-            Assert.IsNotNull(chunkMetadata);
-            Assert.AreEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata?.ChunkName);
-            Assert.AreEqual(this.mainContent.Length, chunkMetadata?.Length);
-            Assert.IsTrue(string.IsNullOrEmpty(chunkMetadata?.AccessTicket));
+            Assert.That(chunkMetadata, Is.Not.Null);
+            Assert.That(chunkMetadata?.ChunkName, Is.EqualTo($"{mainContent.ContentName}-{0:00000000}"));
+            Assert.That(chunkMetadata?.Length, Is.EqualTo(this.mainContent.Length));
+            Assert.That(string.IsNullOrEmpty(chunkMetadata?.AccessTicket), Is.True);
 
             // [THEN] A chunk is created with uploaded data.
             var existingChunkData = await this.blobHelper.DownloadAndDecryptBlobAsync(chunkMetadata?.ChunkName);
-            Assert.AreEqual(this.mainContent.Length, existingChunkData.Length);
+            Assert.That(existingChunkData.Length, Is.EqualTo(this.mainContent.Length));
 
             var existingChunkBytes = new byte[existingChunkData.Length];
             existingChunkData.Read(existingChunkBytes, 0, (int)existingChunkData.Length);
 
             for (var pos = 0; pos < existingChunkBytes.Length; pos++)
             {
-                Assert.AreEqual(this.mainContent[pos], existingChunkBytes[pos]);
+                Assert.That(existingChunkBytes[pos], Is.EqualTo(this.mainContent[pos]));
             }
         }
 
@@ -319,13 +319,13 @@ namespace SafeExchange.Tests
             var response = await this.secretStream.Run(request, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             // [GIVEN] An attachment is uploaded.
             var request2 = TestFactory.CreateHttpRequestData("post");
@@ -340,8 +340,8 @@ namespace SafeExchange.Tests
             var response2 = await this.secretContentMeta.Run(request2, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
             var okObjectResult2 = response2 as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult2);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult2?.StatusCode);
+            Assert.That(okObjectResult2, Is.Not.Null);
+            Assert.That(okObjectResult2?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var attachmentContent = objectMetadata.Content.FirstOrDefault(c => !c.IsMain);
             if (attachmentContent == null)
@@ -351,14 +351,14 @@ namespace SafeExchange.Tests
 
             var (chunkMetadata, headers) = await this.UploadDataAsync(objectMetadata.ObjectName, attachmentContent.ContentName, this.imageContent.Length);
 
-            Assert.IsNotNull(chunkMetadata);
-            Assert.AreNotEqual($"{mainContent.ContentName}-{0:00000000}", chunkMetadata?.ChunkName);
-            Assert.AreEqual(this.imageContent.Length, chunkMetadata?.Length);
+            Assert.That(chunkMetadata, Is.Not.Null);
+            Assert.That(chunkMetadata?.ChunkName, Is.Not.EqualTo($"{mainContent.ContentName}-{0:00000000}"));
+            Assert.That(chunkMetadata?.Length, Is.EqualTo(this.imageContent.Length));
 
             IEnumerable<string>? ticketResponseHeader = default;
             headers?.TryGetValues(SafeExchangeSecretStream.AccessTicketHeaderName, out ticketResponseHeader);
             var accessTicket = ticketResponseHeader?.FirstOrDefault();
-            Assert.IsTrue(string.IsNullOrEmpty(accessTicket));
+            Assert.That(string.IsNullOrEmpty(accessTicket), Is.True);
 
             // [WHEN] A request is made to get secret metadata.
             var getRequest = TestFactory.CreateHttpRequestData("get");
@@ -367,13 +367,13 @@ namespace SafeExchange.Tests
             var getResponse = await this.secretMeta.Run(getRequest, DefaultSecretName, claimsPrincipal, this.logger);
             var okObjectGetResult = getResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectGetResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectGetResult?.StatusCode);
+            Assert.That(okObjectGetResult, Is.Not.Null);
+            Assert.That(okObjectGetResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseGetResult = okObjectGetResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
-            Assert.IsNotNull(responseGetResult);
-            Assert.AreEqual("ok", responseGetResult?.Status);
-            Assert.IsNull(responseGetResult?.Error);
+            Assert.That(responseGetResult, Is.Not.Null);
+            Assert.That(responseGetResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseGetResult?.Error, Is.Null);
 
             var metadata = responseGetResult?.Result;
             var content = responseGetResult?.Result?.Content;
@@ -389,20 +389,20 @@ namespace SafeExchange.Tests
                 throw new AssertionException("Chunks is null.");
             }
 
-            Assert.AreEqual(1, chunks.Count);
+            Assert.That(chunks.Count, Is.EqualTo(1));
             var firstChunk = chunks.First();
-            Assert.AreEqual($"{secondContent.ContentName}-{0:00000000}", firstChunk.ChunkName);
-            Assert.AreEqual(this.imageContent.Length, firstChunk.Length);
+            Assert.That(firstChunk.ChunkName, Is.EqualTo($"{secondContent.ContentName}-{0:00000000}"));
+            Assert.That(firstChunk.Length, Is.EqualTo(this.imageContent.Length));
 
             var existingChunkData = await this.blobHelper.DownloadAndDecryptBlobAsync($"{secondContent.ContentName}-{"00000000"}");
-            Assert.AreEqual(this.imageContent.Length, existingChunkData.Length);
+            Assert.That(existingChunkData.Length, Is.EqualTo(this.imageContent.Length));
 
             var existingChunkBytes = new byte[existingChunkData.Length];
             existingChunkData.Read(existingChunkBytes, 0, (int)existingChunkData.Length);
 
             for (var pos = 0; pos < existingChunkBytes.Length; pos++)
             {
-                Assert.AreEqual(this.imageContent[pos], existingChunkBytes[pos]);
+                Assert.That(existingChunkBytes[pos], Is.EqualTo(this.imageContent[pos]));
             }
         }
 

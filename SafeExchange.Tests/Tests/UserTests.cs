@@ -153,21 +153,21 @@ namespace SafeExchange.Tests
 
             // [THEN] User is created in the database with UPN, DisplayName, TenantId and ObjectId
             var createdUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
-            Assert.IsNotNull(createdUser);
-            Assert.AreEqual("First User", createdUser?.DisplayName);
-            Assert.AreEqual("00000000-0000-0000-0000-000000000001", createdUser?.AadTenantId);
-            Assert.AreEqual("00000000-0000-0000-0000-000000000001", createdUser?.AadObjectId);
+            Assert.That(createdUser, Is.Not.Null);
+            Assert.That(createdUser?.DisplayName, Is.EqualTo("First User"));
+            Assert.That(createdUser?.AadTenantId, Is.EqualTo("00000000-0000-0000-0000-000000000001"));
+            Assert.That(createdUser?.AadObjectId, Is.EqualTo("00000000-0000-0000-0000-000000000001"));
 
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, createdUser?.CreatedAt);
-            Assert.AreEqual(DateTime.MinValue, createdUser?.ModifiedAt);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, createdUser?.GroupSyncNotBefore);
+            Assert.That(createdUser?.CreatedAt, Is.EqualTo(DateTimeProvider.SpecifiedDateTime));
+            Assert.That(createdUser?.ModifiedAt, Is.EqualTo(DateTime.MinValue));
+            Assert.That(createdUser?.GroupSyncNotBefore, Is.EqualTo(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay));
 
             // [THEN] User has his 'memberOf' groups persisted
             var userGroups = createdUser?.Groups;
-            Assert.IsNotNull(userGroups);
-            Assert.AreEqual(2, userGroups?.Count);
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")));
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")));
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(2));
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
         }
 
         [Test]
@@ -207,18 +207,18 @@ namespace SafeExchange.Tests
 
             // [THEN] User is created in the database with UPN, DisplayName, TenantId and ObjectId
             var createdUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
-            Assert.IsNotNull(createdUser);
-            Assert.AreEqual("First User", createdUser?.DisplayName);
-            Assert.AreEqual("00000000-0000-0000-0000-000000000001", createdUser?.AadTenantId);
-            Assert.AreEqual("00000000-0000-0000-0000-000000000001", createdUser?.AadObjectId);
+            Assert.That(createdUser, Is.Not.Null);
+            Assert.That(createdUser?.DisplayName, Is.EqualTo("First User"));
+            Assert.That(createdUser?.AadTenantId, Is.EqualTo("00000000-0000-0000-0000-000000000001"));
+            Assert.That(createdUser?.AadObjectId, Is.EqualTo("00000000-0000-0000-0000-000000000001"));
 
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime, createdUser?.CreatedAt);
-            Assert.AreEqual(DateTime.MinValue, createdUser?.GroupSyncNotBefore);
+            Assert.That(createdUser?.CreatedAt, Is.EqualTo(DateTimeProvider.SpecifiedDateTime));
+            Assert.That(createdUser?.GroupSyncNotBefore, Is.EqualTo(DateTime.MinValue));
 
             // [THEN] User has 0 groups, LastGroupSync value is not set.
             var userGroups = createdUser?.Groups;
-            Assert.IsNotNull(userGroups);
-            Assert.AreEqual(0, userGroups?.Count);
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -238,16 +238,16 @@ namespace SafeExchange.Tests
 
             // [GIVEN] User is created in the database with groups
             var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
-            Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, user?.GroupSyncNotBefore);
+            Assert.That(user, Is.Not.Null);
+            Assert.That(user?.GroupSyncNotBefore, Is.EqualTo(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay));
 
             var groupSyncNotBefore = user?.GroupSyncNotBefore;
 
             var userGroups = user?.Groups;
-            Assert.IsNotNull(userGroups);
-            Assert.AreEqual(2, userGroups?.Count);
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")));
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")));
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(2));
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
 
             // [GIVEN] User groups were changed in AAD
             this.graphDataProvider.GroupMemberships
@@ -262,14 +262,14 @@ namespace SafeExchange.Tests
 
             // [THEN] Groups are not refreshed
             user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
-            Assert.IsNotNull(user);
-            Assert.AreEqual(groupSyncNotBefore, user?.GroupSyncNotBefore);
+            Assert.That(user, Is.Not.Null);
+            Assert.That(user?.GroupSyncNotBefore, Is.EqualTo(groupSyncNotBefore));
 
             userGroups = user?.Groups;
-            Assert.IsNotNull(userGroups);
-            Assert.AreEqual(2, userGroups?.Count);
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")));
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")));
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(2));
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
         }
 
         [Test]
@@ -289,16 +289,16 @@ namespace SafeExchange.Tests
 
             // [GIVEN] User is created in the database with groups
             var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
-            Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, user?.GroupSyncNotBefore);
+            Assert.That(user, Is.Not.Null);
+            Assert.That(user?.GroupSyncNotBefore, Is.EqualTo(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay));
 
             var groupSyncNotBefore = user?.GroupSyncNotBefore;
 
             var userGroups = user?.Groups;
-            Assert.IsNotNull(userGroups);
-            Assert.AreEqual(2, userGroups?.Count);
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")));
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")));
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(2));
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
 
             // [GIVEN] User groups were changed in AAD
             this.graphDataProvider.GroupMemberships
@@ -312,15 +312,15 @@ namespace SafeExchange.Tests
 
             // [THEN] Groups are refreshed
             user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
-            Assert.IsNotNull(user);
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay, user?.GroupSyncNotBefore);
+            Assert.That(user, Is.Not.Null);
+            Assert.That(user?.GroupSyncNotBefore, Is.EqualTo(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay));
 
             userGroups = user?.Groups;
-            Assert.IsNotNull(userGroups);
-            Assert.AreEqual(3, userGroups?.Count);
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-ffff00000001")));
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-ffff00009999")));
-            Assert.IsTrue(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-eeee00009999")));
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(3));
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-ffff00000001")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-ffff00009999")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-eeee00009999")), Is.True);
         }
 
         private void CreateDefaultTestConfiguration()

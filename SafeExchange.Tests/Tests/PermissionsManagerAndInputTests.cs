@@ -24,7 +24,7 @@ namespace SafeExchange.Tests
             };
 
             var permissions = permissionsInput.GetPermissionType();
-            Assert.AreEqual(PermissionType.None, permissions);
+            Assert.That(permissions, Is.EqualTo(PermissionType.None));
 
             permissionsInput = new SubjectPermissionsInput()
             {
@@ -35,7 +35,7 @@ namespace SafeExchange.Tests
             };
 
             permissions = permissionsInput.GetPermissionType();
-            Assert.AreEqual(PermissionType.Read | PermissionType.Write, permissions);
+            Assert.That(permissions, Is.EqualTo(PermissionType.Read | PermissionType.Write));
 
             permissionsInput = new SubjectPermissionsInput()
             {
@@ -46,7 +46,7 @@ namespace SafeExchange.Tests
             };
 
             permissions = permissionsInput.GetPermissionType();
-            Assert.AreEqual(PermissionType.Full, permissions);
+            Assert.That(permissions, Is.EqualTo(PermissionType.Full));
         }
 
         [Test]
@@ -60,17 +60,17 @@ namespace SafeExchange.Tests
                 CanRevokeAccess = true
             };
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.None));
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.None), Is.True);
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Read));
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Write));
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.GrantAccess));
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.RevokeAccess));
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Read), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Write), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.GrantAccess), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.RevokeAccess), Is.True);
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Read | PermissionType.Write));
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.GrantAccess | PermissionType.RevokeAccess));
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Read | PermissionType.Write), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.GrantAccess | PermissionType.RevokeAccess), Is.True);
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Full));
+            Assert.That(PermissionsManager.IsPresentPermission(fullPermissionSet, PermissionType.Full), Is.True);
         }
 
         [Test]
@@ -84,17 +84,17 @@ namespace SafeExchange.Tests
                 CanRevokeAccess = false
             };
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.None));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.None), Is.True);
 
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Write));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.RevokeAccess));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read), Is.False);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Write), Is.False);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess), Is.False);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.RevokeAccess), Is.False);
 
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read | PermissionType.Write));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess | PermissionType.RevokeAccess));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read | PermissionType.Write), Is.False);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess | PermissionType.RevokeAccess), Is.False);
 
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Full));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Full), Is.False);
         }
 
         [Test]
@@ -108,17 +108,17 @@ namespace SafeExchange.Tests
                 CanRevokeAccess = false
             };
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.None));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.None), Is.True);
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read));
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Write));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.RevokeAccess));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Write), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess), Is.False);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.RevokeAccess), Is.False);
 
-            Assert.IsTrue(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read | PermissionType.Write));
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess | PermissionType.RevokeAccess));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Read | PermissionType.Write), Is.True);
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.GrantAccess | PermissionType.RevokeAccess), Is.False);
 
-            Assert.IsFalse(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Full));
+            Assert.That(PermissionsManager.IsPresentPermission(emptyPermissionSet, PermissionType.Full), Is.False);
         }
     }
 }
