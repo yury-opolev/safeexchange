@@ -180,25 +180,25 @@ namespace SafeExchange.Tests
             var okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var contentMetadata = responseResult?.Result;
-            Assert.IsNotNull(contentMetadata);
-            Assert.IsNotNull(contentMetadata?.ContentName);
-            Assert.AreEqual("image/jpeg", contentMetadata?.ContentType);
-            Assert.AreEqual(this.imageContentFileName, contentMetadata?.FileName);
-            Assert.IsFalse(contentMetadata?.IsMain);
-            Assert.IsFalse(contentMetadata?.IsReady);
+            Assert.That(contentMetadata, Is.Not.Null);
+            Assert.That(contentMetadata?.ContentName, Is.Not.Null);
+            Assert.That(contentMetadata?.ContentType, Is.EqualTo("image/jpeg"));
+            Assert.That(contentMetadata?.FileName, Is.EqualTo(this.imageContentFileName));
+            Assert.That(contentMetadata?.IsMain, Is.False);
+            Assert.That(contentMetadata?.IsReady, Is.False);
 
             var chunks = contentMetadata?.Chunks;
-            Assert.IsNotNull(chunks);
-            Assert.AreEqual(0, chunks?.Count);
+            Assert.That(chunks, Is.Not.Null);
+            Assert.That(chunks?.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -221,14 +221,14 @@ namespace SafeExchange.Tests
             var notFoundObjectResult = response as TestHttpResponseData;
 
             // [THEN] NotFoundObjectResult is returned with Status = 'not_found', non-null Result and null Error.
-            Assert.IsNotNull(notFoundObjectResult);
-            Assert.AreEqual(HttpStatusCode.NotFound, notFoundObjectResult?.StatusCode);
+            Assert.That(notFoundObjectResult, Is.Not.Null);
+            Assert.That(notFoundObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
             var responseResult = notFoundObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("not_found", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("not_found"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -252,14 +252,14 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'bad_request', null Result and non-null Error.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNotNull(responseResult?.Error);
-            Assert.IsNull(responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+            Assert.That(responseResult?.Result, Is.Null);
         }
 
         [Test]
@@ -282,8 +282,8 @@ namespace SafeExchange.Tests
             var response = await this.secretContentMeta.Run(request, "secret3", string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromHours(1);
 
@@ -293,30 +293,30 @@ namespace SafeExchange.Tests
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. The result contains added content.
             okObjectResult = getResponse as TestHttpResponseData;
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var metadata = responseResult?.Result;
             var contentList = metadata?.Content;
-            Assert.IsNotNull(contentList);
-            Assert.AreEqual(2, contentList?.Count);
+            Assert.That(contentList, Is.Not.Null);
+            Assert.That(contentList?.Count, Is.EqualTo(2));
 
             var addedContent = contentList?.FirstOrDefault(c => !c.IsMain);
-            Assert.IsNotNull(addedContent);
+            Assert.That(addedContent, Is.Not.Null);
 
-            Assert.AreEqual("image/jpeg", addedContent?.ContentType);
-            Assert.AreEqual(this.imageContentFileName, addedContent?.FileName);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(addedContent?.ContentName));
-            Assert.IsFalse(addedContent?.IsMain);
-            Assert.IsFalse(addedContent?.IsReady);
+            Assert.That(addedContent?.ContentType, Is.EqualTo("image/jpeg"));
+            Assert.That(addedContent?.FileName, Is.EqualTo(this.imageContentFileName));
+            Assert.That(string.IsNullOrWhiteSpace(addedContent?.ContentName), Is.False);
+            Assert.That(addedContent?.IsMain, Is.False);
+            Assert.That(addedContent?.IsReady, Is.False);
 
             var chunks = addedContent?.Chunks;
-            Assert.IsNotNull(chunks);
-            Assert.AreEqual(0, chunks?.Count);
+            Assert.That(chunks, Is.Not.Null);
+            Assert.That(chunks?.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -338,12 +338,12 @@ namespace SafeExchange.Tests
             var response = await this.secretContentMeta.Run(request, "secret4", string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var createResponseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             var contentName = createResponseResult?.Result?.ContentName;
-            Assert.IsNotNull(contentName);
+            Assert.That(contentName, Is.Not.Null);
 
             // [WHEN] A request is made to change content type and file name.
             var patchRequest = TestFactory.CreateHttpRequestData("patch");
@@ -359,30 +359,30 @@ namespace SafeExchange.Tests
             okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. Content is updated in the DB.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var contentMetadata = responseResult?.Result;
-            Assert.IsNotNull(contentMetadata);
-            Assert.IsNotNull(contentMetadata?.ContentName);
-            Assert.AreEqual(patchInput.ContentType, contentMetadata?.ContentType);
-            Assert.AreEqual(patchInput.FileName, contentMetadata?.FileName);
-            Assert.IsFalse(contentMetadata?.IsMain);
-            Assert.IsFalse(contentMetadata?.IsReady);
+            Assert.That(contentMetadata, Is.Not.Null);
+            Assert.That(contentMetadata?.ContentName, Is.Not.Null);
+            Assert.That(contentMetadata?.ContentType, Is.EqualTo(patchInput.ContentType));
+            Assert.That(contentMetadata?.FileName, Is.EqualTo(patchInput.FileName));
+            Assert.That(contentMetadata?.IsMain, Is.False);
+            Assert.That(contentMetadata?.IsReady, Is.False);
 
             var chunks = contentMetadata?.Chunks;
-            Assert.IsNotNull(chunks);
-            Assert.AreEqual(0, chunks?.Count);
+            Assert.That(chunks, Is.Not.Null);
+            Assert.That(chunks?.Count, Is.EqualTo(0));
 
             var objectMetadata = await this.dbContext.Objects.FindAsync("secret4");
             var content = objectMetadata?.Content.FirstOrDefault(c => c.ContentName.Equals(contentName));
-            Assert.AreEqual(patchInput.ContentType, content?.ContentType);
-            Assert.AreEqual(patchInput.FileName, content?.FileName);
+            Assert.That(content?.ContentType, Is.EqualTo(patchInput.ContentType));
+            Assert.That(content?.FileName, Is.EqualTo(patchInput.FileName));
         }
 
         [Test]
@@ -404,12 +404,12 @@ namespace SafeExchange.Tests
             var response = await this.secretContentMeta.Run(request, "secret5", string.Empty, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var createResponseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<ContentMetadataOutput>>();
             var contentName = createResponseResult?.Result?.ContentName;
-            Assert.IsNotNull(contentName);
+            Assert.That(contentName, Is.Not.Null);
 
             // [WHEN] A request is made to delete existing content.
             var deleteRequest = TestFactory.CreateHttpRequestData("delete");
@@ -417,18 +417,18 @@ namespace SafeExchange.Tests
             okObjectResult = response as TestHttpResponseData;
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error. Content is deleted from the DB.
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var objectMetadata = await this.dbContext.Objects.FindAsync("secret5");
             var content = objectMetadata?.Content.FirstOrDefault(c => c.ContentName.Equals(contentName));
-            Assert.IsNull(content);
+            Assert.That(content, Is.Null);
         }
 
         [Test]
@@ -440,7 +440,7 @@ namespace SafeExchange.Tests
 
             var existingSecret = await this.dbContext.Objects.FindAsync("secret6");
             var mainContent = existingSecret.Content.FirstOrDefault(c => c.IsMain);
-            Assert.IsNotNull(mainContent);
+            Assert.That(mainContent, Is.Not.Null);
 
             // [WHEN] A request is made to delete main content of the secret.
             var deleteRequest = TestFactory.CreateHttpRequestData("delete");
@@ -448,18 +448,18 @@ namespace SafeExchange.Tests
             var badRequestObjectResult = response as TestHttpResponseData;
 
             // [THEN] BadRequestObjectResult is returned with Status = 'bad_request', null Result and non-null Error. Content is not deleted.
-            Assert.IsNotNull(badRequestObjectResult);
-            Assert.AreEqual(HttpStatusCode.BadRequest, badRequestObjectResult?.StatusCode);
+            Assert.That(badRequestObjectResult, Is.Not.Null);
+            Assert.That(badRequestObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
 
             var responseResult = badRequestObjectResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("bad_request", responseResult?.Status);
-            Assert.IsNull(responseResult?.Result);
-            Assert.IsNotNull(responseResult?.Error);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("bad_request"));
+            Assert.That(responseResult?.Result, Is.Null);
+            Assert.That(responseResult?.Error, Is.Not.Null);
 
             existingSecret = await this.dbContext.Objects.FindAsync("secret6");
             mainContent = existingSecret?.Content.FirstOrDefault(c => c.IsMain);
-            Assert.IsNotNull(mainContent);
+            Assert.That(mainContent, Is.Not.Null);
         }
 
         private async Task CreateSecret(string secretName)
@@ -481,8 +481,8 @@ namespace SafeExchange.Tests
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
     }
 }

@@ -199,20 +199,20 @@ namespace SafeExchange.Tests
 
             // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error, but requester is the second user.
             var testResponse = response as TestHttpResponseData;
-            Assert.IsNotNull(testResponse);
-            Assert.AreEqual(HttpStatusCode.OK, testResponse?.StatusCode);
+            Assert.That(testResponse, Is.Not.Null);
+            Assert.That(testResponse?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = testResponse.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.IsNotNull(responseResult);
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
-            Assert.AreEqual(1, accessRequests.Count);
-            Assert.AreEqual("second@test.test", accessRequests.First().SubjectName);
-            Assert.AreEqual(PermissionType.Read, accessRequests.First().Permission);
-            Assert.AreEqual(RequestStatus.InProgress, accessRequests.First().Status);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
+            Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
         }
 
         [Test]
@@ -226,41 +226,41 @@ namespace SafeExchange.Tests
 
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
-            Assert.AreEqual(1, accessRequests.Count);
-            Assert.AreEqual("second@test.test", accessRequests.First().SubjectName);
-            Assert.AreEqual(PermissionType.Read | PermissionType.Write, accessRequests.First().Permission);
-            Assert.AreEqual(RequestStatus.InProgress, accessRequests.First().Status);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read | PermissionType.Write));
+            Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
 
             DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(1);
 
             // [THEN] Both first and second user can see the request is requests list.
             var requests = await this.ListRequests(this.firstIdentity);
-            Assert.AreEqual(1, requests.Count);
+            Assert.That(requests.Count, Is.EqualTo(1));
 
             var requestId = requests.First().Id;
-            Assert.AreEqual("second@test.test", requests.First().SubjectName);
-            Assert.AreEqual("sunshine", requests.First().ObjectName);
+            Assert.That(requests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(requests.First().ObjectName, Is.EqualTo("sunshine"));
 
-            Assert.IsTrue(requests.First().CanRead);
-            Assert.IsTrue(requests.First().CanWrite);
-            Assert.IsFalse(requests.First().CanGrantAccess);
-            Assert.IsFalse(requests.First().CanRevokeAccess);
+            Assert.That(requests.First().CanRead, Is.True);
+            Assert.That(requests.First().CanWrite, Is.True);
+            Assert.That(requests.First().CanGrantAccess, Is.False);
+            Assert.That(requests.First().CanRevokeAccess, Is.False);
 
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime - TimeSpan.FromMinutes(1), requests.First().RequestedAt);
+            Assert.That(requests.First().RequestedAt, Is.EqualTo(DateTimeProvider.SpecifiedDateTime - TimeSpan.FromMinutes(1)));
 
             requests = await this.ListRequests(this.secondIdentity);
-            Assert.AreEqual(1, requests.Count);
+            Assert.That(requests.Count, Is.EqualTo(1));
 
             requestId = requests.First().Id;
-            Assert.AreEqual("second@test.test", requests.First().SubjectName);
-            Assert.AreEqual("sunshine", requests.First().ObjectName);
+            Assert.That(requests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(requests.First().ObjectName, Is.EqualTo("sunshine"));
 
-            Assert.IsTrue(requests.First().CanRead);
-            Assert.IsTrue(requests.First().CanWrite);
-            Assert.IsFalse(requests.First().CanGrantAccess);
-            Assert.IsFalse(requests.First().CanRevokeAccess);
+            Assert.That(requests.First().CanRead, Is.True);
+            Assert.That(requests.First().CanWrite, Is.True);
+            Assert.That(requests.First().CanGrantAccess, Is.False);
+            Assert.That(requests.First().CanRevokeAccess, Is.False);
 
-            Assert.AreEqual(DateTimeProvider.SpecifiedDateTime - TimeSpan.FromMinutes(1), requests.First().RequestedAt);
+            Assert.That(requests.First().RequestedAt, Is.EqualTo(DateTimeProvider.SpecifiedDateTime - TimeSpan.FromMinutes(1)));
         }
 
         [Test]
@@ -274,14 +274,14 @@ namespace SafeExchange.Tests
 
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
-            Assert.AreEqual(1, accessRequests.Count);
-            Assert.AreEqual("second@test.test", accessRequests.First().SubjectName);
-            Assert.AreEqual(PermissionType.Read, accessRequests.First().Permission);
-            Assert.AreEqual(RequestStatus.InProgress, accessRequests.First().Status);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
+            Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
 
             // [WHEN] The first user has approved the request.
             var requests = await this.ListRequests(this.firstIdentity);
-            Assert.AreEqual(1, requests.Count);
+            Assert.That(requests.Count, Is.EqualTo(1));
             var requestId = requests.First().Id;
 
             var approvalRequest = TestFactory.CreateHttpRequestData("patch");
@@ -297,30 +297,30 @@ namespace SafeExchange.Tests
             var approvalResponse = await this.secretAccessRequest.Run(approvalRequest, "sunshine", claimsPrincipal, this.logger);
 
             var approvalOkResult = approvalResponse as TestHttpResponseData;
-            Assert.IsNotNull(approvalOkResult);
-            Assert.AreEqual(HttpStatusCode.OK, approvalOkResult?.StatusCode);
+            Assert.That(approvalOkResult, Is.Not.Null);
+            Assert.That(approvalOkResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var approvalResult = approvalOkResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", approvalResult?.Status);
-            Assert.IsNull(approvalResult?.Error);
-            Assert.AreEqual("ok", approvalResult?.Result);
+            Assert.That(approvalResult?.Status, Is.EqualTo("ok"));
+            Assert.That(approvalResult?.Error, Is.Null);
+            Assert.That(approvalResult?.Result, Is.EqualTo("ok"));
 
             // [THEN] The second user has acquired read access to the secret.
-            Assert.IsTrue(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess));
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read), Is.True);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             var permissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
                 .ToListAsync();
 
-            Assert.AreEqual(1, permissions.Count);
+            Assert.That(permissions.Count, Is.EqualTo(1));
             
-            Assert.IsTrue(permissions.First().CanRead);
-            Assert.IsFalse(permissions.First().CanWrite);
-            Assert.IsFalse(permissions.First().CanGrantAccess);
-            Assert.IsFalse(permissions.First().CanRevokeAccess);
+            Assert.That(permissions.First().CanRead, Is.True);
+            Assert.That(permissions.First().CanWrite, Is.False);
+            Assert.That(permissions.First().CanGrantAccess, Is.False);
+            Assert.That(permissions.First().CanRevokeAccess, Is.False);
         }
 
         [Test]
@@ -334,14 +334,14 @@ namespace SafeExchange.Tests
 
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
-            Assert.AreEqual(1, accessRequests.Count);
-            Assert.AreEqual("second@test.test", accessRequests.First().SubjectName);
-            Assert.AreEqual(PermissionType.Read, accessRequests.First().Permission);
-            Assert.AreEqual(RequestStatus.InProgress, accessRequests.First().Status);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
+            Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
 
             // [WHEN] The second user has cancelled the request.
             var requests = await this.ListRequests(this.secondIdentity);
-            Assert.AreEqual(1, requests.Count);
+            Assert.That(requests.Count, Is.EqualTo(1));
             var requestId = requests.First().Id;
 
             var deletionRequest = TestFactory.CreateHttpRequestData("delete");
@@ -356,22 +356,22 @@ namespace SafeExchange.Tests
             var deletionResponse = await this.secretAccessRequest.Run(deletionRequest, "sunshine", claimsPrincipal, this.logger);
             var deletionOkResult = deletionResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(deletionOkResult);
-            Assert.AreEqual(HttpStatusCode.OK, deletionOkResult?.StatusCode);
+            Assert.That(deletionOkResult, Is.Not.Null);
+            Assert.That(deletionOkResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var deletionResult = deletionOkResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", deletionResult?.Status);
-            Assert.IsNull(deletionResult?.Error);
-            Assert.AreEqual("ok", deletionResult?.Result);
+            Assert.That(deletionResult?.Status, Is.EqualTo("ok"));
+            Assert.That(deletionResult?.Error, Is.Null);
+            Assert.That(deletionResult?.Result, Is.EqualTo("ok"));
 
             // [THEN] The access request is deleted from database, the second user does not have permissions for the secret.
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess));
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
-            Assert.AreEqual(0, accessRequests.Count);
+            Assert.That(accessRequests.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -385,14 +385,14 @@ namespace SafeExchange.Tests
 
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
-            Assert.AreEqual(1, accessRequests.Count);
-            Assert.AreEqual("second@test.test", accessRequests.First().SubjectName);
-            Assert.AreEqual(PermissionType.Read, accessRequests.First().Permission);
-            Assert.AreEqual(RequestStatus.InProgress, accessRequests.First().Status);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
+            Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
 
             // [WHEN] The first user is trying to cancel the request.
             var requests = await this.ListRequests(this.firstIdentity);
-            Assert.AreEqual(1, requests.Count);
+            Assert.That(requests.Count, Is.EqualTo(1));
             var requestId = requests.First().Id;
 
             var deletionRequest = TestFactory.CreateHttpRequestData("delete");
@@ -405,19 +405,19 @@ namespace SafeExchange.Tests
 
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var deletionResponse = await this.secretAccessRequest.Run(deletionRequest, "sunshine", claimsPrincipal, this.logger);
-            var deletionOkResult = deletionResponse as TestHttpResponseData;
+            var deletionForbiddenResult = deletionResponse as TestHttpResponseData;
 
             // [THEN] The first user receives 'Forbidden' response and access request is not deleted.
-            Assert.IsNotNull(deletionOkResult);
-            Assert.AreEqual(HttpStatusCode.Forbidden, deletionOkResult?.StatusCode);
+            Assert.That(deletionForbiddenResult, Is.Not.Null);
+            Assert.That(deletionForbiddenResult?.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
 
-            var deletionResult = deletionOkResult?.ReadBodyAsJson<BaseResponseObject<object>>();
-            Assert.AreEqual("forbidden", deletionResult?.Status);
-            Assert.IsNotNull(deletionResult?.Error);
-            Assert.IsNull(deletionResult?.Result);
+            var deletionResult = deletionForbiddenResult?.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(deletionResult?.Status, Is.EqualTo("forbidden"));
+            Assert.That(deletionResult?.Error, Is.Not.Null);
+            Assert.That(deletionResult?.Result, Is.Null);
 
             accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
-            Assert.AreEqual(1, accessRequests.Count);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
         }
 
         [Test]
@@ -431,14 +431,14 @@ namespace SafeExchange.Tests
 
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
-            Assert.AreEqual(1, accessRequests.Count);
-            Assert.AreEqual("second@test.test", accessRequests.First().SubjectName);
-            Assert.AreEqual(PermissionType.Read, accessRequests.First().Permission);
-            Assert.AreEqual(RequestStatus.InProgress, accessRequests.First().Status);
+            Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
+            Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
+            Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
 
             // [WHEN] The first user has rejected the request.
             var requests = await this.ListRequests(this.firstIdentity);
-            Assert.AreEqual(1, requests.Count);
+            Assert.That(requests.Count, Is.EqualTo(1));
             var requestId = requests.First().Id;
 
             var approvalRequest = TestFactory.CreateHttpRequestData("patch");
@@ -454,25 +454,25 @@ namespace SafeExchange.Tests
             var approvalResponse = await this.secretAccessRequest.Run(approvalRequest, "sunshine", claimsPrincipal, this.logger);
             var approvalOkResult = approvalResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(approvalOkResult);
-            Assert.AreEqual(HttpStatusCode.OK, approvalOkResult?.StatusCode);
+            Assert.That(approvalOkResult, Is.Not.Null);
+            Assert.That(approvalOkResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var approvalResult = approvalOkResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", approvalResult?.Status);
-            Assert.IsNull(approvalResult?.Error);
-            Assert.AreEqual("ok", approvalResult?.Result);
+            Assert.That(approvalResult?.Status, Is.EqualTo("ok"));
+            Assert.That(approvalResult?.Error, Is.Null);
+            Assert.That(approvalResult?.Result, Is.EqualTo("ok"));
 
-            // [THEN] The second user has acquired read access to the secret.
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess));
-            Assert.IsFalse(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess));
+            // [THEN] The second user has not acquired any access to the secret.
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Read), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.Write), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.GrantAccess), Is.False);
+            Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             var permissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
                 .ToListAsync();
 
-            Assert.AreEqual(0, permissions.Count);
+            Assert.That(permissions.Count, Is.EqualTo(0));
         }
 
         private async Task<List<AccessRequestOutput>> ListRequests(ClaimsIdentity identity)
@@ -482,12 +482,12 @@ namespace SafeExchange.Tests
             var listRequestsResponse = await this.secretAccessRequest.RunList(requestForRequests, claimsPrincipal, this.logger);
             var listResult = listRequestsResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(listResult);
-            Assert.AreEqual(HttpStatusCode.OK, listResult?.StatusCode);
+            Assert.That(listResult, Is.Not.Null);
+            Assert.That(listResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = listResult?.ReadBodyAsJson<BaseResponseObject<List<AccessRequestOutput>>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
 
             var requests = responseResult?.Result ?? throw new AssertionException("List of requests is null.");
             return requests;
@@ -512,8 +512,8 @@ namespace SafeExchange.Tests
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
             var okObjectResult = response as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectResult?.StatusCode);
+            Assert.That(okObjectResult, Is.Not.Null);
+            Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
 
         private async Task RequestAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
@@ -535,13 +535,13 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
         }
 
         private async Task GrantAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
@@ -572,13 +572,13 @@ namespace SafeExchange.Tests
 
             var okObjectAccessResult = accessResponse as TestHttpResponseData;
 
-            Assert.IsNotNull(okObjectAccessResult);
-            Assert.AreEqual(HttpStatusCode.OK, okObjectAccessResult?.StatusCode);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
-            Assert.AreEqual("ok", responseResult?.Status);
-            Assert.IsNull(responseResult?.Error);
-            Assert.AreEqual("ok", responseResult?.Result);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
         }
     }
 }
