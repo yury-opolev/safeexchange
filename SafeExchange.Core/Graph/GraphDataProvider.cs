@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Graph
     using Microsoft.Graph.Models;
     using Microsoft.Kiota.Abstractions.Authentication;
     using SafeExchange.Core.AzureAd;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Text;
 
@@ -60,24 +61,11 @@ namespace SafeExchange.Core.Graph
             }
             catch (Exception exception)
             {
-                this.log.LogWarning($"Cannot retrieve user groups, {GetDescription(exception)}.");
+                this.log.LogWarning($"Cannot retrieve user groups, {TelemetryUtils.GetDescription(exception)}.");
                 return new GroupListResult();
             }
 
             return new GroupListResult() { Success = true, Groups = totalGroups };
-        }
-
-        private string GetDescription(Exception exception)
-        {
-            var stringBuilder = new StringBuilder($"{exception.GetType()}: {exception.Message}");
-            var currentException = exception.InnerException;
-            while (currentException != null)
-            {
-                stringBuilder.Append($" -> {exception.GetType()}: {exception.Message}");
-                currentException = currentException.InnerException;
-            }
-
-            return stringBuilder.ToString();
         }
     }
 }
