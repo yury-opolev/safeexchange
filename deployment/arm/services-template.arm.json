@@ -161,8 +161,7 @@
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
         "safeexchange_staticwebsite_deployment_name": "safeexchange-blob-static-website",
         "appinsights_workspace_retention_days": 90,
-        "appinsights_workspace_resource_permissions": true,
-        "appinsights_workspace_heartbeat_retention_days": 30
+        "appinsights_workspace_resource_permissions": true
     },
     "resources": [
         {
@@ -179,17 +178,6 @@
                     "enableLogAccessUsingOnlyResourcePermissions": "[variables('appinsights_workspace_resource_permissions')]"
                 }
             }
-        },
-        {
-            "type": "Microsoft.OperationalInsights/workspaces/tables",
-            "apiVersion": "2021-12-01-preview",
-            "name": "[format('{0}/{1}', parameters('appinsights_workspace_name'), 'Heartbeat')]",
-            "properties": {
-                "retentionInDays": "[variables('appinsights_workspace_heartbeat_retention_days')]"
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
-            ]
         },
         {
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
