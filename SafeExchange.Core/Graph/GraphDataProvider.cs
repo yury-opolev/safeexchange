@@ -11,7 +11,6 @@ namespace SafeExchange.Core.Graph
     using SafeExchange.Core.AzureAd;
     using SafeExchange.Core.Utilities;
     using System;
-    using System.Text;
 
     class GraphDataProvider : IGraphDataProvider
     {
