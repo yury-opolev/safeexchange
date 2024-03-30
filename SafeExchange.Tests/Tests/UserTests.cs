@@ -13,6 +13,7 @@ namespace SafeExchange.Tests
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Middleware;
@@ -184,7 +185,13 @@ namespace SafeExchange.Tests
                 .AddInMemoryCollection(configurationValues)
                 .Build();
 
-            var localGlobalFilters = new GlobalFilters(localConfiguration, this.tokenHelper, this.graphDataProvider, TestFactory.CreateLogger<GlobalFilters>());
+            GloballyAllowedGroupsConfiguration gagc = new GloballyAllowedGroupsConfiguration();
+            var groupsConfiguration = Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == gagc);
+
+            AdminConfiguration ac = new AdminConfiguration();
+            var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
+
+            var localGlobalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>());
             var localSecretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
                 localGlobalFilters, this.purger, this.permissionsManager);
@@ -340,7 +347,14 @@ namespace SafeExchange.Tests
         {
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
-            this.globalFilters = new GlobalFilters(this.testConfiguration, this.tokenHelper, this.graphDataProvider, TestFactory.CreateLogger<GlobalFilters>());
+
+            GloballyAllowedGroupsConfiguration gagc = new GloballyAllowedGroupsConfiguration();
+            var groupsConfiguration = Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == gagc);
+
+            AdminConfiguration ac = new AdminConfiguration();
+            var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
+
+            this.globalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>());
 
             this.blobHelper = new TestBlobHelper();
             this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>());

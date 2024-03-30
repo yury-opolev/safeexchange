@@ -5,52 +5,35 @@
 namespace SafeExchange.Core.Filters
 {
     using Microsoft.Azure.Functions.Worker.Http;
-    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
     using SafeExchange.Core.Configuration;
-    using SafeExchange.Core.Graph;
-    using System.Collections.Generic;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
     public class GlobalFilters : IRequestFilter
     {
-        private IList<IRequestFilter> currentFilters;
+        private readonly IOptionsMonitor<GloballyAllowedGroupsConfiguration> groupsConfiguration;
+        private readonly IOptionsMonitor<AdminConfiguration> adminConfiguration;
 
-        private IList<IRequestFilter> currentAdminFilters;
+        private readonly ITokenHelper tokenHelper;
+        private readonly ILogger log;
 
-        public GlobalFilters(IConfiguration configuration, ITokenHelper tokenHelper, IGraphDataProvider graphDataProvider, ILogger<GlobalFilters> log)
+        public GlobalFilters(IOptionsMonitor<GloballyAllowedGroupsConfiguration> groupsConfiguration, IOptionsMonitor<AdminConfiguration> adminConfiguration, ITokenHelper tokenHelper, ILogger<GlobalFilters> log)
         {
-            var features = new Features();
-            configuration.GetSection("Features").Bind(features);
-
-            var groupsConfiguration = new GloballyAllowedGroupsConfiguration();
-            configuration.GetSection("GlobalAllowLists").Bind(groupsConfiguration);
-
-            var adminConfiguration = new AdminConfiguration();
-            configuration.GetSection("AdminConfiguration").Bind(adminConfiguration);
-
-            var useGroups =
-                features.UseGroupsAuthorization ||
-                !string.IsNullOrWhiteSpace(groupsConfiguration.AllowedGroups) ||
-                !string.IsNullOrWhiteSpace(adminConfiguration.AdminGroups);
-
-            this.currentFilters = new List<IRequestFilter>();
-            currentFilters.Add(new GlobalAccessFilter(groupsConfiguration, tokenHelper, log));
-
-            this.currentAdminFilters = new List<IRequestFilter>();
-            currentAdminFilters.Add(new AdminGroupFilter(adminConfiguration, tokenHelper, log));
+            this.groupsConfiguration = groupsConfiguration ?? throw new ArgumentNullException(nameof(groupsConfiguration));
+            this.adminConfiguration = adminConfiguration ?? throw new ArgumentNullException(nameof(adminConfiguration));
+            this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
-            foreach (var filter in this.currentFilters)
+            var filter = new GlobalAccessFilter(this.groupsConfiguration.CurrentValue, this.tokenHelper, this.log);
+            var filterResult = await filter.GetFilterResultAsync(req, principal, dbContext);
+            if (filterResult.shouldReturn)
             {
-                var filterResult = await filter.GetFilterResultAsync(req, principal, dbContext);
-                if (filterResult.shouldReturn)
-                {
-                    return filterResult;
-                }
+                return filterResult;
             }
 
             return (shouldReturn: false, response: null);
@@ -58,13 +41,11 @@ namespace SafeExchange.Core.Filters
 
         public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetAdminFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
-            foreach (var filter in this.currentAdminFilters)
+            var filter = new AdminGroupFilter(this.adminConfiguration.CurrentValue, this.tokenHelper, this.log);
+            var filterResult = await filter.GetFilterResultAsync(req, principal, dbContext);
+            if (filterResult.shouldReturn)
             {
-                var filterResult = await filter.GetFilterResultAsync(req, principal, dbContext);
-                if (filterResult.shouldReturn)
-                {
-                    return filterResult;
-                }
+                return filterResult;
             }
 
             return (shouldReturn: false, response: null);

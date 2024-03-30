@@ -13,6 +13,7 @@ namespace SafeExchange.Tests
     using NUnit.Framework;
     using NUnit.Framework.Internal;
     using SafeExchange.Core;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Model.Dto.Input;
@@ -85,7 +86,14 @@ namespace SafeExchange.Tests
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
-            this.globalFilters = new GlobalFilters(this.testConfiguration, this.tokenHelper, this.graphDataProvider, TestFactory.CreateLogger<GlobalFilters>(LoggerTypes.Console));
+
+            GloballyAllowedGroupsConfiguration gagc = new GloballyAllowedGroupsConfiguration();
+            var groupsConfiguration = Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == gagc);
+
+            AdminConfiguration ac = new AdminConfiguration();
+            var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
+
+            this.globalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>(LoggerTypes.Console));
 
             this.blobHelper = new TestBlobHelper();
             this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>(LoggerTypes.Console));

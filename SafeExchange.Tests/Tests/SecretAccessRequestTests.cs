@@ -8,12 +8,12 @@ namespace SafeExchange.Tests
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
-    using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
@@ -90,7 +90,14 @@ namespace SafeExchange.Tests
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
-            this.globalFilters = new GlobalFilters(this.testConfiguration, this.tokenHelper, this.graphDataProvider, TestFactory.CreateLogger<GlobalFilters>());
+
+            GloballyAllowedGroupsConfiguration gagc = new GloballyAllowedGroupsConfiguration();
+            var groupsConfiguration = Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == gagc);
+
+            AdminConfiguration ac = new AdminConfiguration();
+            var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
+
+            this.globalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>());
 
             this.blobHelper = new TestBlobHelper();
             this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>());

@@ -26,6 +26,7 @@ namespace SafeExchange.Core
     using System;
     using System.Text.Json.Serialization;
     using System.Text.Json;
+    using Microsoft.Extensions.Options;
 
     public class SafeExchangeStartup
     {
@@ -51,7 +52,9 @@ namespace SafeExchange.Core
                     ReloadInterval = TimeSpan.FromMinutes(5)
                 });
 
-            configurationBuilder.AddCosmosDbKeysConfiguration();
+            interimConfiguration = configurationBuilder.Build();
+            var cosmosDbConfig = interimConfiguration.GetSection("CosmosDb").Get<CosmosDbConfiguration>();
+            configurationBuilder.AddCosmosDbKeysConfiguration(new DefaultAzureCredential(), cosmosDbConfig!);
         }
 
         public static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
@@ -61,17 +64,15 @@ namespace SafeExchange.Core
             services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
-            var cosmosDbConfig = new CosmosDbConfiguration();
-            configuration.GetSection("CosmosDb").Bind(cosmosDbConfig);
-
-            var cosmosDbKeys = new CosmosDbKeys();
-            configuration.GetSection(CosmosDbKeysProvider.CosmosDbKeysSectionName).Bind(cosmosDbKeys);
-
             services.AddDbContext<SafeExchangeDbContext>(
-                options => options.UseCosmos(
-                    cosmosDbConfig.CosmosDbEndpoint,
-                    cosmosDbKeys.PrimaryKey,
-                    cosmosDbConfig.DatabaseName));
+                (serviceProvider, options) =>
+                {
+                    var cosmosDbConfig = serviceProvider.GetRequiredService<IOptions<CosmosDbConfiguration>>();
+                    options.UseCosmos(
+                        cosmosDbConfig.Value.CosmosDbEndpoint,
+                        new DefaultAzureCredential(),
+                        cosmosDbConfig.Value.DatabaseName);
+                });
 
             services.AddSingleton<ITokenHelper, TokenHelper>();
             services.AddSingleton<ICryptoHelper, CryptoHelper>();
@@ -89,7 +90,9 @@ namespace SafeExchange.Core
             services.AddScoped<IMigrationsHelper>((serviceProvider) =>
             {
                 var log = serviceProvider.GetRequiredService<ILogger<MigrationsHelper>>();
-                return new MigrationsHelper(cosmosDbConfig, cosmosDbKeys, log);
+                var cosmosDbConfig = serviceProvider.GetRequiredService<IOptions<CosmosDbConfiguration>>();
+                var cosmosDbKeys = serviceProvider.GetRequiredService<IOptions<CosmosDbKeys>>();
+                return new MigrationsHelper(cosmosDbConfig.Value, cosmosDbKeys.Value, log);
             });
 
             services.Configure<JsonSerializerOptions>(options =>
@@ -97,6 +100,12 @@ namespace SafeExchange.Core
                 options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                 options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
             });
+
+            services.Configure<Features>(configuration.GetSection("Features"));
+            services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));
+            services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
+            services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));
+            services.Configure<CosmosDbKeys>(configuration.GetSection(CosmosDbKeysProvider.CosmosDbKeysSectionName));
         }
     }
 }

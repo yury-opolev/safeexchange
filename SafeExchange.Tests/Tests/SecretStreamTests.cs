@@ -14,6 +14,7 @@ namespace SafeExchange.Tests
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Model.Dto.Input;
@@ -101,7 +102,14 @@ namespace SafeExchange.Tests
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
-            this.globalFilters = new GlobalFilters(this.testConfiguration, this.tokenHelper, this.graphDataProvider, TestFactory.CreateLogger<GlobalFilters>(LoggerTypes.Console));
+
+            GloballyAllowedGroupsConfiguration gagc = new GloballyAllowedGroupsConfiguration();
+            var groupsConfiguration = Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == gagc);
+
+            AdminConfiguration ac = new AdminConfiguration();
+            var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
+
+            this.globalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>(LoggerTypes.Console));
 
             this.blobHelper = new TestBlobHelper();
             this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>(LoggerTypes.Console));
@@ -544,7 +552,8 @@ namespace SafeExchange.Tests
                 throw new AssertionException($"Main content for secret is null.");
             }
 
-            var (chunkMetadata, headers) = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName, 1950);
+            var expectedLength = 1953; // main content is processed by HtmlSanitizer and it's length changes.
+            var (chunkMetadata, headers) = await this.UploadDataAsync(objectMetadata.ObjectName, mainContent.ContentName, expectedLength);
 
             // [WHEN] A request is made to drop secret content.
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
