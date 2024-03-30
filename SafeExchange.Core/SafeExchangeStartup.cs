@@ -27,6 +27,7 @@ namespace SafeExchange.Core
     using System.Text.Json.Serialization;
     using System.Text.Json;
     using Microsoft.Extensions.Options;
+    using System.Configuration;
 
     public class SafeExchangeStartup
     {
@@ -64,15 +65,13 @@ namespace SafeExchange.Core
             services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
+            var defaultAzureCredential = new DefaultAzureCredential();
+            var cosmosDbConfig = configuration.GetSection("CosmosDb").Get<CosmosDbConfiguration>() ?? throw new ConfigurationErrorsException("Cannot get CosmosDb configuration.");
             services.AddDbContext<SafeExchangeDbContext>(
-                (serviceProvider, options) =>
-                {
-                    var cosmosDbConfig = serviceProvider.GetRequiredService<IOptions<CosmosDbConfiguration>>();
-                    options.UseCosmos(
-                        cosmosDbConfig.Value.CosmosDbEndpoint,
-                        new DefaultAzureCredential(),
-                        cosmosDbConfig.Value.DatabaseName);
-                });
+                options => options.UseCosmos(
+                    cosmosDbConfig.CosmosDbEndpoint,
+                    defaultAzureCredential,
+                    cosmosDbConfig.DatabaseName));
 
             services.AddSingleton<ITokenHelper, TokenHelper>();
             services.AddSingleton<ICryptoHelper, CryptoHelper>();

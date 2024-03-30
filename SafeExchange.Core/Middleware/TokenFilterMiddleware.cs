@@ -32,12 +32,15 @@ namespace SafeExchange.Core.Middleware
                 return;
             }
 
-            var middlewareCore = context.InstanceServices.GetRequiredService<ITokenMiddlewareCore>();
-            (bool shouldReturn, HttpResponseData? earlyResponse) = await middlewareCore.RunAsync(httpRequestData!, principal);
-            if (shouldReturn)
+            using (var scope = context.InstanceServices.CreateScope())
             {
-                SetResponse(context, earlyResponse);
-                return;
+                var tokenMiddlewareCore = scope.ServiceProvider.GetRequiredService<ITokenMiddlewareCore>();
+                (bool shouldReturn, HttpResponseData? earlyResponse) = await tokenMiddlewareCore.RunAsync(httpRequestData!, principal);
+                if (shouldReturn)
+                {
+                    SetResponse(context, earlyResponse);
+                    return;
+                }
             }
 
             await next(context);
