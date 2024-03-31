@@ -1436,6 +1436,10 @@
                             "value": "1"
                         },
                         {
+                            "name": "WEBSITE_LOAD_USER_PROFILE",
+                            "value": "1"
+                        },
+                        {
                             "name": "FUNCTIONS_WORKER_RUNTIME",
                             "value": "dotnet-isolated"
                         },

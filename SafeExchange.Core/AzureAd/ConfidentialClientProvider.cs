@@ -91,7 +91,7 @@ namespace SafeExchange.Core.AzureAd
             }
 
             byte[] certBytes = Convert.FromBase64String(certificateBytesBase64);
-            return new X509Certificate2(certBytes, (string?)null, X509KeyStorageFlags.MachineKeySet);
+            return new X509Certificate2(certBytes);
         }
     }
 }
