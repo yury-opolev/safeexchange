@@ -3,6 +3,8 @@
   "logging": {
     "logLevel": {
       "default": "Information",
+      "Azure.Core": "Warning",
+      "Microsoft.EntityFrameworkCore": "Warning",
       "SafeExchange.Core": "Information",
       "System.Net.Http.HttpClient": "Warning"
     },

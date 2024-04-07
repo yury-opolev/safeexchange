@@ -21,10 +21,15 @@ namespace SafeExchange.Core.AzureAd
 
         private object locker = new object();
 
+        private DateTime recreateClientAt;
+
+        public bool ShouldRefresh => DateTimeProvider.UtcNow >= this.recreateClientAt;
+
         public ConfidentialClientProvider(IConfiguration configuration, ILogger<ConfidentialClientProvider> log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
             this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            this.recreateClientAt = DateTimeProvider.UtcNow;
         }
 
         /// <inheritdoc />
@@ -35,17 +40,19 @@ namespace SafeExchange.Core.AzureAd
 
         private IConfidentialClientApplication GetOrCreateClient()
         {
-            if (this.client != null)
+            if (this.client != null && !this.ShouldRefresh)
             {
                 return this.client;
             }
 
             lock (this.locker)
             {
-                if (this.client != null)
+                if (this.client != null && !this.ShouldRefresh)
                 {
                     return this.client;
                 }
+
+                this.log.LogInformation($"{nameof(ConfidentialClientProvider)} - creating Microsoft Entra ID client.");
 
                 var aadClientSettings = this.configuration.GetSection("AADClient");
 
@@ -59,14 +66,12 @@ namespace SafeExchange.Core.AzureAd
                 if (string.IsNullOrEmpty(clientSecret))
                 {
                     var clientCertificate = this.GetClientCertificate();
-                    this.log.LogInformation($"{nameof(ConfidentialClientProvider)} is creating Microsoft Entra ID client '{clientId}' with specified certificate (effective: {clientCertificate.GetEffectiveDateString()}, expiration date: {clientCertificate.GetExpirationDateString()}, thumbprint: {clientCertificate.Thumbprint}).");
-
                     if (!bool.TryParse(aadClientSettings["SendX5C"], out var sendX5C))
                     {
                         sendX5C = false;
                     }
 
-                    this.log.LogInformation($"{nameof(ConfidentialClientProvider)} is creating Microsoft Entra ID client '{clientId}' with sendX5C='{sendX5C}'.");
+                    this.log.LogInformation($"{nameof(ConfidentialClientProvider)} is creating Microsoft Entra ID client '{clientId}' with specified certificate (effective: {clientCertificate.GetEffectiveDateString()}, expiration date: {clientCertificate.GetExpirationDateString()}, thumbprint: {clientCertificate.Thumbprint}), with sendX5C='{sendX5C}'.");
                     clientBuilder.WithCertificate(clientCertificate, sendX5C);
                 }
                 else
@@ -76,6 +81,8 @@ namespace SafeExchange.Core.AzureAd
                 }
 
                 this.client = clientBuilder.Build();
+                this.recreateClientAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(3);
+                this.log.LogInformation($"{nameof(ConfidentialClientProvider)} - next refresh is scheduled at {this.recreateClientAt}.");
             }
 
             return this.client;
