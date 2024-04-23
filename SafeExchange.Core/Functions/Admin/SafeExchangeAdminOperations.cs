@@ -10,7 +10,6 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Migrations;
     using SafeExchange.Core.Model;
-    using SafeExchange.Core.Model.Dto.Input;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -74,9 +73,10 @@ namespace SafeExchange.Core.Functions.Admin
         {
             switch (operationName)
             {
-                case "ensure_dbcreated":
-                    await this.dbContext.Database.EnsureCreatedAsync();
-                    break;
+                // no-op, cannot create containers via DbContext with managed identities
+                //case "ensure_dbcreated":
+                //    await this.dbContext.Database.EnsureCreatedAsync();
+                //    break;
 
                 case "add_kek_version":
                     var cryptoConfiguration = this.cryptoHelper.CryptoConfiguration;
