@@ -5,6 +5,8 @@
 namespace SafeExchange.Core.Migrations
 {
     using Azure;
+    using Azure.Core;
+    using Azure.Identity;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
@@ -16,16 +18,16 @@ namespace SafeExchange.Core.Migrations
 
     internal class MigrationsHelper : IMigrationsHelper
     {
-        private readonly CosmosDbConfiguration dbConfiguration;
+        private readonly TokenCredential tokenCredential;
 
-        private readonly CosmosDbKeys dbKeys;
+        private readonly CosmosDbConfiguration dbConfiguration;
 
         private readonly ILogger log;
 
-        public MigrationsHelper(CosmosDbConfiguration dbConfiguration, CosmosDbKeys dbKeys, ILogger<MigrationsHelper> log)
+        public MigrationsHelper(CosmosDbConfiguration dbConfiguration, ILogger<MigrationsHelper> log)
         {
+            this.tokenCredential = new DefaultAzureCredential();
             this.dbConfiguration = dbConfiguration ?? throw new ArgumentNullException(nameof(dbConfiguration));
-            this.dbKeys = dbKeys ?? throw new ArgumentNullException(nameof(dbKeys));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -59,7 +61,7 @@ namespace SafeExchange.Core.Migrations
 
         private async Task RunMigration00001Async()
         {
-            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, new AzureKeyCredential(this.dbKeys.PrimaryKey));
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
             var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
             var container = database.GetContainer(nameof(SubjectPermissions));
 
@@ -88,7 +90,7 @@ namespace SafeExchange.Core.Migrations
 
         private async Task RunMigration00002Async()
         {
-            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, new AzureKeyCredential(this.dbKeys.PrimaryKey));
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
             var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
             var container = database.GetContainer(nameof(ObjectMetadata));
 
@@ -109,7 +111,7 @@ namespace SafeExchange.Core.Migrations
 
         private async Task RunMigration00003Async()
         {
-            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, new AzureKeyCredential(this.dbKeys.PrimaryKey));
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
             var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
 
             var container1 = database.GetContainer("Users");

@@ -52,10 +52,6 @@ namespace SafeExchange.Core
                     Manager = new KeyVaultSecretManager(),
                     ReloadInterval = TimeSpan.FromMinutes(5)
                 });
-
-            interimConfiguration = configurationBuilder.Build();
-            var cosmosDbConfig = interimConfiguration.GetSection("CosmosDb").Get<CosmosDbConfiguration>();
-            configurationBuilder.AddCosmosDbKeysConfiguration(new DefaultAzureCredential(), cosmosDbConfig!);
         }
 
         public static void ConfigureServices(IConfiguration configuration, IServiceCollection services)
@@ -90,8 +86,7 @@ namespace SafeExchange.Core
             {
                 var log = serviceProvider.GetRequiredService<ILogger<MigrationsHelper>>();
                 var cosmosDbConfig = serviceProvider.GetRequiredService<IOptions<CosmosDbConfiguration>>();
-                var cosmosDbKeys = serviceProvider.GetRequiredService<IOptions<CosmosDbKeys>>();
-                return new MigrationsHelper(cosmosDbConfig.Value, cosmosDbKeys.Value, log);
+                return new MigrationsHelper(cosmosDbConfig.Value, log);
             });
 
             services.Configure<JsonSerializerOptions>(options =>
@@ -104,7 +99,6 @@ namespace SafeExchange.Core
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));
-            services.Configure<CosmosDbKeys>(configuration.GetSection(CosmosDbKeysProvider.CosmosDbKeysSectionName));
         }
     }
 }
