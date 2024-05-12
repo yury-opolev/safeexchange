@@ -16,6 +16,9 @@
         },
         "settings-authentication-validIssuers": {
             "value": "https://sts.windows.net/1472703e-99d8-45ee-aeac-7ec3ae9ab104/"
+        },
+        "settings-features-useGroupsAuthorization": {
+            "value": "True"
         }
     }
 }
