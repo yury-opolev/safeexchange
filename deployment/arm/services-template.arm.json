@@ -105,7 +105,10 @@
             }
         },
         "settings-aadClient-clientId": {
-            "type": "string"
+            "type": "string",
+            "metadata": {
+                "description": "Microsoft Entra ID application, used for accessing safeexchange."
+            }
         },
         "settings-aadClient-clientSecret": {
             "defaultValue": "",
@@ -115,7 +118,11 @@
             }
         },
         "settings-aadClient-tenantId": {
-            "type": "string"
+            "type": "string",
+            "defaultValue": "9188040d-6c67-4c5b-b112-36a304b66dad",
+            "metadata": {
+                "description": "Microsoft Entra Tenant ID used for safeexchange instance. Default value corresponds to 'customers' tenant, i.e. a tenant where it is possible to use personal Microsoft accounts."
+            }
         },
         "settings-aadClient-sendX5C": {
             "defaultValue": "False",
@@ -126,13 +133,20 @@
             ]
         },
         "settings-authentication-validAudiences": {
-            "type": "string"
+            "type": "string",
+            "metadata": {
+                "description": "Microsoft Entra ID application's audience URI, used for accessing safeexchange."
+            }
         },
         "settings-authentication-validIssuers": {
-            "type": "string"
+            "type": "string",
+            "defaultValue": "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0",
+            "metadata": {
+                "description": ""
+            }
         },
         "settings-features-useGroupsAuthorization": {
-            "defaultValue": "True",
+            "defaultValue": "False",
             "type": "string",
             "allowedValues": [
                 "True",
