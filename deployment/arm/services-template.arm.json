@@ -990,6 +990,22 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--Authority')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://login.microsoftonline.com/', parameters('settings-aadClient-tenantId'))]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
             "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidateAudience')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
