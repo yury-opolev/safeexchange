@@ -10,6 +10,7 @@ namespace SafeExchange.Tests
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
+    using Microsoft.IdentityModel.Tokens;
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
@@ -53,8 +54,8 @@ namespace SafeExchange.Tests
 
         private IPermissionsManager permissionsManager;
 
-        private ClaimsIdentity firstIdentity;
-        private ClaimsIdentity secondIdentity;
+        private CaseSensitiveClaimsIdentity firstIdentity;
+        private CaseSensitiveClaimsIdentity secondIdentity;
 
         [OneTimeSetUp]
         public void OneTimeSetup()
@@ -71,7 +72,7 @@ namespace SafeExchange.Tests
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
             this.dbContext.Database.EnsureCreated();
 
-            this.firstIdentity = new ClaimsIdentity(new List<Claim>()
+            this.firstIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
                     new Claim("upn", "first@test.test"),
                     new Claim("displayname", "First User"),
@@ -79,7 +80,7 @@ namespace SafeExchange.Tests
                     new Claim("tid", "00000000-0000-0000-0000-000000000001"),
                 }.AsEnumerable());
 
-            this.secondIdentity = new ClaimsIdentity(new List<Claim>()
+            this.secondIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
                     new Claim("upn", "second@test.test"),
                     new Claim("displayname", "Second User"),

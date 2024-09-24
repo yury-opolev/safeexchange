@@ -6,6 +6,7 @@ namespace SafeExchange.Tests.Utilities
 {
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Azure.Functions.Worker.Http;
+    using Microsoft.IdentityModel.Tokens;
     using SafeExchange.Core;
     using System;
     using System.Collections.Generic;
@@ -29,9 +30,9 @@ namespace SafeExchange.Tests.Utilities
 
         public override Uri Url { get; }
 
-        public override IEnumerable<ClaimsIdentity> Identities { get => this.identities; }
+        public override IEnumerable<CaseSensitiveClaimsIdentity> Identities { get => this.identities; }
 
-        private ICollection<ClaimsIdentity> identities;
+        private ICollection<CaseSensitiveClaimsIdentity> identities;
 
         public override string Method { get => this.method; }
 
@@ -42,7 +43,7 @@ namespace SafeExchange.Tests.Utilities
             return new TestHttpResponseData(FunctionContext);
         }
 
-        public void SetIdentities(ICollection<ClaimsIdentity> identitiesToSet)
+        public void SetIdentities(ICollection<CaseSensitiveClaimsIdentity> identitiesToSet)
         {
             this.identities = identitiesToSet;
         }
