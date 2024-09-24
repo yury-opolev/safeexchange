@@ -10,6 +10,7 @@ namespace SafeExchange.Tests
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
+    using Microsoft.IdentityModel.Tokens;
     using Moq;
     using NUnit.Framework;
     using SafeExchange.Core;
@@ -59,9 +60,9 @@ namespace SafeExchange.Tests
 
         private IDelayedTaskScheduler delayedTaskScheduler;
 
-        private ClaimsIdentity firstIdentity;
-        private ClaimsIdentity secondIdentity;
-        private ClaimsIdentity thirdIdentity;
+        private CaseSensitiveClaimsIdentity firstIdentity;
+        private CaseSensitiveClaimsIdentity secondIdentity;
+        private CaseSensitiveClaimsIdentity thirdIdentity;
 
         [OneTimeSetUp]
         public void OneTimeSetup()
@@ -106,7 +107,7 @@ namespace SafeExchange.Tests
 
             this.delayedTaskScheduler = new NullDelayedTaskScheduler();
 
-            this.firstIdentity = new ClaimsIdentity(new List<Claim>()
+            this.firstIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
                     new Claim("upn", "first@test.test"),
                     new Claim("displayname", "First User"),
@@ -114,7 +115,7 @@ namespace SafeExchange.Tests
                     new Claim("tid", "00000000-0000-0000-0000-000000000001"),
                 }.AsEnumerable());
 
-            this.secondIdentity = new ClaimsIdentity(new List<Claim>()
+            this.secondIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
                     new Claim("upn", "second@test.test"),
                     new Claim("displayname", "Second User"),
@@ -122,7 +123,7 @@ namespace SafeExchange.Tests
                     new Claim("tid", "00000000-0000-0000-0000-000000000001"),
                 }.AsEnumerable());
 
-            this.thirdIdentity = new ClaimsIdentity(new List<Claim>()
+            this.thirdIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
                     new Claim("upn", "third@test.test"),
                     new Claim("displayname", "Third User"),
@@ -482,7 +483,7 @@ namespace SafeExchange.Tests
             Assert.That(permissions.Count, Is.EqualTo(0));
         }
 
-        private async Task<List<AccessRequestOutput>> ListRequests(ClaimsIdentity identity)
+        private async Task<List<AccessRequestOutput>> ListRequests(CaseSensitiveClaimsIdentity identity)
         {
             var requestForRequests = TestFactory.CreateHttpRequestData("get");
             var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -500,7 +501,7 @@ namespace SafeExchange.Tests
             return requests;
         }
 
-        private async Task CreateSecret(ClaimsIdentity identity, string secretName)
+        private async Task CreateSecret(CaseSensitiveClaimsIdentity identity, string secretName)
         {
             var claimsPrincipal = new ClaimsPrincipal(identity);
             var request = TestFactory.CreateHttpRequestData("post");
@@ -523,7 +524,7 @@ namespace SafeExchange.Tests
             Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
 
-        private async Task RequestAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
+        private async Task RequestAccess(CaseSensitiveClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
         {
             var accessRequest = TestFactory.CreateHttpRequestData("post");
             var accessInput = new SubjectPermissionsInput()
@@ -551,13 +552,13 @@ namespace SafeExchange.Tests
             Assert.That(responseResult?.Result, Is.EqualTo("ok"));
         }
 
-        private async Task GrantAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
+        private async Task GrantAccess(CaseSensitiveClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
             => await this.InternalAccessRequest(identity, "post", secretName, subjectName, read, write, grantAccess, revokeAccess);
 
-        private async Task RevokeAccess(ClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
+        private async Task RevokeAccess(CaseSensitiveClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
             => await this.InternalAccessRequest(identity, "delete", secretName, subjectName, read, write, grantAccess, revokeAccess);
 
-        private async Task InternalAccessRequest(ClaimsIdentity identity, string method, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
+        private async Task InternalAccessRequest(CaseSensitiveClaimsIdentity identity, string method, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
         {
             var accessRequest = TestFactory.CreateHttpRequestData(method);
             var accessInput = new List<SubjectPermissionsInput>()
