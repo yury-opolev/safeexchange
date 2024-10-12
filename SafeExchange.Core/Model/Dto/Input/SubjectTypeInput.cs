@@ -7,10 +7,12 @@ namespace SafeExchange.Core.Model.Dto.Input
     using System;
 
     public enum SubjectTypeInput
-	{
-		User = 0,
+    {
+        User = 0,
 
-		Application = 100
-	}
+        Group = 1,
+
+        Application = 100
+    }
 }
 

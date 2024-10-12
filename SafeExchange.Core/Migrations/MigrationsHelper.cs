@@ -52,6 +52,11 @@ namespace SafeExchange.Core.Migrations
                 {
                     await this.RunMigration00003Async();
                 }
+
+                if ("00004".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00004Async();
+                }
             }
             finally
             {
@@ -141,6 +146,14 @@ namespace SafeExchange.Core.Migrations
                     await MigrateItem00003_02_Async(container2, item2);
                 }
             }
+        }
+
+        private async Task RunMigration00004Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+
+            // TODO: migrate existing subject permissions to add new subject type 'group'
         }
 
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)

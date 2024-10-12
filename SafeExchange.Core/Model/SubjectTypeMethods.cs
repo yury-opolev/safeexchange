@@ -17,6 +17,9 @@ namespace SafeExchange.Core.Model
                 case SubjectTypeInput.User:
                     return SubjectType.User;
 
+                case SubjectTypeInput.Group:
+                    return SubjectType.Group;
+
                 case SubjectTypeInput.Application:
                     return SubjectType.Application;
 
@@ -31,6 +34,9 @@ namespace SafeExchange.Core.Model
             {
                 case SubjectType.User:
                     return SubjectTypeOutput.User;
+
+                case SubjectType.Group:
+                    return SubjectTypeOutput.Group;
 
                 case SubjectType.Application:
                     return SubjectTypeOutput.Application;
