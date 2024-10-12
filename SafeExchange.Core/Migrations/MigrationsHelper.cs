@@ -52,6 +52,11 @@ namespace SafeExchange.Core.Migrations
                 {
                     await this.RunMigration00003Async();
                 }
+
+                if ("00004".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00004Async();
+                }
             }
             finally
             {
@@ -143,6 +148,46 @@ namespace SafeExchange.Core.Migrations
             }
         }
 
+        private async Task RunMigration00004Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+
+            // TODO: migrate existing subject permissions to add new subject type 'group'
+            var container1 = database.GetContainer("GroupDictionary");
+            var query1 = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.DisplayName)");
+            using FeedIterator<MigrationItem00004_1> feed1 =
+                container1.GetItemQueryIterator<MigrationItem00004_1>(queryDefinition: query1);
+
+            var groupMails = new List<string>();
+            while (feed1.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00004_1> response1 = await feed1.ReadNextAsync();
+                foreach (MigrationItem00004_1 item1 in response1)
+                {
+                    await MigrateItem00004_01_Async(container1, item1);
+                    groupMails.Add(item1.GroupMail);
+                }
+            }
+
+            var container2 = database.GetContainer("SubjectPermissions");
+            var query2 = new QueryDefinition("SELECT * FROM c WHERE c.SubjectType = 0");
+            using FeedIterator<MigrationItem00004_2> feed2 =
+                container2.GetItemQueryIterator<MigrationItem00004_2>(queryDefinition: query2);
+
+            while (feed2.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00004_2> response2 = await feed2.ReadNextAsync();
+                foreach (MigrationItem00004_2 item2 in response2)
+                {
+                    if (groupMails.Contains(item2.SubjectName))
+                    {
+                        await MigrateItem00004_02_Async(container2, item2);
+                    }
+                }
+            }
+        }
+
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)
         {
             this.log.LogInformation($"{nameof(MigrateItem00002Async)}, item '{item.id}'.");
@@ -193,6 +238,46 @@ namespace SafeExchange.Core.Migrations
             using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
 
             this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
+        }
+
+        private async Task MigrateItem00004_01_Async(Container container, MigrationItem00004_1 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00004_01_Async)}, item '{item.id}'.");
+
+            var response = await container.ReadItemStreamAsync(item.id, new PartitionKey(item.PartitionKey));
+            using var streamReader = new StreamReader(response.Content);
+
+            var contentString = await streamReader.ReadToEndAsync();
+            var newContentString = contentString.Replace("\"GroupMail", $"\"DisplayName\": \"{item.GroupMail}\", \"GroupMail");
+
+            using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
+            using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
+
+            this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
+        }
+
+        private async Task MigrateItem00004_02_Async(Container container, MigrationItem00004_2 permissionsItem)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00004_02_Async)}, item '{permissionsItem.id}'.");
+
+            var response = await container.ReadItemStreamAsync(permissionsItem.id, new PartitionKey(permissionsItem.PartitionKey));
+            using var streamReader = new StreamReader(response.Content);
+
+            var newPermissionsItem = new MigrationItem00004_2(permissionsItem)
+            {
+                SubjectType = 1,
+                id = $"{permissionsItem.SecretName}|{1}|{permissionsItem.SubjectName}"
+            };
+
+            var contentString = await streamReader.ReadToEndAsync();
+
+            var newContentString = contentString.Replace("\"SubjectType\":0,", "\"SubjectType\":1,");
+            newContentString = newContentString.Replace(permissionsItem.id, newPermissionsItem.id);
+
+            using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
+            using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, permissionsItem.id, new PartitionKey(permissionsItem.PartitionKey));
+
+            this.log.LogInformation($"Item '{permissionsItem.id}' -> '{newPermissionsItem.id}', replace {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
         }
 
         private async Task MigrateItem00003_02_Async(Container container, MigrationItem00003 item)
