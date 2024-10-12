@@ -211,16 +211,16 @@ namespace SafeExchange.Core.Permissions
                 return false;
             }
 
-            var existingPermissions = await this.GetAllPermissionsAsync(secretName);
-            foreach (var existingPermission in existingPermissions)
+            var groupPermissions = await this.GetGroupPermissionsAsync(secretName);
+            foreach (var groupPermission in groupPermissions)
             { 
-                if (!this.TryGetGroup(existingPermission.SubjectName, out var group))
+                if (!this.TryGetGroup(groupPermission.SubjectName, out var group))
                 {
                     continue;
                 }
 
                 var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(group?.GroupId));
-                if (foundGroup != default && IsPresentPermission(existingPermission, permission))
+                if (foundGroup != default && IsPresentPermission(groupPermission, permission))
                 {
                     this.logger.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {existingPermission.SubjectName} ({foundGroup.AadGroupId}).");
                     return true;
@@ -242,9 +242,9 @@ namespace SafeExchange.Core.Permissions
             return group != default;
         }
 
-        private async Task<List<SubjectPermissions>> GetAllPermissionsAsync(string secretName)
+        private async Task<List<SubjectPermissions>> GetGroupPermissionsAsync(string secretName)
         {
-            return await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretName)).ToListAsync();
+            return await this.dbContext.Permissions.Where(p => p.SubjectType.Equals(SubjectType.Group) && p.SecretName.Equals(secretName)).ToListAsync();
         }
 
         public async Task<SubjectPermissions?> GetSubjectPermissionsAsync(string secretName, SubjectType subjectType, string subjectId)
