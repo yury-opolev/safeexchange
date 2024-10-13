@@ -222,7 +222,7 @@ namespace SafeExchange.Core.Permissions
                 var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(group?.GroupId));
                 if (foundGroup != default && IsPresentPermission(groupPermission, permission))
                 {
-                    this.logger.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {existingPermission.SubjectName} ({foundGroup.AadGroupId}).");
+                    this.logger.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {groupPermission.SubjectName} ({foundGroup.AadGroupId}).");
                     return true;
                 }
             }
