@@ -13,6 +13,7 @@ namespace SafeExchange.Functions.Functions
     using SafeExchange.Functions.AdminFunctions;
     using System;
     using SafeExchange.Core.Graph;
+    using Microsoft.Extensions.Configuration;
 
     public class SafeUserSearch
     {
@@ -22,9 +23,9 @@ namespace SafeExchange.Functions.Functions
 
         private readonly ILogger log;
 
-        public SafeUserSearch(SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeAdminApplications> log)
+        public SafeUserSearch(IConfiguration configuration, SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeAdminApplications> log)
         {
-            this.safeExchangeUserSearchHandler = new SafeExchangeUserSearch(dbContext, graphDataProvider, tokenHelper, globalFilters);
+            this.safeExchangeUserSearchHandler = new SafeExchangeUserSearch(configuration, dbContext, graphDataProvider, tokenHelper, globalFilters);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
