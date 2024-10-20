@@ -19,6 +19,9 @@
         },
         "settings-features-useGroupsAuthorization": {
             "value": "True"
+        },
+        "settings-features-useGraphUserSearch": {
+            "value": "True"
         }
     }
 }

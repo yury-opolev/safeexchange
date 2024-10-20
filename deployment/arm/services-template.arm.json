@@ -153,6 +153,14 @@
                 "False"
             ]
         },
+        "settings-features-useGraphUserSearch": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
         "settings-adminConfiguration-adminUsers": {
             "defaultValue": "00000000-0000-0000-0000-000000000000",
             "type": "string"
@@ -1225,6 +1233,22 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-features-useGroupsAuthorization')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseGraphUserSearch')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-useGraphUserSearch')]"
             }
         },
         {
