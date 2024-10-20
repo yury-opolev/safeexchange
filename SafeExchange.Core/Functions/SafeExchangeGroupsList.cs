@@ -43,7 +43,7 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangeApplicationsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeGroupsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -53,7 +53,7 @@ namespace SafeExchange.Core.Functions
                 default:
                     return await ActionResults.CreateResponseAsync(
                         request, HttpStatusCode.BadRequest,
-                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                        new BaseResponseObject<object> { Status = "error", Error = $"Request method '{request.Method}' not allowed." });
             }
         }
 

@@ -3,7 +3,7 @@ namespace SafeExchange.Core.Graph
 {
     using System.Collections.Generic;
 
-    public class GroupListResult
+    public class UsersListResult
     {
         public bool Success { get; set; }
 
@@ -11,6 +11,6 @@ namespace SafeExchange.Core.Graph
 
         public string ScopesToConsent { get; set; }
 
-        public IList<string> Groups { get; set; } = Array.Empty<string>();
+        public IList<GraphUserInfo> Users { get; set; } = Array.Empty<GraphUserInfo>();
     }
 }

@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Graph
 {
+    using Azure.Identity;
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
     using Microsoft.Graph.Models;
@@ -14,7 +15,9 @@ namespace SafeExchange.Core.Graph
 
     class GraphDataProvider : IGraphDataProvider
     {
-        private readonly static string[] GraphScopes = new string[] { "User.Read" };
+        private readonly static string[] MemberOfGraphScopes = [ "User.Read" ];
+
+        private readonly static string[] UserSearchGraphScopes = [ "User.ReadBasic.All" ];
 
         private readonly IConfidentialClientProvider aadClientProvider;
 
@@ -34,17 +37,26 @@ namespace SafeExchange.Core.Graph
             try
             {
                 var aadClient = this.aadClientProvider.GetConfidentialClient();
-                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GraphScopes, this.log);
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, MemberOfGraphScopes, this.log);
                 var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
 
                 var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
                 if (!tokenResult.Success)
                 {
-                    return new GroupListResult() { ConsentRequired = tokenResult.ConsentRequired };
+                    return new GroupListResult()
+                    {
+                        ConsentRequired = tokenResult.ConsentRequired,
+                        ScopesToConsent = string.Join(' ', MemberOfGraphScopes)
+                    };
                 }
 
                 var memberOf = await graphClient.Me.MemberOf.GetAsync(
-                    requestConfiguration => requestConfiguration.QueryParameters.Select = new string[] { "id" });
+                    requestConfiguration => requestConfiguration.QueryParameters.Select = [ "id" ]);
+
+                if (memberOf == null)
+                {
+                    return new GroupListResult() { Success = true, Groups = totalGroups };
+                }
 
                 var pageIterator = PageIterator<DirectoryObject, DirectoryObjectCollectionResponse>
                     .CreatePageIterator(
@@ -65,6 +77,65 @@ namespace SafeExchange.Core.Graph
             }
 
             return new GroupListResult() { Success = true, Groups = totalGroups };
+        }
+
+        public async Task<UsersListResult> TryFindUsersAsync(AccountIdAndToken accountIdAndToken, string searchString)
+        {
+            var totalUsers = new List<GraphUserInfo>(100);
+
+            try
+            {
+                var aadClient = this.aadClientProvider.GetConfidentialClient();
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, UserSearchGraphScopes, this.log);
+                var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
+
+                var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
+                if (!tokenResult.Success)
+                {
+                    return new UsersListResult()
+                    {
+                        ConsentRequired = tokenResult.ConsentRequired,
+                        ScopesToConsent = string.Join(' ', UserSearchGraphScopes)
+                    };
+                }
+
+                var foundUsers = await graphClient.Users.GetAsync(
+                    requestConfiguration =>
+                    {
+                        requestConfiguration.QueryParameters.Filter =
+                            string.Join(" or ",
+                                $"contains(displayName, '{searchString}')",
+                                $"contains(userPrincipalName, '{searchString}')",
+                                $"contains(mail, '{searchString}')");
+
+                        requestConfiguration.QueryParameters.Select = [ "displayName, userPrincipalName" ];
+                        requestConfiguration.QueryParameters.Top = totalUsers.Capacity;
+                    });
+
+                if (foundUsers == null)
+                {
+                    return new UsersListResult() { Success = true, Users = totalUsers };
+                }
+
+                var pageIterator = PageIterator<User, UserCollectionResponse>
+                    .CreatePageIterator(
+                        graphClient,
+                        foundUsers,
+                        (user) =>
+                        {
+                            totalUsers.Add(new GraphUserInfo(user.DisplayName, user.UserPrincipalName));
+                            return true;
+                        });
+
+                await pageIterator.IterateAsync();
+            }
+            catch (Exception exception)
+            {
+                this.log.LogWarning($"Cannot retrieve users, {TelemetryUtils.GetDescription(exception)}.");
+                return new UsersListResult();
+            }
+
+            return new UsersListResult() { Success = true, Users = totalUsers };
         }
     }
 }
