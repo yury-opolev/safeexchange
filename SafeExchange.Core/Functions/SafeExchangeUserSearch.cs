@@ -2,7 +2,9 @@
 namespace SafeExchange.Core.Functions
 {
     using Microsoft.Azure.Functions.Worker.Http;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
@@ -14,6 +16,8 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangeUserSearch
     {
+        private readonly Features features;
+
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly IGraphDataProvider graphDataProvider;
@@ -22,8 +26,11 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeUserSearch(SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        public SafeExchangeUserSearch(IConfiguration configuration, SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters)
         {
+            this.features = new Features();
+            configuration.GetSection("Features").Bind(this.features);
+
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
@@ -64,6 +71,17 @@ namespace SafeExchange.Core.Functions
         private async Task<HttpResponseData> HandleSearchUser(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
             => await TryCatch(request, async () =>
             {
+                if (!this.features.UseGraphUserSearch)
+                {
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.NoContent,
+                        new BaseResponseObject<List<GraphUserOutput>>
+                        {
+                            Status = "no_content",
+                            Result = []
+                        });
+                }
+
                 var searchInput = await this.TryGetSearchInputAsync(request, log);
                 if (searchInput == null)
                 {

@@ -12,14 +12,14 @@ namespace SafeExchange.Core.Configuration
 
         public bool UseGroupsAuthorization { get; set; }
 
-        public Features Clone()
-        {
-            return new Features()
+        public bool UseGraphUserSearch { get; set; }
+
+        public Features Clone() => new Features()
             {
                 UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
-                UseGroupsAuthorization = this.UseGroupsAuthorization
-            };
-        }
+                UseGroupsAuthorization = this.UseGroupsAuthorization,
+                UseGraphUserSearch = this.UseGraphUserSearch
+        };
 
         public override bool Equals(object obj)
         {
@@ -30,11 +30,13 @@ namespace SafeExchange.Core.Configuration
 
             return
                 this.UseExternalWebHookNotifications.Equals(other.UseExternalWebHookNotifications) &&
-                this.UseGroupsAuthorization.Equals(other.UseGroupsAuthorization);
+                this.UseGroupsAuthorization.Equals(other.UseGroupsAuthorization) &&
+                this.UseGraphUserSearch.Equals(other.UseGraphUserSearch);
         }
 
         public override int GetHashCode() => HashCode.Combine(
             this.UseExternalWebHookNotifications,
-            this.UseGroupsAuthorization);
+            this.UseGroupsAuthorization,
+            this.UseGraphUserSearch);
     }
 }
