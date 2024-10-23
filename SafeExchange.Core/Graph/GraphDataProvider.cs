@@ -102,14 +102,17 @@ namespace SafeExchange.Core.Graph
                 var foundUsers = await graphClient.Users.GetAsync(
                     requestConfiguration =>
                     {
-                        requestConfiguration.QueryParameters.Filter =
-                            string.Join(" or ",
-                                $"contains(displayName, '{searchString}')",
-                                $"contains(userPrincipalName, '{searchString}')",
-                                $"contains(mail, '{searchString}')");
+                        requestConfiguration.QueryParameters.Search =
+                            string.Join(" OR ",
+                                $"\"displayName:{searchString}\"",
+                                $"\"userPrincipalName:{searchString}\"",
+                                $"\"mail:{searchString}\"");
 
                         requestConfiguration.QueryParameters.Select = [ "displayName, userPrincipalName" ];
                         requestConfiguration.QueryParameters.Top = totalUsers.Capacity;
+
+                        requestConfiguration.QueryParameters.Count = true;
+                        requestConfiguration.Headers.Add("ConsistencyLevel", "eventual");
                     });
 
                 if (foundUsers == null)
