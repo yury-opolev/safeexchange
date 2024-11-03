@@ -93,6 +93,13 @@ namespace SafeExchange.Core.Functions
 
                 var accountIdAndToken = this.tokenHelper.GetAccountIdAndToken(request, principal);
                 var foundUsers = await this.graphDataProvider.TryFindUsersAsync(accountIdAndToken, searchInput.SearchString);
+                if (!foundUsers.Success)
+                {
+                    var errorMessage = foundUsers.ConsentRequired ? "User search was unsuccessful, consent required." : "User search was unsuccessful.";
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.Forbidden,
+                        ActionResults.InsufficientPermissions(errorMessage, foundUsers.ConsentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
+                }
 
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,

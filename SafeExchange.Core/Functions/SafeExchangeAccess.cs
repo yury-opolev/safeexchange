@@ -8,6 +8,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
+    using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
@@ -19,8 +20,6 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangeAccess
     {
-        private static readonly string ConsentRequiredSubStatus = "consent_required";
-
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -78,7 +77,7 @@ namespace SafeExchange.Core.Functions
                             var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
                             return await ActionResults.CreateResponseAsync(
                                 request, HttpStatusCode.Forbidden,
-                                ActionResults.InsufficientPermissions(PermissionType.GrantAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty));
+                                ActionResults.InsufficientPermissions(PermissionType.GrantAccess, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                         }
 
                         var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess);
@@ -92,7 +91,7 @@ namespace SafeExchange.Core.Functions
                             var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
                             return await ActionResults.CreateResponseAsync(
                                 request, HttpStatusCode.Forbidden,
-                                ActionResults.InsufficientPermissions(PermissionType.Read, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty));
+                                ActionResults.InsufficientPermissions(PermissionType.Read, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                         }
 
                         return await this.GetAccessListAsync(request, existingMetadata.ObjectName, log);
@@ -105,7 +104,7 @@ namespace SafeExchange.Core.Functions
                             var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
                             return await ActionResults.CreateResponseAsync(
                                 request, HttpStatusCode.Forbidden,
-                                ActionResults.InsufficientPermissions(PermissionType.RevokeAccess, secretId, consentRequired ? ConsentRequiredSubStatus : string.Empty));
+                                ActionResults.InsufficientPermissions(PermissionType.RevokeAccess, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                         }
 
                         return await this.RevokeAccessAsync(existingMetadata.ObjectName, request, log);

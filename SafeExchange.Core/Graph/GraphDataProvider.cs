@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Core.Graph
 {
-    using Azure.Identity;
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
     using Microsoft.Graph.Models;
@@ -15,6 +14,8 @@ namespace SafeExchange.Core.Graph
 
     class GraphDataProvider : IGraphDataProvider
     {
+        public const string ConsentRequiredSubStatus = "consent_required";
+
         private readonly static string[] MemberOfGraphScopes = [ "User.Read" ];
 
         private readonly static string[] UserSearchGraphScopes = [ "User.ReadBasic.All" ];
