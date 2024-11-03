@@ -53,7 +53,7 @@ namespace SafeExchange.Core.Functions
                 default:
                     return await ActionResults.CreateResponseAsync(
                         request, HttpStatusCode.BadRequest,
-                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized." });
+                        new BaseResponseObject<object> { Status = "error", Error = $"Request method '{request.Method}' not allowed." });
             }
         }
 

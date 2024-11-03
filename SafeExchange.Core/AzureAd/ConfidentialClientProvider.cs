@@ -81,7 +81,7 @@ namespace SafeExchange.Core.AzureAd
                 }
 
                 this.client = clientBuilder.Build();
-                this.recreateClientAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(3);
+                this.recreateClientAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(1);
                 this.log.LogInformation($"{nameof(ConfidentialClientProvider)} - next refresh is scheduled at {this.recreateClientAt}.");
             }
 

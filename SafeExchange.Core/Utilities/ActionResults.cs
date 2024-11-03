@@ -38,5 +38,14 @@ namespace SafeExchange.Core
             };
         }
 
+        public static BaseResponseObject<object> InsufficientPermissions(string error, string subStatus)
+        {
+            return new BaseResponseObject<object>
+            {
+                Status = "forbidden",
+                Error = error,
+                SubStatus = subStatus
+            };
+        }
     }
 }
