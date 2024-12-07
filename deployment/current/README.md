@@ -11,7 +11,7 @@
 
 ```
 az login
-az deployment group create --resource-group {GROUP NAME} --template-file ./deployment/arm/services-template.arm.json --parameters ./deployment/arm/services-parameters.arm.json
+az deployment group create --resource-group {GROUP NAME} --template-file ./deployment/current/arm/services-template.arm.json --parameters ./deployment/current/arm/services-parameters.arm.json
 ```
 5. After successful deployment, deploy static website and backend to newly created azure function.
 
