@@ -1,0 +1,27 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "safeexchange_site_name": {
+            "value": "safeexchange-staging"
+        },
+        "settings-aadClient-clientId": {
+            "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39"
+        },
+        "settings-aadClient-tenantId": {
+            "value": "1472703e-99d8-45ee-aeac-7ec3ae9ab104"
+        },
+        "settings-authentication-validAudiences": {
+            "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39,api://safeexchange-staging.onmicrosoft.com"
+        },
+        "settings-authentication-validIssuers": {
+            "value": "https://sts.windows.net/1472703e-99d8-45ee-aeac-7ec3ae9ab104/"
+        },
+        "settings-features-useGroupsAuthorization": {
+            "value": "True"
+        },
+        "settings-features-useGraphUserSearch": {
+            "value": "True"
+        }
+    }
+}

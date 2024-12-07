@@ -1,0 +1,2027 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "default_location": {
+            "defaultValue": "[resourceGroup().location]",
+            "type": "string",
+            "metadata": {
+                "description": "Default location for all resources."
+            }
+        },
+        "safeexchange_site_name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 20,
+            "metadata": {
+                "description": "Name for backend service site. Should only contain letters, numbers and hyphens, length from 3 to 20 symbols."
+            }
+        },
+        "safeexchange_dbaccount_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-db')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure Cosmos DB Account name."
+            }
+        },
+        "safeexchange_cosmosdb_database_name": {
+            "defaultValue": "safeexchange-database",
+            "type": "string",
+            "metadata": {
+                "description": "Azure Cosmos DB database name."
+            }
+        },
+        "safeexchange_kv_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-kv')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure KeyVault name."
+            }
+        },
+        "safeexchange_serverfarm_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-srvfarm')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure App Service Plan name."
+            }
+        },
+        "safeexchange_appinsights_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-insights')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure App Insights name."
+            }
+        },
+        "safeexchange_cdnprofile_endpoint_name": {
+            "defaultValue": "[parameters('safeexchange_site_name')]",
+            "type": "string",
+            "metadata": {
+                "description": "Name of CDN endpoint for web client. Defaults to 'safeexchange_site_name' parameter."
+            }
+        },
+        "safeexchange_webclientstorage_name": {
+            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'web')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure storage account name for static web client."
+            }
+        },
+        "safeexchange_webjobsstorage_name": {
+            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'wj')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure storage account name for webjobs (as backend for Azure Functions)."
+            }
+        },
+        "safeexchange_data_storage_name": {
+            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'data')]",
+            "type": "string",
+            "metadata": {
+                "description": "Azure storage account name for data blobs and queues."
+            }
+        },
+        "safeexchange_data_storage_sku": {
+            "defaultValue": "Standard_RAGRS",
+            "type": "string",
+            "allowedValues": [
+                "Premium_LRS",
+                "Premium_ZRS",
+                "Standard_GRS",
+                "Standard_GZRS",
+                "Standard_LRS",
+                "Standard_RAGRS",
+                "Standard_RAGZRS",
+                "Standard_ZRS"
+            ],
+            "metadata": {
+                "description": "Azure storage account SKU name for data blobs and queues."
+            }
+        },
+        "appinsights_workspace_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-la-workspace')]",
+            "type": "string",
+            "metadata": {
+                "description": "Log analytics workspace name."
+            }
+        },
+        "settings-aadClient-clientId": {
+            "type": "string",
+            "metadata": {
+                "description": "Microsoft Entra ID application, used for accessing safeexchange."
+            }
+        },
+        "settings-aadClient-clientSecret": {
+            "defaultValue": "",
+            "type": "securestring",
+            "metadata": {
+                "description": "Microsoft Entra ID application secret. If not specified, client certificate 'AADClient--ClientCertificate' will be used instead."
+            }
+        },
+        "settings-aadClient-tenantId": {
+            "type": "string",
+            "defaultValue": "9188040d-6c67-4c5b-b112-36a304b66dad",
+            "metadata": {
+                "description": "Microsoft Entra Tenant ID used for safeexchange instance. Default value corresponds to 'customers' tenant, i.e. a tenant where it is possible to use personal Microsoft accounts."
+            }
+        },
+        "settings-aadClient-sendX5C": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
+        "settings-authentication-validAudiences": {
+            "type": "string",
+            "metadata": {
+                "description": "Microsoft Entra ID application's audience URI, used for accessing safeexchange."
+            }
+        },
+        "settings-authentication-validIssuers": {
+            "type": "string",
+            "defaultValue": "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0",
+            "metadata": {
+                "description": ""
+            }
+        },
+        "settings-features-useGroupsAuthorization": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
+        "settings-features-useGraphUserSearch": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
+        "settings-adminConfiguration-adminUsers": {
+            "defaultValue": "00000000-0000-0000-0000-000000000000",
+            "type": "string"
+        }
+    },
+    "variables": {
+        "safeexchange_userassigned_mi_name": "[concat(parameters('safeexchange_site_name'), '-mi')]",
+        "safeexchange_userassigned_mi_resourceid": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities/', variables('safeexchange_userassigned_mi_name'))]",
+        "keyVault_role_secretsOfficer": "b86a8fe4-44ce-4948-aee5-eccb2c155cd7",
+        "keyVault_role_cryptoOfficer": "14b46e9e-c2b7-41b4-b07b-48a6ebf60603",
+        "storage_role_blobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+        "storage_role_queueDataMessageProcessor": "8a0f0c08-91a1-4084-bc3d-661d67233fed",
+        "storage_role_queueDataMessageSender": "c6a89b2d-59bc-44d0-9896-0f6e12d7b80a",
+        "storage_role_queueDataReader": "19e7f393-937e-4f77-808e-94535e297925",
+        "storage_role_storageAccountContributor": "17d1049b-9a84-46fb-8f53-869881c3d3ab",
+        "storage_role_blobDataOwner": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
+        "storage_role_queueDataContributor": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
+        "cosmosDb_role_operator": "230815da-be43-4aae-9cb4-875f7bd000aa",
+        "safeexchange_cdnprofile_name": "safeexchange-cdn",
+        "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
+        "safeexchange_staticwebsite_deployment_name": "safeexchange-blob-static-website",
+        "appinsights_workspace_retention_days": 90,
+        "appinsights_workspace_resource_permissions": true
+    },
+    "resources": [
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2021-12-01-preview",
+            "name": "[parameters('appinsights_workspace_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "sku": {
+                    "name": "PerGB2018"
+                },
+                "retentionInDays": "[variables('appinsights_workspace_retention_days')]",
+                "features": {
+                    "enableLogAccessUsingOnlyResourcePermissions": "[variables('appinsights_workspace_resource_permissions')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "name": "[variables('safeexchange_userassigned_mi_name')]",
+            "apiVersion": "2018-11-30",
+            "location": "[parameters('default_location')]"
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-10-01",
+            "name": "[variables('safeexchange_staticwebsite_deployment_name')]",
+            "resourceGroup": "[resourceGroup().name]",
+            "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                    "scope": "inner"
+                },
+                "parameters": {
+                    "staticwebsite_deployment_storage_name": {
+                        "value": "[parameters('safeexchange_webclientstorage_name')]"
+                    },
+                    "staticwebsite_deployment_location": {
+                        "value": "[parameters('default_location')]"
+                    },
+                    "template_storage_role_storageAccountContributor": {
+                        "value": "[variables('storage_role_storageAccountContributor')]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "staticwebsite_deployment_storage_name": {
+                            "type": "string"
+                        },
+                        "staticwebsite_deployment_location": {
+                            "type": "string"
+                        },
+                        "template_storage_role_storageAccountContributor": {
+                            "type": "string"
+                        }
+                    },
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+                            "name": "DeploymentScript-MI",
+                            "apiVersion": "2018-11-30",
+                            "location": "[parameters('staticwebsite_deployment_location')]"
+                        },
+                        {
+                            "type": "Microsoft.Authorization/roleAssignments",
+                            "apiVersion": "2020-04-01-preview",
+                            "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('staticwebsite_deployment_storage_name'))]",
+                            "name": "[guid(resourceGroup().id, parameters('staticwebsite_deployment_storage_name'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor')))]",
+                            "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor'))]",
+                                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')).principalId]",
+                                "principalType": "ServicePrincipal"
+                            },
+                            "dependsOn": [
+                                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]"
+                            ]
+                        },
+                        {
+                            "type": "Microsoft.Resources/deploymentScripts",
+                            "apiVersion": "2020-10-01",
+                            "name": "deploymentScript-static-webSite",
+                            "location": "[parameters('staticwebsite_deployment_location')]",
+                            "kind": "AzurePowerShell",
+                            "identity": {
+                                "type": "UserAssigned",
+                                "userAssignedIdentities": {
+                                    "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'))]": {}
+                                }
+                            },
+                            "properties": {
+                                "azPowerShellVersion": "3.0",
+                                "scriptContent": "$ErrorActionPreference = 'Stop'\n$storageAccount = Get-AzStorageAccount -ResourceGroupName $env:ResourceGroupName -AccountName $env:StorageAccountName\n\n# Enable the static website feature on the storage account.\n$ctx = $storageAccount.Context\nEnable-AzStorageStaticWebsite -Context $ctx -IndexDocument $env:IndexDocumentPath -ErrorDocument404Path $env:IndexDocumentPath\n",
+                                "retentionInterval": "PT4H",
+                                "environmentVariables": [
+                                    {
+                                        "name": "ResourceGroupName",
+                                        "value": "[resourceGroup().name]"
+                                    },
+                                    {
+                                        "name": "StorageAccountName",
+                                        "value": "[parameters('staticwebsite_deployment_storage_name')]"
+                                    },
+                                    {
+                                        "name": "IndexDocumentPath",
+                                        "value": "index.html"
+                                    }
+                                ]
+                            },
+                            "dependsOn": [
+                                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]",
+                                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('staticwebsite_deployment_storage_name'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor'))))]"
+                            ]
+                        }
+                    ],
+                    "outputs": {
+                        "staticWebsiteDomain": {
+                            "type": "string",
+                            "value": "[replace(replace(reference(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), '2023-01-01', 'Full').properties.primaryEndpoints.web, 'https://' ,''), '/', '')]"
+                        }
+                    }
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Cdn/profiles",
+            "apiVersion": "2022-11-01-preview",
+            "name": "[variables('safeexchange_cdnprofile_name')]",
+            "location": "Global",
+            "sku": {
+                "name": "Standard_Microsoft"
+            },
+            "kind": "cdn",
+            "properties": {
+                "extendedProperties": {}
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts",
+            "apiVersion": "2023-09-15",
+            "name": "[parameters('safeexchange_dbaccount_name')]",
+            "location": "[parameters('default_location')]",
+            "tags": {
+                "defaultExperience": "Core (SQL)",
+                "hidden-cosmos-mmspecial": ""
+            },
+            "kind": "GlobalDocumentDB",
+            "identity": {
+                "type": "None"
+            },
+            "properties": {
+                "publicNetworkAccess": "Enabled",
+                "enableAutomaticFailover": false,
+                "enableMultipleWriteLocations": false,
+                "isVirtualNetworkFilterEnabled": false,
+                "virtualNetworkRules": [],
+                "disableKeyBasedMetadataWriteAccess": false,
+                "enableFreeTier": false,
+                "enableAnalyticalStorage": false,
+                "analyticalStorageConfiguration": {
+                    "schemaType": "WellDefined"
+                },
+                "databaseAccountOfferType": "Standard",
+                "defaultIdentity": "FirstPartyIdentity",
+                "networkAclBypass": "None",
+                "disableLocalAuth": false,
+                "enablePartitionMerge": false,
+                "enableBurstCapacity": false,
+                "minimalTlsVersion": "Tls12",
+                "consistencyPolicy": {
+                    "defaultConsistencyLevel": "Session",
+                    "maxIntervalInSeconds": 5,
+                    "maxStalenessPrefix": 100
+                },
+                "locations": [
+                    {
+                        "locationName": "[parameters('default_location')]",
+                        "failoverPriority": 0,
+                        "isZoneRedundant": false
+                    }
+                ],
+                "cors": [],
+                "capabilities": [
+                    {
+                        "name": "EnableServerless"
+                    }
+                ],
+                "ipRules": [],
+                "backupPolicy": {
+                    "type": "Periodic",
+                    "periodicModeProperties": {
+                        "backupIntervalInMinutes": 240,
+                        "backupRetentionIntervalInHours": 8,
+                        "backupStorageRedundancy": "Geo"
+                    }
+                },
+                "networkAclBypassResourceIds": [],
+                "capacity": {
+                    "totalThroughputLimit": 4000
+                },
+                "keysMetadata": {}
+            }
+        },
+        {
+            "type": "Microsoft.Insights/components",
+            "apiVersion": "2020-02-02",
+            "name": "[parameters('safeexchange_appinsights_name')]",
+            "location": "[parameters('default_location')]",
+            "kind": "web",
+            "properties": {
+                "Application_Type": "web",
+                "RetentionInDays": 90,
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults",
+            "apiVersion": "2023-02-01",
+            "name": "[parameters('safeexchange_kv_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "tenantId": "[subscription().tenantId]",
+                "sku": {
+                    "family": "A",
+                    "name": "Standard"
+                },
+                "enabledForDeployment": false,
+                "enabledForDiskEncryption": false,
+                "enabledForTemplateDeployment": false,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 90,
+                "enableRbacAuthorization": true,
+                "vaultUri": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]",
+                "publicNetworkAccess": "Enabled"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                "[variables('safeexchange_userassigned_mi_name')]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVault_role_secretsOfficer'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name')), '2018-11-30').principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVault_role_secretsOfficer'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'crypto-officer', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVault_role_cryptoOfficer'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'blob-data-contributor', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_blobDataContributor'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-messageprocessor', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_queueDataMessageProcessor'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-messagesender', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_queueDataMessageSender'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-reader', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_data_storage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_queueDataReader'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'account-contributor', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_webjobsstorage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_storageAccountContributor'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'blob-data-owner', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_webjobsstorage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_blobDataOwner'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'queue-data-contributor', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_webjobsstorage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_queueDataContributor'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2023-01-01",
+            "name": "[parameters('safeexchange_webjobsstorage_name')]",
+            "location": "[parameters('default_location')]",
+            "sku": {
+                "name": "Standard_LRS",
+                "tier": "Standard"
+            },
+            "kind": "Storage",
+            "properties": {
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": true,
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [],
+                    "defaultAction": "Allow"
+                },
+                "supportsHttpsTrafficOnly": true,
+                "encryption": {
+                    "services": {
+                        "file": {
+                            "keyType": "Account",
+                            "enabled": true
+                        },
+                        "blob": {
+                            "keyType": "Account",
+                            "enabled": true
+                        }
+                    },
+                    "keySource": "Microsoft.Storage"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2023-01-01",
+            "name": "[parameters('safeexchange_webclientstorage_name')]",
+            "location": "[parameters('default_location')]",
+            "sku": {
+                "name": "Standard_RAGRS"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "dnsEndpointType": "Standard",
+                "defaultToOAuthAuthentication": false,
+                "publicNetworkAccess": "Enabled",
+                "allowCrossTenantReplication": true,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": true,
+                "allowSharedKeyAccess": true,
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [],
+                    "defaultAction": "Allow"
+                },
+                "supportsHttpsTrafficOnly": true,
+                "accessTier": "Hot"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2023-01-01",
+            "name": "[parameters('safeexchange_data_storage_name')]",
+            "location": "[parameters('default_location')]",
+            "sku": {
+                "name": "[parameters('safeexchange_data_storage_sku')]"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "dnsEndpointType": "Standard",
+                "defaultToOAuthAuthentication": false,
+                "publicNetworkAccess": "Enabled",
+                "allowCrossTenantReplication": true,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": true,
+                "allowSharedKeyAccess": true,
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [],
+                    "defaultAction": "Allow"
+                },
+                "supportsHttpsTrafficOnly": true,
+                "accessTier": "Hot"
+            }
+        },
+        {
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2022-09-01",
+            "name": "[parameters('safeexchange_serverfarm_name')]",
+            "location": "[parameters('default_location')]",
+            "sku": {
+                "name": "Y1",
+                "tier": "Dynamic",
+                "size": "Y1",
+                "family": "Y",
+                "capacity": 0
+            },
+            "kind": "functionapp",
+            "properties": {
+                "perSiteScaling": false,
+                "elasticScaleEnabled": false,
+                "maximumElasticWorkerCount": 1,
+                "isSpot": false,
+                "reserved": false,
+                "isXenon": false,
+                "hyperV": false,
+                "targetWorkerCount": 0,
+                "targetWorkerSizeId": 0,
+                "zoneRedundant": false
+            }
+        },
+        {
+            "type": "Microsoft.Cdn/profiles/endpoints",
+            "apiVersion": "2022-11-01-preview",
+            "name": "[concat(variables('safeexchange_cdnprofile_name'), '/', parameters('safeexchange_cdnprofile_endpoint_name'))]",
+            "location": "Global",
+            "dependsOn": [
+                "[resourceId('Microsoft.Cdn/profiles', variables('safeexchange_cdnprofile_name'))]",
+                "[variables('safeexchange_staticwebsite_deployment_name')]"
+            ],
+            "properties": {
+                "originHostHeader": "[reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value]",
+                "contentTypesToCompress": [
+                    "application/eot",
+                    "application/font",
+                    "application/font-sfnt",
+                    "application/javascript",
+                    "application/json",
+                    "application/opentype",
+                    "application/otf",
+                    "application/pkcs7-mime",
+                    "application/truetype",
+                    "application/ttf",
+                    "application/vnd.ms-fontobject",
+                    "application/xhtml+xml",
+                    "application/xml",
+                    "application/xml+rss",
+                    "application/x-font-opentype",
+                    "application/x-font-truetype",
+                    "application/x-font-ttf",
+                    "application/x-httpd-cgi",
+                    "application/x-javascript",
+                    "application/x-mpegurl",
+                    "application/x-opentype",
+                    "application/x-otf",
+                    "application/x-perl",
+                    "application/x-ttf",
+                    "font/eot",
+                    "font/ttf",
+                    "font/otf",
+                    "font/opentype",
+                    "image/svg+xml",
+                    "text/css",
+                    "text/csv",
+                    "text/html",
+                    "text/javascript",
+                    "text/js",
+                    "text/plain",
+                    "text/richtext",
+                    "text/tab-separated-values",
+                    "text/xml",
+                    "text/x-script",
+                    "text/x-component",
+                    "text/x-java-source"
+                ],
+                "isCompressionEnabled": true,
+                "isHttpAllowed": true,
+                "isHttpsAllowed": true,
+                "queryStringCachingBehavior": "IgnoreQueryString",
+                "origins": [
+                    {
+                        "name": "[replace(reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value, '.', '-')]",
+                        "properties": {
+                            "hostName": "[reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value]",
+                            "httpPort": 80,
+                            "httpsPort": 443,
+                            "originHostHeader": "[reference(variables('safeexchange_staticwebsite_deployment_name')).outputs.staticWebsiteDomain.value]",
+                            "priority": 1,
+                            "weight": 1000,
+                            "enabled": true
+                        }
+                    }
+                ],
+                "originGroups": [],
+                "geoFilters": []
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "[parameters('safeexchange_cosmosdb_database_name')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/00000000-0000-0000-0000-000000000001')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "roleName": "Cosmos DB Built-in Data Reader",
+                "type": "BuiltInRole",
+                "assignableScopes": [
+                    "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+                ],
+                "permissions": [
+                    {
+                        "dataActions": [
+                            "Microsoft.DocumentDB/databaseAccounts/readMetadata",
+                            "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/executeQuery",
+                            "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/readChangeFeed",
+                            "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/read"
+                        ],
+                        "notDataActions": []
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/00000000-0000-0000-0000-000000000002')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "roleName": "Cosmos DB Built-in Data Contributor",
+                "type": "BuiltInRole",
+                "assignableScopes": [
+                    "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+                ],
+                "permissions": [
+                    {
+                        "dataActions": [
+                            "Microsoft.DocumentDB/databaseAccounts/readMetadata",
+                            "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/*",
+                            "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/*"
+                        ],
+                        "notDataActions": []
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+            "apiVersion": "2023-11-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', guid('cosmosdb-builtin-datacontributor', 'systemassigned-mi'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', parameters('safeexchange_dbaccount_name'), '00000000-0000-0000-0000-000000000002')]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', parameters('safeexchange_dbaccount_name'), '00000000-0000-0000-0000-000000000002')]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_dbaccount_name'), 'cosmosdb-operator', 'systemassigned-mi')]",
+            "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cosmosDb_role_operator'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/keys",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CryptoKeyEncryptionKey')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "kty": "RSA",
+                "keySize": 4096
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--ClientId')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-clientId')]"
+            }
+        },
+        {
+            "condition": "[not(empty(parameters('settings-aadClient-clientSecret')))]",
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--ClientSecret')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-clientSecret')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--TenantId')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-tenantId')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AADClient--SendX5C')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-aadClient-sendX5C')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AccessTickets--AccessTicketTimeout')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "00:05:00.000"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/AdminConfiguration--AdminUsers')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-adminConfiguration-adminUsers')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--MetadataAddress')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://login.microsoftonline.com/', parameters('settings-aadClient-tenantId'), '/v2.0/.well-known/openid-configuration')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--Authority')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://login.microsoftonline.com/', parameters('settings-aadClient-tenantId'))]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidateAudience')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "True"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidateIssuer')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "True"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidAudiences')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-authentication-validAudiences')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--ValidIssuers')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-authentication-validIssuers')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--AccountName')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('safeexchange_dbaccount_name')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--CosmosDbEndpoint')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_dbaccount_name'), '.documents.azure.com:443/')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--DatabaseName')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('safeexchange_cosmosdb_database_name')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--ResourceGroupName')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[resourceGroup().name]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/CosmosDb--SubscriptionId')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[subscription().subscriptionId]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Crypto--BlobServiceUri')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_data_storage_name'), '.blob.core.windows.net/')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Crypto--ContainerName')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "cryptoblobs"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Crypto--KeyName')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "CryptoKeyEncryptionKey"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseExternalWebHookNotifications')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "True"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseGroupsAuthorization')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-useGroupsAuthorization')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseGraphUserSearch')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-useGraphUserSearch')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--WebClientBaseUri')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_cdnprofile_endpoint_name'), '.azureedge.net/')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Queue--QueueServiceUri')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[concat('https://', parameters('safeexchange_data_storage_name'), '.queue.core.windows.net/')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--DefaultMIClientId')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name'))).clientId]"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_webclientstorage_name'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webclientstorage_name'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                },
+                "deleteRetentionPolicy": {
+                    "allowPermanentDelete": false,
+                    "enabled": true,
+                    "days": 7
+                },
+                "isVersioningEnabled": false,
+                "changeFeed": {
+                    "enabled": false
+                },
+                "restorePolicy": {
+                    "enabled": false
+                },
+                "containerDeleteRetentionPolicy": {
+                    "enabled": true,
+                    "days": 7
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_data_storage_name'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                },
+                "deleteRetentionPolicy": {
+                    "allowPermanentDelete": false,
+                    "enabled": true,
+                    "days": 7
+                },
+                "isVersioningEnabled": false,
+                "changeFeed": {
+                    "enabled": false
+                },
+                "restorePolicy": {
+                    "enabled": false
+                },
+                "containerDeleteRetentionPolicy": {
+                    "enabled": true,
+                    "days": 7
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/queueServices",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_data_storage_name'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2019-10-01",
+            "name": "[variables('safeexchange_kv_deployment_name')]",
+            "resourceGroup": "[resourceGroup().name]",
+            "properties": {
+                "mode": "Incremental",
+                "expressionEvaluationOptions": {
+                    "scope": "inner"
+                },
+                "parameters": {
+                    "keyVaultName": {
+                        "value": "[parameters('safeexchange_kv_name')]"
+                    },
+                    "storageAccessKey": {
+                        "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',parameters('safeexchange_webjobsstorage_name'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
+                    },
+                    "storageAccessKeyExpiryTime": {
+                        "value": "[dateTimeToEpoch(dateTimeAdd(listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2023-01-01').keys[0].creationTime, 'P2Y'))]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "keyVaultName": {
+                            "type": "string"
+                        },
+                        "storageAccessKey": {
+                            "type": "securestring"
+                        },
+                        "storageAccessKeyExpiryTime": {
+                            "type": "int"
+                        }
+                    },
+                    "variables": {},
+                    "resources": [
+                        {
+                            "type": "Microsoft.KeyVault/vaults/secrets",
+                            "name": "[concat(parameters('keyVaultName'), '/StorageAccountConnectionString')]",
+                            "apiVersion": "2016-10-01",
+                            "properties": {
+                                "attributes": {
+                                    "enabled": true,
+                                    "exp": "[parameters('storageAccessKeyExpiryTime')]"
+                                },
+                                "contentType": "text/plain",
+                                "value": "[parameters('storageAccessKey')]"
+                            }
+                        }
+                    ],
+                    "outputs": {
+                        "secretUri": {
+                            "type": "string",
+                            "value": "[reference(resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), 'StorageAccountConnectionString')).secretUri]"
+                        }
+                    }
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2022-09-01",
+            "name": "[parameters('safeexchange_site_name')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
+                "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]",
+                "[variables('safeexchange_kv_deployment_name')]",
+                "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]"
+            ],
+            "tags": {},
+            "kind": "functionapp",
+            "identity": {
+                "type": "SystemAssigned, UserAssigned",
+                "userAssignedIdentities": {
+                    "[variables('safeexchange_userassigned_mi_resourceid')]": {}
+                }
+            },
+            "properties": {
+                "enabled": true,
+                "hostNameSslStates": [
+                    {
+                        "name": "[concat(parameters('safeexchange_site_name'), '.azurewebsites.net')]",
+                        "sslState": "Disabled",
+                        "hostType": "Standard"
+                    },
+                    {
+                        "name": "[concat(parameters('safeexchange_site_name'), '.scm.azurewebsites.net')]",
+                        "sslState": "Disabled",
+                        "hostType": "Repository"
+                    }
+                ],
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
+                "reserved": false,
+                "isXenon": false,
+                "hyperV": false,
+                "vnetRouteAllEnabled": false,
+                "vnetImagePullEnabled": false,
+                "vnetContentShareEnabled": false,
+                "siteConfig": {
+                    "numberOfWorkers": 1,
+                    "acrUseManagedIdentityCreds": false,
+                    "alwaysOn": false,
+                    "http20Enabled": true,
+                    "functionAppScaleLimit": 200,
+                    "minimumElasticInstanceCount": 0,
+                    "appSettings": [
+                        {
+                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                            "value": "~4"
+                        },
+                        {
+                            "name": "WEBSITE_RUN_FROM_PACKAGE",
+                            "value": "1"
+                        },
+                        {
+                            "name": "WEBSITE_LOAD_USER_PROFILE",
+                            "value": "1"
+                        },
+                        {
+                            "name": "FUNCTIONS_WORKER_RUNTIME",
+                            "value": "dotnet-isolated"
+                        },
+                        {
+                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+                            "value": "[reference(concat('Microsoft.Insights/components/', parameters('safeexchange_appinsights_name'))).InstrumentationKey]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                            "value": "[concat('@Microsoft.KeyVault(SecretUri=', reference(variables('safeexchange_kv_deployment_name')).outputs.secretUri.value, ')')]"
+                        },
+                        {
+                            "name": "AzureWebJobsStorage__accountname",
+                            "value": "[parameters('safeexchange_webjobsstorage_name')]"
+                        },
+                        {
+                            "name": "KEYVAULT_BASEURI",
+                            "value": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]"
+                        },
+                        {
+                            "name": "DelayedTasksQueue__credential",
+                            "value": "managedidentity"
+                        },
+                        {
+                            "name": "DelayedTasksQueue__queueServiceUri",
+                            "value": "[concat('@Microsoft.KeyVault(SecretUri=https://', parameters('safeexchange_kv_name'), '.vault.azure.net/secrets/Queue--QueueServiceUri/)')]"
+                        }
+                    ]
+                },
+                "scmSiteAlsoStopped": false,
+                "clientAffinityEnabled": false,
+                "clientCertEnabled": false,
+                "clientCertMode": "Required",
+                "hostNamesDisabled": false,
+                "containerSize": 1536,
+                "dailyMemoryTimeQuota": 0,
+                "httpsOnly": true,
+                "redundancyMode": "None",
+                "storageAccountRequired": false,
+                "keyVaultReferenceIdentity": "[variables('safeexchange_userassigned_mi_resourceid')]"
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites/config",
+            "apiVersion": "2022-09-01",
+            "name": "[concat(parameters('safeexchange_site_name'), '/web')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "tags": {},
+            "properties": {
+                "numberOfWorkers": 1,
+                "defaultDocuments": [
+                    "Default.htm",
+                    "Default.html",
+                    "Default.asp",
+                    "index.htm",
+                    "index.html",
+                    "iisstart.htm",
+                    "default.aspx",
+                    "index.php"
+                ],
+                "netFrameworkVersion": "v8.0",
+                "requestTracingEnabled": false,
+                "remoteDebuggingEnabled": false,
+                "httpLoggingEnabled": false,
+                "acrUseManagedIdentityCreds": false,
+                "logsDirectorySizeLimit": 35,
+                "detailedErrorLoggingEnabled": false,
+                "publishingUsername": "$safeexchange",
+                "scmType": "None",
+                "use32BitWorkerProcess": false,
+                "webSocketsEnabled": false,
+                "alwaysOn": false,
+                "managedPipelineMode": "Integrated",
+                "virtualApplications": [
+                    {
+                        "virtualPath": "/",
+                        "physicalPath": "site\\wwwroot",
+                        "preloadEnabled": false
+                    }
+                ],
+                "loadBalancing": "LeastRequests",
+                "experiments": {
+                    "rampUpRules": []
+                },
+                "autoHealEnabled": false,
+                "vnetRouteAllEnabled": false,
+                "vnetPrivatePortsCount": 0,
+                "cors": {
+                    "allowedOrigins": [
+                        "https://portal.azure.com",
+                        "https://localhost:5001",
+                        "[concat('https://', parameters('safeexchange_cdnprofile_endpoint_name'), '.azureedge.net')]"
+                    ],
+                    "supportCredentials": false
+                },
+                "localMySqlEnabled": false,
+                "ipSecurityRestrictions": [
+                    {
+                        "ipAddress": "Any",
+                        "action": "Allow",
+                        "priority": 2147483647,
+                        "name": "Allow all",
+                        "description": "Allow all access"
+                    }
+                ],
+                "scmIpSecurityRestrictions": [
+                    {
+                        "ipAddress": "Any",
+                        "action": "Allow",
+                        "priority": 2147483647,
+                        "name": "Allow all",
+                        "description": "Allow all access"
+                    }
+                ],
+                "scmIpSecurityRestrictionsUseMain": false,
+                "http20Enabled": true,
+                "minTlsVersion": "1.2",
+                "scmMinTlsVersion": "1.2",
+                "ftpsState": "FtpsOnly",
+                "preWarmedInstanceCount": 0,
+                "functionAppScaleLimit": 200,
+                "functionsRuntimeScaleMonitoringEnabled": false,
+                "minimumElasticInstanceCount": 0,
+                "azureStorageAccounts": {}
+            }
+        },
+        {
+            "type": "Microsoft.Web/sites/hostNameBindings",
+            "apiVersion": "2022-09-01",
+            "name": "[concat(parameters('safeexchange_site_name'), '/', parameters('safeexchange_site_name'), '.azurewebsites.net')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "siteName": "[parameters('safeexchange_site_name')]",
+                "hostNameType": "Verified"
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/AccessRequests')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "AccessRequests",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/Applications')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "Applications",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/AadTenantId",
+                                    "/AadClientId"
+                                ]
+                            },
+                            {
+                                "paths": [
+                                    "/DisplayName"
+                                ]
+                            }
+                        ]
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/GroupDictionary')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "GroupDictionary",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/ObjectMetadata')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "ObjectMetadata",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/SubjectPermissions')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "SubjectPermissions",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/Users')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "Users",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash"
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/AadTenantId",
+                                    "/AadObjectId"
+                                ]
+                            },
+                            {
+                                "paths": [
+                                    "/AadUpn"
+                                ]
+                            }
+                        ]
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/WebhookNotificationData')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "WebhookNotificationData",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/WebhookSubscriptions')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "WebhookSubscriptions",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_webclientstorage_name'), '/default/$web')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('safeexchange_webclientstorage_name'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webclientstorage_name'))]"
+            ],
+            "properties": {
+                "immutableStorageWithVersioning": {
+                    "enabled": false
+                },
+                "defaultEncryptionScope": "$account-encryption-key",
+                "denyEncryptionScopeOverride": false,
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_data_storage_name'), '/default/cryptoblobs')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('safeexchange_data_storage_name'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
+            ],
+            "properties": {
+                "immutableStorageWithVersioning": {
+                    "enabled": false
+                },
+                "defaultEncryptionScope": "$account-encryption-key",
+                "denyEncryptionScopeOverride": false,
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/queueServices/queues",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_data_storage_name'), '/default/delayed-webhooks')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/queueServices', parameters('safeexchange_data_storage_name'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
+            ],
+            "properties": {
+                "metadata": {}
+            }
+        }
+    ]
+}

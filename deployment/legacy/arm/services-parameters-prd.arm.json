@@ -1,0 +1,48 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "default_location": {
+            "value": "northeurope"
+        },
+        "safeexchange_site_name": {
+            "value": "safeexchange-backend"
+        },
+        "safeexchange_dbaccount_name": {
+            "value": "safeexchange-backend"
+        },
+        "safeexchange_cosmosdb_database_name": {
+            "value": "safeexchange"
+        },
+        "safeexchange_kv_name": {
+            "value": "safeexchange-backend"
+        },
+        "safeexchange_cdnprofile_endpoint_name": {
+            "value": "safeexchange"
+        },
+        "safeexchange_data_storage_name": {
+            "value": "safeexchangebackend"
+        },
+        "settings-aadClient-clientId": {
+            "value": "b75602e2-2c3b-446b-9c92-77021db634eb"
+        },
+        "settings-aadClient-clientSecret": {
+            "value": ""
+        },
+        "settings-aadClient-tenantId": {
+            "value": "9188040d-6c67-4c5b-b112-36a304b66dad"
+        },
+        "settings-authentication-validAudiences": {
+            "value": "b75602e2-2c3b-446b-9c92-77021db634eb,https://spaceoysteroutlook.onmicrosoft.com"
+        },
+        "settings-authentication-validIssuers": {
+            "value": "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0"
+        },
+        "settings-features-useGroupsAuthorization": {
+            "value": "False"
+        },
+        "settings-features-useGraphUserSearch": {
+            "value": "False"
+        }
+    }
+}
