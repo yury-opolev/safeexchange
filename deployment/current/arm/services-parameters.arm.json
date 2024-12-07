@@ -1,0 +1,24 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "safeexchange_site_name": {
+            "value": null
+        },
+        "safeexchange_website_afd_endpoint": {
+            "value": null
+        },
+        "settings-aadClient-clientId": {
+            "value": null
+        },
+        "settings-aadClient-tenantId": {
+            "value": null
+        },
+        "settings-authentication-validAudiences": {
+            "value": null
+        },
+        "settings-authentication-validIssuers": {
+            "value": null
+        }
+    }
+}
