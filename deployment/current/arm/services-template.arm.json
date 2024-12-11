@@ -578,7 +578,7 @@
             "kind": "Storage",
             "properties": {
                 "minimumTlsVersion": "TLS1_2",
-                "allowBlobPublicAccess": true,
+                "allowBlobPublicAccess": false,
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
@@ -612,12 +612,12 @@
             "kind": "StorageV2",
             "properties": {
                 "dnsEndpointType": "Standard",
-                "defaultToOAuthAuthentication": false,
+                "defaultToOAuthAuthentication": true,
                 "publicNetworkAccess": "Enabled",
                 "allowCrossTenantReplication": true,
                 "minimumTlsVersion": "TLS1_2",
-                "allowBlobPublicAccess": true,
-                "allowSharedKeyAccess": true,
+                "allowBlobPublicAccess": false,
+                "allowSharedKeyAccess": false,
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
@@ -639,12 +639,12 @@
             "kind": "StorageV2",
             "properties": {
                 "dnsEndpointType": "Standard",
-                "defaultToOAuthAuthentication": false,
+                "defaultToOAuthAuthentication": true,
                 "publicNetworkAccess": "Enabled",
                 "allowCrossTenantReplication": true,
                 "minimumTlsVersion": "TLS1_2",
-                "allowBlobPublicAccess": true,
-                "allowSharedKeyAccess": true,
+                "allowBlobPublicAccess": false,
+                "allowSharedKeyAccess": false,
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
