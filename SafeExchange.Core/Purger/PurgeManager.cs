@@ -86,7 +86,9 @@ namespace SafeExchange.Core.Purger
         {
             foreach (var chunk in content.Chunks)
             {
+                this.log.LogInformation($"Deleting blob (if exists) for content '{content.ContentName}' (status: {content.Status}), chunk: '{chunk.ChunkName}'.");
                 await this.blobHelper.DeleteBlobIfExistsAsync(chunk.ChunkName);
+                this.log.LogInformation($"Deleted blob (if existed) for content '{content.ContentName}' (status: {content.Status}), chunk: '{chunk.ChunkName}'.");
             }
         }
 

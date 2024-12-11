@@ -137,7 +137,9 @@ namespace SafeExchange.Core.Functions
                     permission &= ~PermissionType.RevokeAccess;
                 }
 
-                await this.permissionsManager.SetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permission);
+                var subjectType = permissionInput.SubjectType.ToModel();
+                log.LogInformation($"Setting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                await this.permissionsManager.SetPermissionAsync(subjectType, permissionInput.SubjectName, secretId, permission);
             }
 
             await this.dbContext.SaveChangesAsync();
@@ -175,7 +177,10 @@ namespace SafeExchange.Core.Functions
 
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
             {
-                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permissionInput.GetPermissionType());
+                var permission = permissionInput.GetPermissionType();
+                var subjectType = permissionInput.SubjectType.ToModel();
+                log.LogInformation($"Unsetting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permission);
             }
 
             await this.dbContext.SaveChangesAsync();
