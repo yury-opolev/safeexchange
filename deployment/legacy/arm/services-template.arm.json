@@ -354,7 +354,7 @@
                 "databaseAccountOfferType": "Standard",
                 "defaultIdentity": "FirstPartyIdentity",
                 "networkAclBypass": "None",
-                "disableLocalAuth": false,
+                "disableLocalAuth": true,
                 "enablePartitionMerge": false,
                 "enableBurstCapacity": false,
                 "minimalTlsVersion": "Tls12",
