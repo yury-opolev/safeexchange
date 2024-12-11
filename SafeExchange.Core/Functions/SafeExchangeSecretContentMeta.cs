@@ -184,6 +184,8 @@ namespace SafeExchange.Core.Functions
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
+            log.LogInformation($"Created content meta for '{secretId}': {newContent.ContentName} ({(newContent.IsMain ? "main" : "not main")}), status: {newContent.Status}.");
+
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = newContent.ToDto() });
@@ -253,6 +255,8 @@ namespace SafeExchange.Core.Functions
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
+            log.LogInformation($"Updated content meta for '{secretId}': {existingContent.ContentName} ({(existingContent.IsMain ? "main" : "not main")}), status: {existingContent.Status}.");
+
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
@@ -305,6 +309,8 @@ namespace SafeExchange.Core.Functions
             }
 
             await this.DeleteAllChunksAsync(existingMetadata, existingContent, false, log);
+
+            log.LogInformation($"Dropped content meta for '{secretId}': {existingContent.ContentName} ({(existingContent.IsMain ? "main" : "not main")}), status: {existingContent.Status}.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -368,6 +374,8 @@ namespace SafeExchange.Core.Functions
 
             await this.DeleteAllChunksAsync(existingMetadata, existingContent, true, log);
 
+            log.LogInformation($"Deleted content meta for '{secretId}': {existingContent.ContentName} ({(existingContent.IsMain ? "main" : "not main")}), status: {existingContent.Status}.");
+
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
@@ -376,6 +384,8 @@ namespace SafeExchange.Core.Functions
 
         private async Task DeleteAllChunksAsync(ObjectMetadata metadata, ContentMetadata content, bool removeContent, ILogger log)
         {
+            log.LogInformation($"Deleting all chunks for content '{content.ContentName}', {content.Chunks.Count} chunks. {(removeContent ? "Remove content." : "Do not remove content.")}");
+
             try
             {
                 content.Status = ContentStatus.Updating;
