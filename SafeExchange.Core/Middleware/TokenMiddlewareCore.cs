@@ -147,7 +147,7 @@ namespace SafeExchange.Core.Middleware
             {
                 user.ConsentRequired = userGroupsResult.ConsentRequired;
                 user.GroupSyncNotBefore = utcNow + GroupSyncDelay;
-                user.Groups = userGroupsResult.Groups.Select(g => new UserGroup() { AadGroupId = g }).ToList();
+                user.Groups = userGroupsResult.GroupIds.Select(g => new UserGroup() { AadGroupId = g }).ToList();
             }
 
             await this.dbContext.SaveChangesAsync();

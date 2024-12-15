@@ -20,6 +20,8 @@ namespace SafeExchange.Core.Graph
 
         private readonly static string[] UserSearchGraphScopes = [ "User.ReadBasic.All" ];
 
+        private readonly static string[] GroupSearchGraphScopes = [ "GroupMember.Read.All" ];
+
         private readonly IConfidentialClientProvider aadClientProvider;
 
         private readonly ILogger<GraphDataProvider> log;
@@ -31,7 +33,7 @@ namespace SafeExchange.Core.Graph
         }
 
         /// <inheritdoc />
-        public async Task<GroupListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
+        public async Task<GroupIdListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
         {
             var totalGroups = new List<string>();
 
@@ -44,7 +46,7 @@ namespace SafeExchange.Core.Graph
                 var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
                 if (!tokenResult.Success)
                 {
-                    return new GroupListResult()
+                    return new GroupIdListResult()
                     {
                         ConsentRequired = tokenResult.ConsentRequired,
                         ScopesToConsent = string.Join(' ', MemberOfGraphScopes)
@@ -56,7 +58,7 @@ namespace SafeExchange.Core.Graph
 
                 if (memberOf == null)
                 {
-                    return new GroupListResult() { Success = true, Groups = totalGroups };
+                    return new GroupIdListResult() { Success = true, GroupIds = totalGroups };
                 }
 
                 var pageIterator = PageIterator<DirectoryObject, DirectoryObjectCollectionResponse>
@@ -74,10 +76,10 @@ namespace SafeExchange.Core.Graph
             catch (Exception exception)
             {
                 this.log.LogWarning($"Cannot retrieve user groups, {TelemetryUtils.GetDescription(exception)}.");
-                return new GroupListResult();
+                return new GroupIdListResult();
             }
 
-            return new GroupListResult() { Success = true, Groups = totalGroups };
+            return new GroupIdListResult() { Success = true, GroupIds = totalGroups };
         }
 
         public async Task<UsersListResult> TryFindUsersAsync(AccountIdAndToken accountIdAndToken, string searchString)
@@ -140,6 +142,67 @@ namespace SafeExchange.Core.Graph
             }
 
             return new UsersListResult() { Success = true, Users = totalUsers };
+        }
+
+        public async Task<GroupsListResult> TryFindGroupsAsync(AccountIdAndToken accountIdAndToken, string searchString)
+        {
+            var totalGroups = new List<GraphGroupInfo>(100);
+
+            try
+            {
+                var aadClient = this.aadClientProvider.GetConfidentialClient();
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GroupSearchGraphScopes, this.log);
+                var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
+
+                var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
+                if (!tokenResult.Success)
+                {
+                    return new GroupsListResult()
+                    {
+                        ConsentRequired = tokenResult.ConsentRequired,
+                        ScopesToConsent = string.Join(' ', GroupSearchGraphScopes)
+                    };
+                }
+
+                var foundGroups = await graphClient.Groups.GetAsync(
+                    requestConfiguration =>
+                    {
+                        requestConfiguration.QueryParameters.Search =
+                            string.Join(" OR ",
+                                $"\"displayName:{searchString}\"",
+                                $"\"mail:{searchString}\"");
+
+                        requestConfiguration.QueryParameters.Select = ["id, displayName, mail"];
+                        requestConfiguration.QueryParameters.Top = totalGroups.Capacity;
+
+                        requestConfiguration.QueryParameters.Count = true;
+                        requestConfiguration.Headers.Add("ConsistencyLevel", "eventual");
+                    });
+
+                if (foundGroups == null)
+                {
+                    return new GroupsListResult() { Success = true, Groups = totalGroups };
+                }
+
+                var pageIterator = PageIterator<Group, GroupCollectionResponse>
+                    .CreatePageIterator(
+                        graphClient,
+                        foundGroups,
+                        (group) =>
+                        {
+                            totalGroups.Add(new GraphGroupInfo(group.Id, group.DisplayName, group.Mail));
+                            return true;
+                        });
+
+                await pageIterator.IterateAsync();
+            }
+            catch (Exception exception)
+            {
+                this.log.LogWarning($"Cannot retrieve groups, {TelemetryUtils.GetDescription(exception)}.");
+                return new GroupsListResult();
+            }
+
+            return new GroupsListResult() { Success = true, Groups = totalGroups };
         }
     }
 }

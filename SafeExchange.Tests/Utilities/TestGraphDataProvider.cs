@@ -15,14 +15,16 @@ namespace SafeExchange.Tests
 
         public readonly Dictionary<string, IList<GraphUserInfo>> FoundUsers = new();
 
-        public async Task<GroupListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
+        public readonly Dictionary<string, IList<GraphGroupInfo>> FoundGroups = new();
+
+        public async Task<GroupIdListResult> TryGetMemberOfAsync(AccountIdAndToken accountIdAndToken)
         {
             if (this.GroupMemberships.TryGetValue(accountIdAndToken.AccountId, out var result))
             {
-                return await Task.FromResult(new GroupListResult() { Success = true, Groups = result ?? [] });
+                return await Task.FromResult(new GroupIdListResult() { Success = true, GroupIds = result ?? [] });
             }
 
-            return await Task.FromResult(new GroupListResult() { Success = true, Groups = [] });
+            return await Task.FromResult(new GroupIdListResult() { Success = true, GroupIds = [] });
         }
 
         public async Task<UsersListResult> TryFindUsersAsync(AccountIdAndToken accountIdAndToken, string searchString)
@@ -33,6 +35,16 @@ namespace SafeExchange.Tests
             }
 
             return await Task.FromResult(new UsersListResult() { Success = true, Users = [] });
+        }
+
+        public async Task<GroupsListResult> TryFindGroupsAsync(AccountIdAndToken accountIdAndToken, string searchString)
+        {
+            if (this.FoundGroups.TryGetValue(accountIdAndToken.AccountId, out var result))
+            {
+                return await Task.FromResult(new GroupsListResult() { Success = true, Groups = result ?? [] });
+            }
+
+            return await Task.FromResult(new GroupsListResult() { Success = true, Groups = [] });
         }
     }
 }
