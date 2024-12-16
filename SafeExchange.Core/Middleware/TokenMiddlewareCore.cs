@@ -135,10 +135,11 @@ namespace SafeExchange.Core.Middleware
             {
                 this.log.LogInformation($"User '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}' was created in a different process, returning existing entity.");
 
-                user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
+                this.dbContext.Users.Remove(user);
+                var existingUser = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
 
-                this.log.LogInformation($"User '{userUpn}' was created previously with Id '{user.Id}'.");
-                return user;
+                this.log.LogInformation($"User '{userUpn}' already exists with Id '{existingUser.Id}'.");
+                return existingUser;
             }
         }
 
@@ -171,6 +172,7 @@ namespace SafeExchange.Core.Middleware
                 user.Groups = userGroupsResult.GroupIds.Select(g => new UserGroup() { AadGroupId = g }).ToList();
             }
 
+            this.log.LogInformation($"Updating groups for user '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}), Id {user.Id}.");
             await this.dbContext.SaveChangesAsync();
             this.log.LogInformation($"User '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}) groups synced from graph.");
         }

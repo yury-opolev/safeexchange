@@ -12,6 +12,7 @@ $runParameters = @(
     "--name", "cosmosdb-windows-emulator"
     "--detach",
     "--env", "AZURE_COSMOS_EMULATOR_IP_ADDRESS_OVERRIDE=127.0.0.1"
+    "--env", "AZURE_COSMOS_EMULATOR_ARGS=/DisableRateLimiting"
 )
 
 docker run @runParameters mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
