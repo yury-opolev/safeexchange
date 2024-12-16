@@ -220,31 +220,30 @@ namespace SafeExchange.Tests
             var request = TestFactory.CreateHttpRequestData("get");
 
             // [WHEN] The user makes 3 simultaneous calls to a service
+            var logger = TestFactory.CreateLogger(LoggerTypes.Console);
             await Task.WhenAll([
                 Task.Run(async () =>
             {
-                Console.WriteLine($"Call no. 1 started");
+                logger.LogInformation($"Call no. 1 started");
                 await tokenMiddleware1.RunAsync(request, claimsPrincipal);
-                Console.WriteLine($"Call no. 1 finished");
+                logger.LogInformation($"Call no. 1 finished");
             }),
             Task.Run(async () =>
             {
-                Console.WriteLine($"Call no. 2 started");
+                logger.LogInformation($"Call no. 2 started");
                 await tokenMiddleware2.RunAsync(request, claimsPrincipal);
-                Console.WriteLine($"Call no. 2 finished");
+                logger.LogInformation($"Call no. 2 finished");
             }),
             Task.Run(async () =>
             {
-                Console.WriteLine($"Call no. 3 started");
+                logger.LogInformation($"Call no. 3 started");
                 await tokenMiddleware3.RunAsync(request, claimsPrincipal);
-                Console.WriteLine($"Call no. 3 finished");
+                logger.LogInformation($"Call no. 3 finished");
             })]);
 
             // [THEN] User is created in the database with UPN, DisplayName, TenantId and ObjectId
             var assertionDbContext = new SafeExchangeDbContext(dbContextOptionsLocal);
             var createdUsers = await assertionDbContext.Users.Where(u => u.AadUpn.Equals("first@test.test")).ToListAsync();
-
-            Console.WriteLine($"Created {createdUsers.Count} user(s).");
 
             Assert.That(createdUsers.Count, Is.EqualTo(1));
 
