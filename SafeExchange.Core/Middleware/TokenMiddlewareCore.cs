@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Middleware
 {
+    using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
@@ -15,6 +16,7 @@ namespace SafeExchange.Core.Middleware
     using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
+    using User = Model.User;
 
     public class TokenMiddlewareCore : ITokenMiddlewareCore
     {
@@ -101,7 +103,13 @@ namespace SafeExchange.Core.Middleware
                 return default;
             }
 
-            var user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadObjectId.Equals(aadObjectId));
+            var aadTenantId = this.tokenHelper.GetTenantId(principal);
+            if (string.IsNullOrEmpty(aadTenantId))
+            {
+                return default;
+            }
+
+            var user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(aadTenantId) && u.AadObjectId.Equals(aadObjectId));
             return user ?? await this.CreateUserAsync(principal);
         }
 
@@ -115,10 +123,23 @@ namespace SafeExchange.Core.Middleware
             this.log.LogInformation($"Creating user '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}'.");
 
             var user = new User(displayName, objectId, tenantId, userUpn, userUpn);
-            var createdEntity = await this.dbContext.Users.AddAsync(user);
-            await this.dbContext.SaveChangesAsync();
+            try
+            {
+                var createdEntity = await this.dbContext.Users.AddAsync(user);
+                await this.dbContext.SaveChangesAsync();
+                return createdEntity.Entity;
+            }
+            catch (DbUpdateException dbUpdateException)
+                when (dbUpdateException.InnerException is CosmosException cosmosException &&
+                      cosmosException.StatusCode == HttpStatusCode.Conflict)
+            {
+                this.log.LogInformation($"User '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}' was created in a different process, returning existing entity.");
 
-            return createdEntity.Entity;
+                user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
+
+                this.log.LogInformation($"User '{userUpn}' was created previously with Id '{user.Id}'.");
+                return user;
+            }
         }
 
         private async ValueTask UpdateGroupsAsync(User user, HttpRequestData request, ClaimsPrincipal principal)
