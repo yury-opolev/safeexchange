@@ -1,23 +1,13 @@
 
 # how to run unit tests locally:
 
-# 1. install Cosmos Db Emulator (Docker)
-# 2. download and run Cosmos Db Emulator image:
+# 1. install Cosmos Db Emulator
+# https://learn.microsoft.com/en-us/azure/cosmos-db/emulator-release-notes
 
-docker pull mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+# 2. run Cosmos Db Emulator, open data explorer at https://localhost:8081/_explorer/index.html
+# and specify connection string in user secrets.
 
-$runParameters = @(
-    "--publish", "8081:8081"
-    "--publish", "10250-10255:10250-10255"
-    "--name", "cosmosdb-windows-emulator"
-    "--detach",
-    "--env", "AZURE_COSMOS_EMULATOR_IP_ADDRESS_OVERRIDE=127.0.0.1"
-    "--env", "AZURE_COSMOS_EMULATOR_ARGS=/DisableRateLimiting"
-)
-
-docker run @runParameters mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
-
-# might be required to install localhost SSL certificate:
+# (might be required to install localhost SSL certificate, when running in docker)
 
 Invoke-WebRequest -Uri 'https://localhost:8081/_explorer/emulator.pem' -SkipCertificateCheck -OutFile 'emulatorcert.crt'
 Import-Certificate -FilePath 'emulatorcert.crt' -CertStoreLocation 'Cert:\CurrentUser\Root'
