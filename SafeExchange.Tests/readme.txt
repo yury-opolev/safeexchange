@@ -19,18 +19,6 @@ docker run @runParameters mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator
 
 # might be required to install localhost SSL certificate:
 
-$httpCallParameters = @{
-    Uri = 'https://localhost:8081/_explorer/emulator.pem'
-    Method = 'GET'
-    OutFile = 'emulatorcert.crt'
-    SkipCertificateCheck = $True
-}
-
-Invoke-WebRequest @httpCallParameters
-
-$certificateParameters = @{
-    FilePath = 'emulatorcert.crt'
-    CertStoreLocation = 'Cert:\CurrentUser\Root'
-}
-
-Import-Certificate @certificateParameters
+Invoke-WebRequest -Uri 'https://localhost:8081/_explorer/emulator.pem' -SkipCertificateCheck -OutFile 'emulatorcert.crt'
+Import-Certificate -FilePath 'emulatorcert.crt' -CertStoreLocation 'Cert:\CurrentUser\Root'
+Remove-Item 'emulatorcert.crt'
