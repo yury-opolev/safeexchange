@@ -125,7 +125,7 @@ namespace SafeExchange.Core
                 .HasPartitionKey(pg => pg.PartitionKey);
 
             modelBuilder.Entity<PinnedGroup>()
-                .HasKey(pg => new { pg.UserId, pg.EntraTenantId, pg.EntraObjectId });
+                .HasKey(pg => new { pg.UserId, pg.GroupItemId });
         }
     }
 }

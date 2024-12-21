@@ -25,6 +25,9 @@
         },
         "settings-features-useGraphUserSearch": {
             "value": "True"
+        },
+        "settings-features-useGraphGroupSearch": {
+            "value": "False"
         }
     }
 }
