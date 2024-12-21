@@ -18,6 +18,7 @@ namespace SafeExchange.Core.Graph
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
             this.Mail = mail;
         }
+
         public string Id { get; set; }
 
         public string DisplayName { get; set; }
