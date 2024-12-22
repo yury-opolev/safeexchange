@@ -5,6 +5,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
+    using SafeExchange.Core.Functions.Admin;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
@@ -16,6 +17,10 @@ namespace SafeExchange.Core.Functions
     public class SafeExchangeGroups
     {
         private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
+
+        private static int MaxEmailLength = 320;
+
+        private static string DefaultEmailRegex = @"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
 
         private readonly SafeExchangeDbContext dbContext;
 
@@ -59,9 +64,6 @@ namespace SafeExchange.Core.Functions
 
                 case "put":
                     return await this.HandleGroupRegistration(request, groupId, subjectType, subjectId, log);
-
-                case "delete":
-                    return await this.HandleGroupDeletion(request, groupId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -138,6 +140,25 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Group Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
             }
 
+            if (!string.IsNullOrEmpty(registrationInput.Mail))
+            {
+                if (registrationInput.Mail.Length > SafeExchangeGroups.MaxEmailLength)
+                {
+                    log.LogInformation($"{nameof(registrationInput.Mail)} for '{groupId}' is too long.");
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Group mail is too long." });
+                }
+
+                if (!Regex.IsMatch(registrationInput.Mail, SafeExchangeGroups.DefaultEmailRegex))
+                {
+                    log.LogInformation($"{nameof(registrationInput.Mail)} for '{groupId}' is not in email-like format.");
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Group mail is in incorrect format." });
+                }
+            }
+
             var registeredGroup = await this.RegisterGroupAsync(groupId, registrationInput, subjectType, subjectId, log);
             log.LogInformation($"Group '{groupId}' ({registrationInput.DisplayName}, {registrationInput.Mail}) registered by {subjectType} '{subjectId}'.");
 
@@ -146,29 +167,6 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<GraphGroupOutput> { Status = "ok", Result = registeredGroup.ToDto() });
 
         }, nameof(HandleGroupRegistration), log);
-
-        private async Task<HttpResponseData> HandleGroupDeletion(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
-        {
-            var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
-            if (existingRegistration == null)
-            {
-                log.LogInformation($"Cannot delete group registration '{groupId}', as it does not exist.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NoContent,
-                    new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
-            }
-
-            this.dbContext.GroupDictionary.Remove(existingRegistration);
-            await dbContext.SaveChangesAsync();
-
-            log.LogInformation($"{subjectType} '{subjectId}' deleted group registration '{groupId}'.");
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
-
-        }, nameof(HandleGroupDeletion), log);
 
         private async Task<GroupDictionaryItem> RegisterGroupAsync(string groupId, GroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
