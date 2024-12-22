@@ -23,6 +23,8 @@ namespace SafeExchange.Core.Model
 
             this.CreatedAt = DateTimeProvider.UtcNow;
             this.CreatedBy = createdBy;
+
+            this.LastUsedAt = this.CreatedAt;
         }
 
         public string PartitionKey { get; set; }
@@ -37,6 +39,8 @@ namespace SafeExchange.Core.Model
         public DateTime CreatedAt { get; set; }
 
         public string CreatedBy { get; set; }
+
+        public DateTime LastUsedAt { get; set; }
 
         private string GetPartitionKey()
         {
