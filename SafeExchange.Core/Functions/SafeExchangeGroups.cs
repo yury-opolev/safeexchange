@@ -6,13 +6,17 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using System;
     using System.Net;
     using System.Security.Claims;
+    using System.Text.RegularExpressions;
 
     public class SafeExchangeGroups
     {
+        private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
+
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -53,7 +57,7 @@ namespace SafeExchange.Core.Functions
                 case "get":
                     return await this.HandleGroupRead(request, groupId, subjectType, subjectId, log);
 
-                case "post":
+                case "put":
                     return await this.HandleGroupRegistration(request, groupId, subjectType, subjectId, log);
 
                 case "delete":
@@ -68,34 +72,112 @@ namespace SafeExchange.Core.Functions
 
         private async Task<HttpResponseData> HandleGroupRead(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
+        {
+            var existingGroup = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
+
+            if (existingGroup == default)
             {
-                var existingGroup = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
-
-                if (existingGroup == default)
-                {
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NoContent,
-                        new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
-                }
-
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.OK,
-                    new BaseResponseObject<GroupOverviewOutput>
-                    {
-                        Status = "ok",
-                        Result = existingGroup.ToOverviewDto()
-                    });
+                    request, HttpStatusCode.NoContent,
+                    new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
+            }
 
-            }, nameof(HandleGroupRead), log);
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<GraphGroupOutput>
+                {
+                    Status = "ok",
+                    Result = existingGroup.ToDto()
+                });
+
+        }, nameof(HandleGroupRead), log);
 
         private async Task<HttpResponseData> HandleGroupRegistration(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
-            throw new NotImplementedException();
-        }
+            var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
+            if (existingRegistration != null)
+            {
+                log.LogInformation($"Group '{groupId}' is already registered.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.Created,
+                    new BaseResponseObject<GraphGroupOutput>
+                    {
+                        Status = "created",
+                        Result = existingRegistration.ToDto()
+                    });
+            }
+
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            GroupInput? registrationInput;
+            try
+            {
+                registrationInput = DefaultJsonSerializer.Deserialize<GroupInput>(requestBody);
+            }
+            catch
+            {
+                log.LogInformation($"Could not parse input data for '{groupId}'.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Group details are not provided." });
+            }
+
+            if (registrationInput is null)
+            {
+                log.LogInformation($"Input data for '{groupId}' is not provided.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Group details are not provided." });
+            }
+
+            if (!Regex.IsMatch(groupId, DefaultGuidRegex))
+            {
+                log.LogInformation($"{nameof(groupId)} is in incorrect format.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Group Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
+            }
+
+            var registeredGroup = await this.RegisterGroupAsync(groupId, registrationInput, subjectType, subjectId, log);
+            log.LogInformation($"Group '{groupId}' ({registrationInput.DisplayName}, {registrationInput.Mail}) registered by {subjectType} '{subjectId}'.");
+
+            return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<GraphGroupOutput> { Status = "ok", Result = registeredGroup.ToDto() });
+
+        }, nameof(HandleGroupRegistration), log);
 
         private async Task<HttpResponseData> HandleGroupDeletion(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
+            => await TryCatch(request, async () =>
         {
-            throw new NotImplementedException();
+            var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
+            if (existingRegistration == null)
+            {
+                log.LogInformation($"Cannot delete group registration '{groupId}', as it does not exist.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.NoContent,
+                    new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
+            }
+
+            this.dbContext.GroupDictionary.Remove(existingRegistration);
+            await dbContext.SaveChangesAsync();
+
+            log.LogInformation($"{subjectType} '{subjectId}' deleted group registration '{groupId}'.");
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(HandleGroupDeletion), log);
+
+        private async Task<GroupDictionaryItem> RegisterGroupAsync(string groupId, GroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            var groupRegistration = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
+            var entity = await this.dbContext.GroupDictionary.AddAsync(groupRegistration);
+
+            await this.dbContext.SaveChangesAsync();
+
+            return entity.Entity;
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)

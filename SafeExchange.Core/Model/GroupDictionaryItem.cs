@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Model
 {
+    using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using System;
     using System.ComponentModel.DataAnnotations;
@@ -12,6 +13,20 @@ namespace SafeExchange.Core.Model
     {
         public GroupDictionaryItem()
         { }
+
+        public GroupDictionaryItem(string groupId, GroupInput input, string createdBy)
+        {
+            this.GroupId = groupId ?? throw new ArgumentNullException(nameof(groupId));
+            this.PartitionKey = this.GetPartitionKey();
+
+            this.DisplayName = input.DisplayName ?? throw new ArgumentNullException(nameof(input.DisplayName));
+            this.GroupMail = input.Mail ?? string.Empty;
+
+            this.CreatedAt = DateTimeProvider.UtcNow;
+            this.CreatedBy = createdBy;
+
+            this.LastUsedAt = this.CreatedAt;
+        }
 
         public GroupDictionaryItem(string groupId, string displayName, string groupMail, string createdBy)
         {
@@ -52,6 +67,13 @@ namespace SafeExchange.Core.Model
         {
             DisplayName = this.DisplayName,
             GroupMail = this.GroupMail
+        };
+
+        internal GraphGroupOutput ToDto() => new()
+        {
+            Id = this.GroupId,
+            DisplayName = this.DisplayName,
+            Mail = this.GroupMail
         };
     }
 }
