@@ -1,17 +1,21 @@
 ﻿
 namespace SafeExchange.Core.Functions
 {
+    using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Graph.Models;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
     using System.Text.RegularExpressions;
+    using static System.Runtime.InteropServices.JavaScript.JSType;
 
     public class SafeExchangeGroups
     {
@@ -169,12 +173,21 @@ namespace SafeExchange.Core.Functions
 
         private async Task<GroupDictionaryItem> RegisterGroupAsync(string groupId, GroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var groupRegistration = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
-            var entity = await this.dbContext.GroupDictionary.AddAsync(groupRegistration);
-
-            await this.dbContext.SaveChangesAsync();
-
-            return entity.Entity;
+            var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
+            return await DbUtils.TryAddOrGetEntityAsync(
+                async () =>
+                {
+                    var entity = await this.dbContext.GroupDictionary.AddAsync(groupItem);
+                    await this.dbContext.SaveChangesAsync();
+                    return entity.Entity;
+                },
+                async () =>
+                {
+                    this.dbContext.GroupDictionary.Remove(groupItem);
+                    var existingGroupItem = await this.dbContext.GroupDictionary.FirstAsync(g => g.GroupId.Equals(groupId));
+                    return existingGroupItem;
+                },
+                log);
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)

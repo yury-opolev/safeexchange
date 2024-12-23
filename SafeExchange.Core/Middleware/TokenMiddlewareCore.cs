@@ -12,6 +12,7 @@ namespace SafeExchange.Core.Middleware
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -123,24 +124,24 @@ namespace SafeExchange.Core.Middleware
             this.log.LogInformation($"Creating user '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}'.");
 
             var user = new User(displayName, objectId, tenantId, userUpn, userUpn);
-            try
-            {
-                var createdEntity = await this.dbContext.Users.AddAsync(user);
-                await this.dbContext.SaveChangesAsync();
-                return createdEntity.Entity;
-            }
-            catch (DbUpdateException dbUpdateException)
-                when (dbUpdateException.InnerException is CosmosException cosmosException &&
-                      cosmosException.StatusCode == HttpStatusCode.Conflict)
-            {
-                this.log.LogInformation($"User '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}' was created in a different process, returning existing entity.");
+            return await DbUtils.TryAddOrGetEntityAsync(
+                async () =>
+                {
+                    var createdEntity = await this.dbContext.Users.AddAsync(user);
+                    await this.dbContext.SaveChangesAsync();
+                    return createdEntity.Entity;
+                },
+                async () =>
+                {
+                    this.log.LogInformation($"User '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}' was created in a different process, returning existing entity.");
 
-                this.dbContext.Users.Remove(user);
-                var existingUser = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
+                    this.dbContext.Users.Remove(user);
+                    var existingUser = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
 
-                this.log.LogInformation($"User '{userUpn}' already exists with Id '{existingUser.Id}'.");
-                return existingUser;
-            }
+                    this.log.LogInformation($"User '{userUpn}' already exists with Id '{existingUser.Id}'.");
+                    return existingUser;
+                },
+                this.log);
         }
 
         private async ValueTask UpdateGroupsAsync(User user, HttpRequestData request, ClaimsPrincipal principal)

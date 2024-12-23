@@ -8,6 +8,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -212,22 +213,40 @@ namespace SafeExchange.Core.Functions
 
         private async Task<GroupDictionaryItem> RegisterGroupAsync(string groupId, PinnedGroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var groupRegistration = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
-            var entity = await this.dbContext.GroupDictionary.AddAsync(groupRegistration);
-
-            await this.dbContext.SaveChangesAsync();
-
-            return entity.Entity;
+            var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
+            return await DbUtils.TryAddOrGetEntityAsync(
+                async () =>
+                {
+                    var entity = await this.dbContext.GroupDictionary.AddAsync(groupItem);
+                    await this.dbContext.SaveChangesAsync();
+                    return entity.Entity;
+                },
+                async () =>
+                {
+                    this.dbContext.GroupDictionary.Remove(groupItem);
+                    var existingGroupItem = await this.dbContext.GroupDictionary.FirstAsync(g => g.GroupId.Equals(groupId));
+                    return existingGroupItem;
+                },
+                log);
         }
 
         private async Task<PinnedGroup> RegisterPinnedGroupAsync(PinnedGroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
             var pinnedGroup = new PinnedGroup($"{subjectType} {subjectId}", registrationInput);
-            var entity = await this.dbContext.PinnedGroups.AddAsync(pinnedGroup);
-
-            await this.dbContext.SaveChangesAsync();
-
-            return entity.Entity;
+            return await DbUtils.TryAddOrGetEntityAsync(
+                async () =>
+                {
+                    var entity = await this.dbContext.PinnedGroups.AddAsync(pinnedGroup);
+                    await this.dbContext.SaveChangesAsync();
+                    return entity.Entity;
+                },
+                async () =>
+                {
+                    this.dbContext.PinnedGroups.Remove(pinnedGroup);
+                    var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstAsync(pg => pg.UserId.Equals(subjectId) && pg.GroupItemId.Equals(registrationInput.GroupId));
+                    return existingPinnedGroup;
+                },
+                log);
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
