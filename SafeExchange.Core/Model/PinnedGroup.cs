@@ -5,6 +5,8 @@
 namespace SafeExchange.Core.Model
 {
     using Microsoft.EntityFrameworkCore;
+    using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
     using System;
 
     [Index(nameof(UserId), nameof(GroupItemId))]
@@ -13,6 +15,16 @@ namespace SafeExchange.Core.Model
         public const string DefaultPartitionKey = "PGRP";
 
         public PinnedGroup() { }
+
+        public PinnedGroup(string userId, PinnedGroupInput input)
+        {
+            this.PartitionKey = PinnedGroup.DefaultPartitionKey;
+
+            this.UserId = userId ?? throw new ArgumentNullException(nameof(userId));
+            this.GroupItemId = input.GroupId ?? throw new ArgumentNullException(nameof(input.GroupId));
+
+            this.CreatedAt = DateTimeProvider.UtcNow;
+        }
 
         public PinnedGroup(string userId, string groupItemId)
         {

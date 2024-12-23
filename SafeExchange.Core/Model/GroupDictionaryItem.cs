@@ -28,6 +28,20 @@ namespace SafeExchange.Core.Model
             this.LastUsedAt = this.CreatedAt;
         }
 
+        public GroupDictionaryItem(string groupId, PinnedGroupInput input, string createdBy)
+        {
+            this.GroupId = groupId ?? throw new ArgumentNullException(nameof(groupId));
+            this.PartitionKey = this.GetPartitionKey();
+
+            this.DisplayName = input.GroupDisplayName ?? throw new ArgumentNullException(nameof(input.GroupDisplayName));
+            this.GroupMail = input.GroupMail ?? string.Empty;
+
+            this.CreatedAt = DateTimeProvider.UtcNow;
+            this.CreatedBy = createdBy;
+
+            this.LastUsedAt = this.CreatedAt;
+        }
+
         public GroupDictionaryItem(string groupId, string displayName, string groupMail, string createdBy)
         {
             this.GroupId = groupId ?? throw new ArgumentNullException(nameof(groupId));
@@ -74,6 +88,13 @@ namespace SafeExchange.Core.Model
             Id = this.GroupId,
             DisplayName = this.DisplayName,
             Mail = this.GroupMail
+        };
+
+        internal PinnedGroupOutput ToPinnedGroupDto() => new()
+        {
+            GroupId = this.GroupId,
+            GroupDisplayName = this.DisplayName,
+            GroupMail = this.GroupMail
         };
     }
 }
