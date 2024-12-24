@@ -25,12 +25,11 @@ namespace SafeExchange.Core.Graph
 
         public string? Mail { get; set; }
 
-        internal GraphGroupOutput ToDto(bool isPersisted) => new()
+        internal GraphGroupOutput ToDto() => new()
         {
             Id = this.Id,
             DisplayName = this.DisplayName,
-            Mail = this.Mail,
-            IsPersisted = isPersisted
+            Mail = this.Mail
         };
     }
 }

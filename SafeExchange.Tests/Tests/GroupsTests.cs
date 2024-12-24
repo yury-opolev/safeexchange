@@ -19,6 +19,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Graph;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
@@ -157,6 +158,7 @@ namespace SafeExchange.Tests
         public void Cleanup()
         {
             this.graphDataProvider.GroupMemberships.Clear();
+            this.graphDataProvider.FoundGroups.Clear();
             this.dbContext.ChangeTracker.Clear();
 
             this.dbContext.Users.RemoveRange(this.dbContext.Users.ToList());
@@ -211,7 +213,7 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var searchResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
 
-            // [THEN] Three groups are returned, no groups are persisted to the database.
+            // [THEN] Three groups are returned.
             var okObjectAccessResult = searchResponse as TestHttpResponseData;
 
             Assert.That(okObjectAccessResult, Is.Not.Null);
@@ -224,14 +226,93 @@ namespace SafeExchange.Tests
             Assert.That(responseResult.Result.Count, Is.EqualTo(3));
 
             Assert.That(responseResult.Result[0].Id, Is.EqualTo("00000001-0000-0000-0000-000000000001"));
-            Assert.That(responseResult.Result[0].IsPersisted, Is.False);
             Assert.That(responseResult.Result[1].Id, Is.EqualTo("00000001-0000-0000-0000-000000000002"));
-            Assert.That(responseResult.Result[1].IsPersisted, Is.False);
             Assert.That(responseResult.Result[2].Id, Is.EqualTo("00000001-0000-0000-0000-000000000003"));
-            Assert.That(responseResult.Result[2].IsPersisted, Is.False);
 
             existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
             Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task SearchForExistingGroup_PreviouslyPersisted()
+        {
+            // [GIVEN] Three groups exist in Entra that match search string.
+            this.graphDataProvider.FoundGroups.Add(
+                "00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001",
+                new List<GraphGroupInfo>()
+                {
+                    new GraphGroupInfo()
+                    {
+                        Id = "00000001-0000-0000-0000-000000000001",
+                        DisplayName = "First Group 2",
+                        Mail = "first.group@test.test"
+                    },
+                    new GraphGroupInfo()
+                    {
+                        Id = "00000001-0000-0000-0000-000000000002",
+                        DisplayName = "Second Group 2",
+                        Mail = null
+                    },
+                    new GraphGroupInfo()
+                    {
+                        Id = "00000001-0000-0000-0000-000000000003",
+                        DisplayName = "Third Group 2",
+                        Mail = "third.group@test.test"
+                    }
+                });
+
+            // [GIVEN] First two group items are persisted.
+            var group1 = new GroupDictionaryItem(
+                "00000001-0000-0000-0000-000000000001",
+                "First Group 1",
+                "first.group@test.test",
+                "User X");
+
+            this.dbContext.GroupDictionary.Add(group1);
+
+            var group2 = new GroupDictionaryItem(
+                "00000001-0000-0000-0000-000000000002",
+                "Second Group 1",
+                null,
+                "User X");
+
+            this.dbContext.GroupDictionary.Add(group2);
+
+            await this.dbContext.SaveChangesAsync();
+
+            // [WHEN] Search is run.
+            var searchRequest = TestFactory.CreateHttpRequestData("post");
+            var searchInput = new SearchInput()
+            {
+                SearchString = "group"
+            };
+
+            searchRequest.SetBodyAsJson(searchInput);
+
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var searchResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
+
+            // [THEN] Three groups are returned.
+            var okObjectAccessResult = searchResponse as TestHttpResponseData;
+
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GraphGroupOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(3));
+
+            Assert.That(responseResult.Result[0].Id, Is.EqualTo("00000001-0000-0000-0000-000000000001"));
+            Assert.That(responseResult.Result[0].DisplayName, Is.EqualTo("First Group 2"));
+            Assert.That(responseResult.Result[1].Id, Is.EqualTo("00000001-0000-0000-0000-000000000002"));
+            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Second Group 2"));
+            Assert.That(responseResult.Result[2].Id, Is.EqualTo("00000001-0000-0000-0000-000000000003"));
+            Assert.That(responseResult.Result[2].DisplayName, Is.EqualTo("Third Group 2"));
+
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(2));
         }
     }
 }

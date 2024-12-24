@@ -101,20 +101,12 @@ namespace SafeExchange.Core.Functions
                         ActionResults.InsufficientPermissions(errorMessage, foundGroups.ConsentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                 }
 
-                var result = new List<GraphGroupOutput>(foundGroups.Groups.Count);
-                foreach (var graphGroup in foundGroups.Groups)
-                {
-                    var foundGroupItem = await this.dbContext.GroupDictionary.FindAsync([graphGroup.Id]);
-                    var isPersisted = foundGroupItem != default;
-                    result.Add(graphGroup.ToDto(isPersisted));
-                }
-
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<List<GraphGroupOutput>>
                     {
                         Status = "ok",
-                        Result = result
+                        Result = foundGroups.Groups.Select(g => g.ToDto()).ToList()
                     });
             }, nameof(HandleSearchGroup), log);
 
