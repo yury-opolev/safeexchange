@@ -20,6 +20,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using SafeExchange.Tests.Utilities;
@@ -194,6 +195,10 @@ namespace SafeExchange.Tests
                     }
                 });
 
+            // [GIVEN] No group items are persisted.
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
             // [WHEN] Search is run.
             var searchRequest = TestFactory.CreateHttpRequestData("post");
             var searchInput = new SearchInput()
@@ -204,25 +209,28 @@ namespace SafeExchange.Tests
             searchRequest.SetBodyAsJson(searchInput);
 
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var accessResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
+            var searchResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
 
             // [THEN] Three groups are returned, no groups are persisted to the database.
-            var okObjectAccessResult = accessResponse as TestHttpResponseData;
+            var okObjectAccessResult = searchResponse as TestHttpResponseData;
 
             Assert.That(okObjectAccessResult, Is.Not.Null);
             Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GraphGroupInfo>>>();
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GraphGroupOutput>>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
             Assert.That(responseResult.Result.Count, Is.EqualTo(3));
 
             Assert.That(responseResult.Result[0].Id, Is.EqualTo("00000001-0000-0000-0000-000000000001"));
+            Assert.That(responseResult.Result[0].IsPersisted, Is.False);
             Assert.That(responseResult.Result[1].Id, Is.EqualTo("00000001-0000-0000-0000-000000000002"));
+            Assert.That(responseResult.Result[1].IsPersisted, Is.False);
             Assert.That(responseResult.Result[2].Id, Is.EqualTo("00000001-0000-0000-0000-000000000003"));
+            Assert.That(responseResult.Result[2].IsPersisted, Is.False);
 
-            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
             Assert.That(existingGroupItems.Count, Is.EqualTo(0));
         }
     }
