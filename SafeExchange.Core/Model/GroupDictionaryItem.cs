@@ -87,7 +87,8 @@ namespace SafeExchange.Core.Model
         {
             Id = this.GroupId,
             DisplayName = this.DisplayName,
-            Mail = this.GroupMail
+            Mail = this.GroupMail,
+            IsPersisted = true
         };
 
         internal PinnedGroupOutput ToPinnedGroupDto() => new()

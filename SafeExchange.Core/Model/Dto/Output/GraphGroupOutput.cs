@@ -13,5 +13,7 @@ namespace SafeExchange.Core.Model.Dto.Output
         public string DisplayName { get; set; }
 
         public string? Mail { get; set; }
+
+        public bool IsPersisted { get; set; }
     }
 }

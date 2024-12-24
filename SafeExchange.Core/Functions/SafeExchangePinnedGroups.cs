@@ -37,7 +37,7 @@ namespace SafeExchange.Core.Functions
 
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
-            string groupId,
+            string pinnedGroupId,
             ClaimsPrincipal principal,
             ILogger log)
         {
@@ -55,18 +55,26 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
 
+            if (!Regex.IsMatch(pinnedGroupId, DefaultGuidRegex))
+            {
+                log.LogInformation($"{nameof(pinnedGroupId)} is in incorrect format.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Pinned group Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
+            }
+
             log.LogInformation($"{nameof(SafeExchangePinnedGroups)} triggered by {subjectType} {subjectId}, [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandlePinnedGroupRead(request, groupId, subjectType, subjectId, log);
+                    return await this.HandlePinnedGroupRead(request, pinnedGroupId, subjectType, subjectId, log);
 
                 case "put":
-                    return await this.HandlePinnedGroupRegistration(request, groupId, subjectType, subjectId, log);
+                    return await this.HandlePinnedGroupRegistration(request, pinnedGroupId, subjectType, subjectId, log);
 
                 case "delete":
-                    return await this.HandlePinnedGroupDeletion(request, groupId, subjectType, subjectId, log);
+                    return await this.HandlePinnedGroupDeletion(request, pinnedGroupId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -129,14 +137,6 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Pinned group details are not provided." });
             }
 
-            if (!Regex.IsMatch(pinnedGroupId, DefaultGuidRegex))
-            {
-                log.LogInformation($"{nameof(pinnedGroupId)} is in incorrect format.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "error", Error = "Pinned group Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
-            }
-
             if (!string.IsNullOrEmpty(registrationInput.GroupMail))
             {
                 if (registrationInput.GroupMail.Length > SafeExchangePinnedGroups.MaxEmailLength)
@@ -163,22 +163,22 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandlePinnedGroupRegistration), log);
 
-        private async Task<HttpResponseData> HandlePinnedGroupDeletion(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandlePinnedGroupDeletion(HttpRequestData request, string pinnedGroupId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
-            var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
-            if (existingRegistration == null)
+            var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(subjectId) && pg.GroupItemId.Equals(pinnedGroupId));
+            if (existingPinnedGroup == null)
             {
-                log.LogInformation($"Cannot delete group registration '{groupId}', as it does not exist.");
+                log.LogInformation($"Cannot delete group registration '{pinnedGroupId}', as it does not exist.");
                 return await ActionResults.CreateResponseAsync(
                             request, HttpStatusCode.NoContent,
-                            new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
+                            new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{pinnedGroupId}' does not exist." });
             }
 
-            this.dbContext.GroupDictionary.Remove(existingRegistration);
+            this.dbContext.PinnedGroups.Remove(existingPinnedGroup);
             await dbContext.SaveChangesAsync();
 
-            log.LogInformation($"{subjectType} '{subjectId}' deleted group registration '{groupId}'.");
+            log.LogInformation($"{subjectType} '{subjectId}' deleted pinned group registration '{pinnedGroupId}'.");
 
             return await ActionResults.CreateResponseAsync(
                         request, HttpStatusCode.OK,

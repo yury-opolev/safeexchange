@@ -4,6 +4,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
@@ -16,6 +17,8 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangeGroupSearch
     {
+        private const int DefaultMaxDegreeOfParallelism = 5;
+
         private readonly Features features;
 
         private readonly SafeExchangeDbContext dbContext;
@@ -26,7 +29,14 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
+        private readonly int maxDegreeOfParallelism;
+
         public SafeExchangeGroupSearch(IConfiguration configuration, SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+            : this(configuration, dbContext, graphDataProvider, tokenHelper, globalFilters, DefaultMaxDegreeOfParallelism)
+        {
+        }
+
+        public SafeExchangeGroupSearch(IConfiguration configuration, SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters, int maxDegreeOfParallelism)
         {
             this.features = new Features();
             configuration.GetSection("Features").Bind(this.features);
@@ -35,6 +45,7 @@ namespace SafeExchange.Core.Functions
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.graphDataProvider = graphDataProvider ?? throw new ArgumentNullException(nameof(graphDataProvider));
+            this.maxDegreeOfParallelism = maxDegreeOfParallelism;
         }
 
         public async Task<HttpResponseData> RunSearch(
@@ -101,12 +112,23 @@ namespace SafeExchange.Core.Functions
                         ActionResults.InsufficientPermissions(errorMessage, foundGroups.ConsentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                 }
 
+                var result = new List<GraphGroupOutput>(foundGroups.Groups.Count);
+                await Parallel.ForEachAsync(
+                    foundGroups.Groups,
+                    new ParallelOptions() { MaxDegreeOfParallelism = this.maxDegreeOfParallelism },
+                    async (g, ct) =>
+                {
+                    var foundGroupItem = await this.dbContext.GroupDictionary.FindAsync([g.Id], cancellationToken: ct);
+                    var isPersisted = foundGroupItem != default;
+                    result.Add(g.ToDto(isPersisted));
+                });
+
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<List<GraphGroupOutput>>
                     {
                         Status = "ok",
-                        Result = foundGroups.Groups.Select(g => g.ToDto()).ToList()
+                        Result = result
                     });
             }, nameof(HandleSearchGroup), log);
 
