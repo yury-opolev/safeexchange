@@ -13,7 +13,7 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangePinnedGroupsList
     {
-        private const int DefaultMaxDegreeOfParallelism = 5;
+        private const int DefaultMaxDegreeOfParallelism = 3;
 
         private readonly SafeExchangeDbContext dbContext;
 
@@ -24,10 +24,16 @@ namespace SafeExchange.Core.Functions
         private readonly int maxDegreeOfParallelism;
 
         public SafeExchangePinnedGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+            : this(dbContext, tokenHelper, globalFilters, DefaultMaxDegreeOfParallelism)
+        {
+        }
+
+        public SafeExchangePinnedGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, int maxDegreeOfParallelism)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.maxDegreeOfParallelism = maxDegreeOfParallelism;
         }
 
         public async Task<HttpResponseData> RunList(
