@@ -292,7 +292,7 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var searchResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
 
-            // [THEN] Three groups are returned.
+            // [THEN] Three groups are returned from graph source.
             var okObjectAccessResult = searchResponse as TestHttpResponseData;
 
             Assert.That(okObjectAccessResult, Is.Not.Null);
