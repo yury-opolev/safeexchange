@@ -10,6 +10,7 @@ namespace SafeExchange.Tests
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
+    using Microsoft.Graph.Groups.Item.Onenote.Notebooks.GetNotebookFromWebUrl;
     using Microsoft.IdentityModel.Tokens;
     using Moq;
     using NUnit.Framework;
@@ -17,11 +18,15 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Graph;
+    using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
 
@@ -29,10 +34,6 @@ namespace SafeExchange.Tests
     public class GroupsTests
     {
         private ILogger logger;
-
-        private SafeExchangeSecretMeta secretMeta;
-
-        private SafeExchangeAccess secretAccess;
 
         private IConfiguration testConfiguration;
 
@@ -53,6 +54,8 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity firstIdentity;
         private CaseSensitiveClaimsIdentity secondIdentity;
         private CaseSensitiveClaimsIdentity thirdIdentity;
+
+        private SafeExchangeGroupSearch  groupSearch;
 
         [OneTimeSetUp]
         public void OneTimeSetup()
@@ -145,13 +148,8 @@ namespace SafeExchange.Tests
         {
             DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
 
-            this.secretMeta = new SafeExchangeSecretMeta(
-                this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
-
-            this.secretAccess = new SafeExchangeAccess(
-                this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+            this.groupSearch = new SafeExchangeGroupSearch(
+                this.testConfiguration, this.dbContext, this.graphDataProvider, this.tokenHelper, this.globalFilters);
         }
 
         [TearDown]
@@ -171,11 +169,61 @@ namespace SafeExchange.Tests
         [Test]
         public async Task SearchForExistingGroup_NotPersisted()
         {
-            // [GIVEN] TODO: ...
+            // [GIVEN] Three groups exist in Entra that match search string.
+            this.graphDataProvider.FoundGroups.Add(
+                "00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001",
+                new List<GraphGroupInfo>()
+                {
+                    new GraphGroupInfo()
+                    {
+                        Id = "00000001-0000-0000-0000-000000000001",
+                        DisplayName = "First Group",
+                        Mail = "first.group@test.test"
+                    },
+                    new GraphGroupInfo()
+                    {
+                        Id = "00000001-0000-0000-0000-000000000002",
+                        DisplayName = "Second Group",
+                        Mail = null
+                    },
+                    new GraphGroupInfo()
+                    {
+                        Id = "00000001-0000-0000-0000-000000000003",
+                        DisplayName = "Third Group",
+                        Mail = "third.group@test.test"
+                    }
+                });
 
-            // [WHEN] TODO: ...
+            // [WHEN] Search is run.
+            var searchRequest = TestFactory.CreateHttpRequestData("post");
+            var searchInput = new SearchInput()
+            {
+                SearchString = "group"
+            };
 
-            // [THEN] TODO: ...
+            searchRequest.SetBodyAsJson(searchInput);
+
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var accessResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
+
+            // [THEN] Three groups are returned, no groups are persisted to the database.
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
+
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GraphGroupInfo>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(3));
+
+            Assert.That(responseResult.Result[0].Id, Is.EqualTo("00000001-0000-0000-0000-000000000001"));
+            Assert.That(responseResult.Result[1].Id, Is.EqualTo("00000001-0000-0000-0000-000000000002"));
+            Assert.That(responseResult.Result[2].Id, Is.EqualTo("00000001-0000-0000-0000-000000000003"));
+
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
         }
     }
 }

@@ -13,27 +13,17 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangePinnedGroupsList
     {
-        private const int DefaultMaxDegreeOfParallelism = 3;
-
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
 
         private readonly GlobalFilters globalFilters;
 
-        private readonly int maxDegreeOfParallelism;
-
         public SafeExchangePinnedGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
-            : this(dbContext, tokenHelper, globalFilters, DefaultMaxDegreeOfParallelism)
-        {
-        }
-
-        public SafeExchangePinnedGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, int maxDegreeOfParallelism)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            this.maxDegreeOfParallelism = maxDegreeOfParallelism;
         }
 
         public async Task<HttpResponseData> RunList(
@@ -83,14 +73,11 @@ namespace SafeExchange.Core.Functions
                 }
 
                 var result = new List<PinnedGroupOutput>(existingPinnedGroups.Count);
-                await Parallel.ForEachAsync(
-                    existingPinnedGroups,
-                    new ParallelOptions() { MaxDegreeOfParallelism = this.maxDegreeOfParallelism },
-                    async (pg, ct) =>
-                    {
-                        var groupItem = await this.dbContext.GroupDictionary.FindAsync([pg.GroupItemId], cancellationToken: ct);
-                        result.Add(groupItem.ToPinnedGroupDto());
-                    });
+                foreach (var pinnedGroup in existingPinnedGroups)
+                {
+                    var groupItem = await this.dbContext.GroupDictionary.FindAsync([pinnedGroup.GroupItemId]);
+                    result.Add(groupItem.ToPinnedGroupDto());
+                }
 
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
