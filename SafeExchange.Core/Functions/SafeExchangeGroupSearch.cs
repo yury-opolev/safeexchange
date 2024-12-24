@@ -4,7 +4,6 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Options;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
