@@ -7,7 +7,6 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
-    using SafeExchange.Core.Model.Dto.Output;
     using System;
     using System.Net;
     using System.Security.Claims;
