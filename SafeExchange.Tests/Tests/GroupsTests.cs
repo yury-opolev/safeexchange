@@ -57,7 +57,11 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity secondIdentity;
         private CaseSensitiveClaimsIdentity thirdIdentity;
 
-        private SafeExchangeGroupSearch  groupSearch;
+        private SafeExchangeGroupSearch groupSearch;
+        private SafeExchangeGroups groups;
+        private SafeExchangeGroupsList groupsList;
+        private SafeExchangePinnedGroups pinnedGroups;
+        private SafeExchangePinnedGroupsList pinnedGroupsList;
 
         [OneTimeSetUp]
         public void OneTimeSetup()
@@ -152,6 +156,10 @@ namespace SafeExchange.Tests
 
             this.groupSearch = new SafeExchangeGroupSearch(
                 this.testConfiguration, this.dbContext, this.graphDataProvider, this.tokenHelper, this.globalFilters);
+            this.groups = new SafeExchangeGroups(this.dbContext, this.tokenHelper, this.globalFilters);
+            this.groupsList = new SafeExchangeGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
+            this.pinnedGroups = new SafeExchangePinnedGroups(this.dbContext, this.tokenHelper, this.globalFilters);
+            this.pinnedGroupsList = new SafeExchangePinnedGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
         }
 
         [TearDown]
