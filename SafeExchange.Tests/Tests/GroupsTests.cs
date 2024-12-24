@@ -10,7 +10,6 @@ namespace SafeExchange.Tests
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
-    using Microsoft.Graph.Groups.Item.Onenote.Notebooks.GetNotebookFromWebUrl;
     using Microsoft.IdentityModel.Tokens;
     using Moq;
     using NUnit.Framework;
@@ -22,8 +21,6 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
-    using SafeExchange.Core.Permissions;
-    using SafeExchange.Core.Purger;
     using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
@@ -46,12 +43,6 @@ namespace SafeExchange.Tests
         private TestGraphDataProvider graphDataProvider;
 
         private GlobalFilters globalFilters;
-
-        private IBlobHelper blobHelper;
-
-        private IPurger purger;
-
-        private IPermissionsManager permissionsManager;
 
         private CaseSensitiveClaimsIdentity firstIdentity;
         private CaseSensitiveClaimsIdentity secondIdentity;
@@ -99,11 +90,6 @@ namespace SafeExchange.Tests
             var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
 
             this.globalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>());
-
-            this.blobHelper = new TestBlobHelper();
-            this.purger = new PurgeManager(this.testConfiguration, this.blobHelper, TestFactory.CreateLogger<PurgeManager>());
-
-            this.permissionsManager = new PermissionsManager(this.testConfiguration, this.dbContext, TestFactory.CreateLogger<PermissionsManager>());
 
             this.firstIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
