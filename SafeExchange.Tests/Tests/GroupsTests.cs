@@ -160,6 +160,7 @@ namespace SafeExchange.Tests
             this.dbContext.Permissions.RemoveRange(this.dbContext.Permissions.ToList());
             this.dbContext.AccessRequests.RemoveRange(this.dbContext.AccessRequests.ToList());
             this.dbContext.GroupDictionary.RemoveRange(this.dbContext.GroupDictionary.ToList());
+            this.dbContext.PinnedGroups.RemoveRange(this.dbContext.PinnedGroups.ToList());
             this.dbContext.SaveChanges();
         }
 
@@ -307,6 +308,95 @@ namespace SafeExchange.Tests
 
             var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
             Assert.That(existingGroupItems.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task RegisterOneGroup_Sunshine()
+        {
+            // [GIVEN] No group items are persisted.
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
+            // [WHEN] New group is registered.
+            TestHttpResponseData? okObjectAccessResult = await RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011",
+                "Group Display Name",
+                "test@group.mail");
+
+            // [THEN] One group is returned.
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<GraphGroupOutput>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("created"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Id, Is.EqualTo("00000011-0000-0000-0000-000000000011"));
+            Assert.That(responseResult.Result.DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result.Mail, Is.EqualTo("test@group.mail"));
+
+            // [THEN] One group is persisted in the database.
+            existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(1));
+
+            var existingGroupItem = existingGroupItems.First();
+            Assert.That(existingGroupItem.GroupId, Is.EqualTo("00000011-0000-0000-0000-000000000011"));
+            Assert.That(existingGroupItem.DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(existingGroupItem.GroupMail, Is.EqualTo("test@group.mail"));
+        }
+
+        [Test]
+        public async Task RegisterOneGroup_MultipleTimes()
+        {
+            // [GIVEN] No group items are persisted.
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
+            // [WHEN] New group is registered.
+            TestHttpResponseData? response = await RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            response = await RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            response = await RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+
+            // [THEN] One group is returned.
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = response?.ReadBodyAsJson<BaseResponseObject<GraphGroupOutput>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Id, Is.EqualTo("00000011-0000-0000-0000-000000000011"));
+            Assert.That(responseResult.Result.DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result.Mail, Is.EqualTo("test@group.mail"));
+
+            // [THEN] One group is persisted in the database.
+            existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(1));
+
+            var existingGroupItem = existingGroupItems.First();
+            Assert.That(existingGroupItem.GroupId, Is.EqualTo("00000011-0000-0000-0000-000000000011"));
+            Assert.That(existingGroupItem.DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(existingGroupItem.GroupMail, Is.EqualTo("test@group.mail"));
+        }
+
+        private async Task<TestHttpResponseData?> RegisterGroupAsync(string groupId, string displayName, string? groupMail)
+        {
+            var groupRegistrationRequest = TestFactory.CreateHttpRequestData("put");
+            var groupInput = new GroupInput()
+            {
+                DisplayName = displayName,
+                Mail = groupMail
+            };
+
+            groupRegistrationRequest.SetBodyAsJson(groupInput);
+
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var groupResponse = await this.groups.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+
+            return groupResponse as TestHttpResponseData;
         }
     }
 }

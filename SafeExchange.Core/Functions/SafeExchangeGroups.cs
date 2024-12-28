@@ -105,10 +105,10 @@ namespace SafeExchange.Core.Functions
             {
                 log.LogInformation($"Group '{groupId}' is already registered.");
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Created,
+                    request, HttpStatusCode.OK,
                     new BaseResponseObject<GraphGroupOutput>
                     {
-                        Status = "created",
+                        Status = "ok",
                         Result = existingRegistration.ToDto()
                     });
             }
@@ -166,8 +166,8 @@ namespace SafeExchange.Core.Functions
             log.LogInformation($"Group '{groupId}' ({registrationInput.DisplayName}, {registrationInput.Mail}) registered by {subjectType} '{subjectId}'.");
 
             return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.OK,
-                    new BaseResponseObject<GraphGroupOutput> { Status = "ok", Result = registeredGroup.ToDto() });
+                    request, HttpStatusCode.Created,
+                    new BaseResponseObject<GraphGroupOutput> { Status = "created", Result = registeredGroup.ToDto() });
 
         }, nameof(HandleGroupRegistration), log);
 
