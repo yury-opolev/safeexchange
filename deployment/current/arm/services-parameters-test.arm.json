@@ -6,7 +6,7 @@
             "value": "safeexchange-staging"
         },
         "safeexchange_website_afd_endpoint": {
-            "value": "staging.safeexchange.dk"
+            "value": "www.staging.safeexchange.dk"
         },
         "settings-aadClient-clientId": {
             "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39"
