@@ -7,6 +7,7 @@ namespace SafeExchange.Tests
     using Azure.Core.Serialization;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.EntityFrameworkCore.Infrastructure;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
@@ -54,6 +55,8 @@ namespace SafeExchange.Tests
         private SafeExchangePinnedGroups pinnedGroups;
         private SafeExchangePinnedGroupsList pinnedGroupsList;
 
+        private DbContextOptions<SafeExchangeDbContext> dbContextOptions;
+
         [OneTimeSetUp]
         public void OneTimeSetup()
         {
@@ -73,11 +76,11 @@ namespace SafeExchange.Tests
                 .AddInMemoryCollection(configurationValues)
                 .Build();
 
-            var dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
+            this.dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
                 .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(GroupsTests)}Database")
                 .Options;
 
-            this.dbContext = new SafeExchangeDbContext(dbContextOptions);
+            this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
             this.dbContext.Database.EnsureCreated();
 
             this.tokenHelper = new TestTokenHelper();
@@ -318,10 +321,8 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItems.Count, Is.EqualTo(0));
 
             // [WHEN] New group is registered.
-            TestHttpResponseData? okObjectAccessResult = await RegisterGroupAsync(
-                "00000011-0000-0000-0000-000000000011",
-                "Group Display Name",
-                "test@group.mail");
+            var okObjectAccessResult = await this.RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
 
             // [THEN] One group is returned.
             Assert.That(okObjectAccessResult, Is.Not.Null);
@@ -346,6 +347,54 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task GetGroupAfterRegistration()
+        {
+            // [GIVEN] Two groups are registered.
+            await this.RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            await this.RegisterGroupAsync(
+                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", "test2@group.mail");
+
+            // [WHEN] A registered group is read.
+            var okObjectAccessResult = await this.GetGroupAsync("00000022-0000-0000-0000-000000000022");
+
+            // [THEN] The correct group is returned.
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<GraphGroupOutput>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Id, Is.EqualTo("00000022-0000-0000-0000-000000000022"));
+            Assert.That(responseResult.Result.DisplayName, Is.EqualTo("Group Display Name 2"));
+            Assert.That(responseResult.Result.Mail, Is.EqualTo("test2@group.mail"));
+        }
+
+        [Test]
+        public async Task TryGetInexistentGroup()
+        {
+            // [GIVEN] Two groups are registered.
+            await this.RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            await this.RegisterGroupAsync(
+                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", "test2@group.mail");
+
+            // [WHEN] An inexistent group is trying to be read.
+            var okObjectAccessResult = await this.GetGroupAsync("00000033-0000-0000-0000-000000000033");
+
+            // [THEN] The result that is returned is 'no content'.
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("no_content"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result, Is.EqualTo("Group registration '00000033-0000-0000-0000-000000000033' does not exist."));
+        }
+
+        [Test]
         public async Task RegisterOneGroup_MultipleTimes()
         {
             // [GIVEN] No group items are persisted.
@@ -353,7 +402,7 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItems.Count, Is.EqualTo(0));
 
             // [WHEN] New group is registered.
-            TestHttpResponseData? response = await RegisterGroupAsync(
+            var response = await RegisterGroupAsync(
                 "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
             response = await RegisterGroupAsync(
                 "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
@@ -382,7 +431,54 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItem.GroupMail, Is.EqualTo("test@group.mail"));
         }
 
-        private async Task<TestHttpResponseData?> RegisterGroupAsync(string groupId, string displayName, string? groupMail)
+        [Test]
+        public async Task RegisterOneGroup_Simultaneously()
+        {
+            // [GIVEN] No group items are persisted.
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
+            // [WHEN] New group is registered in several calls simultaneously.
+            var groupId = "00000011-0000-0000-0000-000000000011";
+            var groupDisplayName = "Group Display Name";
+            var groupMail = "test@group.mail";
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var groups1 = new SafeExchangeGroups(
+                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+            var groups2 = new SafeExchangeGroups(
+                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+            var groups3 = new SafeExchangeGroups(
+                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+
+            await Task.WhenAll([
+                Task.Run(async () =>
+                {
+                    var groupRegistrationRequest = this.CreateGroupRegistrationRequest(groupId, groupDisplayName, groupMail);
+                    await groups1.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+                }),
+                Task.Run(async () =>
+                {
+                    var groupRegistrationRequest = this.CreateGroupRegistrationRequest(groupId, groupDisplayName, groupMail);
+                    await groups2.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+                }),
+                Task.Run(async () =>
+                {
+                    var groupRegistrationRequest = this.CreateGroupRegistrationRequest(groupId, groupDisplayName, groupMail);
+                    await groups3.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+                })
+            ]);
+
+            // [THEN] One group is persisted in the database.
+            existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(1));
+
+            var existingGroupItem = existingGroupItems.First();
+            Assert.That(existingGroupItem.GroupId, Is.EqualTo("00000011-0000-0000-0000-000000000011"));
+            Assert.That(existingGroupItem.DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(existingGroupItem.GroupMail, Is.EqualTo("test@group.mail"));
+        }
+
+        private TestHttpRequestData CreateGroupRegistrationRequest(string groupId, string displayName, string? groupMail)
         {
             var groupRegistrationRequest = TestFactory.CreateHttpRequestData("put");
             var groupInput = new GroupInput()
@@ -392,7 +488,21 @@ namespace SafeExchange.Tests
             };
 
             groupRegistrationRequest.SetBodyAsJson(groupInput);
+            return groupRegistrationRequest;
+        }
 
+        private async Task<TestHttpResponseData?> RegisterGroupAsync(string groupId, string displayName, string? groupMail)
+        {
+            var groupRegistrationRequest = this.CreateGroupRegistrationRequest(groupId, displayName, groupMail);
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var groupResponse = await this.groups.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+
+            return groupResponse as TestHttpResponseData;
+        }
+
+        private async Task<TestHttpResponseData?> GetGroupAsync(string groupId)
+        {
+            var groupRegistrationRequest = TestFactory.CreateHttpRequestData("get");
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var groupResponse = await this.groups.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
 
