@@ -18,6 +18,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Functions.Admin;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
@@ -54,6 +55,8 @@ namespace SafeExchange.Tests
         private SafeExchangeGroupsList groupsList;
         private SafeExchangePinnedGroups pinnedGroups;
         private SafeExchangePinnedGroupsList pinnedGroupsList;
+
+        private SafeExchangeAdminGroups adminGroups;
 
         private DbContextOptions<SafeExchangeDbContext> dbContextOptions;
 
@@ -372,6 +375,40 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task ListGroupsAfterRegistration()
+        {
+            // [GIVEN] Three groups are registered.
+            await this.RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            await this.RegisterGroupAsync(
+                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", null);
+            await this.RegisterGroupAsync(
+                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", null);
+
+            // [WHEN] Registered groups are listed.
+            var okObjectAccessResult = await this.ListGroupsAsync();
+
+            // [THEN] The correct groups are returned.
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GroupOverviewOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(3));
+
+            Assert.That(responseResult.Result[0].DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
+
+            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 2"));
+            Assert.That(responseResult.Result[1].GroupMail, Is.Empty);
+
+            Assert.That(responseResult.Result[2].DisplayName, Is.EqualTo("Group Display Name 3"));
+            Assert.That(responseResult.Result[2].GroupMail, Is.Empty);
+        }
+
+        [Test]
         public async Task TryGetInexistentGroup()
         {
             // [GIVEN] Two groups are registered.
@@ -505,6 +542,15 @@ namespace SafeExchange.Tests
             var groupRegistrationRequest = TestFactory.CreateHttpRequestData("get");
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
             var groupResponse = await this.groups.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+
+            return groupResponse as TestHttpResponseData;
+        }
+
+        private async Task<TestHttpResponseData?> ListGroupsAsync()
+        {
+            var groupRegistrationRequest = TestFactory.CreateHttpRequestData("get");
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var groupResponse = await this.groupsList.RunList(groupRegistrationRequest, claimsPrincipal, this.logger);
 
             return groupResponse as TestHttpResponseData;
         }
