@@ -7,7 +7,6 @@ namespace SafeExchange.Tests
     using Azure.Core.Serialization;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
-    using Microsoft.EntityFrameworkCore.Infrastructure;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
@@ -49,6 +48,7 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity firstIdentity;
         private CaseSensitiveClaimsIdentity secondIdentity;
         private CaseSensitiveClaimsIdentity thirdIdentity;
+        private CaseSensitiveClaimsIdentity adminIdentity;
 
         private SafeExchangeGroupSearch groupSearch;
         private SafeExchangeGroups groups;
@@ -56,7 +56,7 @@ namespace SafeExchange.Tests
         private SafeExchangePinnedGroups pinnedGroups;
         private SafeExchangePinnedGroupsList pinnedGroupsList;
 
-        private SafeExchangeAdminGroups adminGroups;
+        private SafeExchangeAdminGroups groupsAdministration;
 
         private DbContextOptions<SafeExchangeDbContext> dbContextOptions;
 
@@ -92,7 +92,11 @@ namespace SafeExchange.Tests
             GloballyAllowedGroupsConfiguration gagc = new GloballyAllowedGroupsConfiguration();
             var groupsConfiguration = Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == gagc);
 
-            AdminConfiguration ac = new AdminConfiguration();
+            AdminConfiguration ac = new AdminConfiguration()
+            {
+                AdminUsers = "00000321-0000-0000-0000-000000000321"
+            };
+
             var adminConfiguration = Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == ac);
 
             this.globalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>());
@@ -118,6 +122,14 @@ namespace SafeExchange.Tests
                     new Claim("upn", "third@test.test"),
                     new Claim("displayname", "Third User"),
                     new Claim("oid", "00000000-0000-0000-0000-000000000003"),
+                    new Claim("tid", "00000000-0000-0000-0000-000000000001"),
+                }.AsEnumerable());
+
+            this.adminIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
+                {
+                    new Claim("upn", "adm@test.test"),
+                    new Claim("displayname", "Admin User"),
+                    new Claim("oid", "00000321-0000-0000-0000-000000000321"),
                     new Claim("tid", "00000000-0000-0000-0000-000000000001"),
                 }.AsEnumerable());
 
@@ -150,6 +162,9 @@ namespace SafeExchange.Tests
                 this.testConfiguration, this.dbContext, this.graphDataProvider, this.tokenHelper, this.globalFilters);
             this.groups = new SafeExchangeGroups(this.dbContext, this.tokenHelper, this.globalFilters);
             this.groupsList = new SafeExchangeGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
+
+            this.groupsAdministration = new SafeExchangeAdminGroups(this.dbContext, this.tokenHelper, this.globalFilters);
+
             this.pinnedGroups = new SafeExchangePinnedGroups(this.dbContext, this.tokenHelper, this.globalFilters);
             this.pinnedGroupsList = new SafeExchangePinnedGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
         }
@@ -409,6 +424,83 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task DeleteExistingGroup()
+        {
+            // [GIVEN] Three groups are registered.
+            await this.RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            await this.RegisterGroupAsync(
+                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", null);
+            await this.RegisterGroupAsync(
+                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", null);
+
+            // [WHEN] One group is deleted by admin.
+            var deletionResult = await this.DeleteGroupAsync("00000022-0000-0000-0000-000000000022", this.adminIdentity);
+
+            Assert.That(deletionResult, Is.Not.Null);
+            Assert.That(deletionResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var deletionResponse = deletionResult?.ReadBodyAsJson<BaseResponseObject<string>>();
+            Assert.That(deletionResponse?.Status, Is.EqualTo("ok"));
+            Assert.That(deletionResponse?.Error, Is.Null);
+            Assert.That(deletionResponse?.Result, Is.EqualTo("ok"));
+
+            // [THEN] The groups do not contain deleted item.
+            var okObjectAccessResult = await this.ListGroupsAsync();
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GroupOverviewOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(2));
+
+            Assert.That(responseResult.Result[0].DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
+
+            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 3"));
+            Assert.That(responseResult.Result[1].GroupMail, Is.Empty);
+        }
+
+        [Test]
+        public async Task TryDeleteExistingGroup_NotAnAdmin()
+        {
+            // [GIVEN] Three groups are registered.
+            await this.RegisterGroupAsync(
+                "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
+            await this.RegisterGroupAsync(
+                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", null);
+            await this.RegisterGroupAsync(
+                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", null);
+
+            // [WHEN] One group is tried to be deleted by non-admin.
+            var deletionResult = await this.DeleteGroupAsync("00000022-0000-0000-0000-000000000022", this.firstIdentity);
+
+            Assert.That(deletionResult, Is.Not.Null);
+            Assert.That(deletionResult?.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+
+            var deletionResponse = deletionResult?.ReadBodyAsJson<BaseResponseObject<string>>();
+            Assert.That(deletionResponse?.Status, Is.EqualTo("forbidden"));
+            Assert.That(deletionResponse?.Result, Is.Null);
+            Assert.That(deletionResponse?.Error, Is.EqualTo("Not an admin or a member of an admin group."));
+
+            // [THEN] The groups contain all previous items.
+            var okObjectAccessResult = await this.ListGroupsAsync();
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GroupOverviewOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(3));
+
+            Assert.That(responseResult.Result[0].DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
+
+            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 2"));
+            Assert.That(responseResult.Result[1].GroupMail, Is.Empty);
+
+            Assert.That(responseResult.Result[2].DisplayName, Is.EqualTo("Group Display Name 3"));
+            Assert.That(responseResult.Result[2].GroupMail, Is.Empty);
+        }
+
+        [Test]
         public async Task TryGetInexistentGroup()
         {
             // [GIVEN] Two groups are registered.
@@ -553,6 +645,15 @@ namespace SafeExchange.Tests
             var groupResponse = await this.groupsList.RunList(groupRegistrationRequest, claimsPrincipal, this.logger);
 
             return groupResponse as TestHttpResponseData;
+        }
+
+        private async Task<TestHttpResponseData?> DeleteGroupAsync(string groupId, CaseSensitiveClaimsIdentity identity)
+        {
+            var groupDeletionRequest = TestFactory.CreateHttpRequestData("delete");
+            var claimsPrincipal = new ClaimsPrincipal(identity);
+            var deletionResponse = await this.groupsAdministration.Run(groupDeletionRequest, groupId, claimsPrincipal, this.logger);
+
+            return deletionResponse as TestHttpResponseData;
         }
     }
 }
