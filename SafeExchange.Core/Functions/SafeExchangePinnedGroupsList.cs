@@ -45,10 +45,11 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangePinnedGroupsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
 
+            var userId = request.FunctionContext.GetUserId();
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListPinnedGroups(request, subjectType, subjectId, log);
+                    return await this.HandleListPinnedGroups(request, userId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -57,10 +58,10 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> HandleListPinnedGroups(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleListPinnedGroups(HttpRequestData request, string userId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
             {
-                var existingPinnedGroups = await this.dbContext.PinnedGroups.Where(pg => pg.UserId.Equals(subjectId)).ToListAsync();
+                var existingPinnedGroups = await this.dbContext.PinnedGroups.Where(pg => pg.UserId.Equals(userId)).ToListAsync();
                 if (existingPinnedGroups.Count == 0)
                 {
                     return await ActionResults.CreateResponseAsync(

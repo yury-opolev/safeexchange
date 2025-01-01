@@ -195,6 +195,52 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItem.GroupItemId, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
         }
 
+        [Test]
+        public async Task RegisterPinnedGroups_DifferentUsers()
+        {
+            // [GIVEN] No pinned group items are persisted.
+            var existingGroupItems = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
+            // [GIVEN] New group X is pinned for user A, group Y is pinned for user B.
+            var firstUserId = "32100111-0000-0000-0000-321000000111";
+            await this.RegisterPinnedGroupAsync(
+                "00000111-0000-0000-0000-000000000111", "Group Display Name", "test@group.mail",
+                firstUserId, this.firstIdentity);
+
+            var secondUserId = "32100222-0000-0000-0000-321000000222";
+            await this.RegisterPinnedGroupAsync(
+                "00000222-0000-0000-0000-000000000222", "Group 2 Display Name", "test2@group.mail",
+                secondUserId, this.secondIdentity);
+
+            // [WHEN] User A is listing pinned groups, user B is also listing pinned groups.
+            var firstUserPinnedGroupsResponse = await this.ListPinnedGroupsAsync(firstUserId, this.firstIdentity);
+            Assert.That(firstUserPinnedGroupsResponse, Is.Not.Null);
+            Assert.That(firstUserPinnedGroupsResponse?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = firstUserPinnedGroupsResponse?.ReadBodyAsJson<BaseResponseObject<List<PinnedGroupOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(1));
+            Assert.That(responseResult.Result[0].GroupId, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
+            Assert.That(responseResult.Result[0].GroupDisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
+
+            var secondUserPinnedGroupsResponse = await this.ListPinnedGroupsAsync(secondUserId, this.secondIdentity);
+            Assert.That(secondUserPinnedGroupsResponse, Is.Not.Null);
+            Assert.That(secondUserPinnedGroupsResponse?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            responseResult = secondUserPinnedGroupsResponse?.ReadBodyAsJson<BaseResponseObject<List<PinnedGroupOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(1));
+            Assert.That(responseResult.Result[0].GroupId, Is.EqualTo("00000222-0000-0000-0000-000000000222"));
+            Assert.That(responseResult.Result[0].GroupDisplayName, Is.EqualTo("Group 2 Display Name"));
+            Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test2@group.mail"));
+        }
+
         private TestHttpRequestData CreatePinnedGroupRegistrationRequest(string groupId, string groupDisplayName, string? groupMail, string userId)
         {
             var groupRegistrationRequest = TestFactory.CreateHttpRequestData("put");
