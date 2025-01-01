@@ -17,10 +17,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
-    using SafeExchange.Core.Functions.Admin;
-    using SafeExchange.Core.Graph;
     using SafeExchange.Core.Middleware;
-    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Tests.Utilities;
