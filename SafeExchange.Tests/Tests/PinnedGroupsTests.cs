@@ -193,6 +193,45 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task DeleteOnePinnedGroup_Sunshine()
+        {
+            // [GIVEN] Two groups are pinned for user A.
+            var userId = "32100111-0000-0000-0000-321000000111";
+            await this.RegisterPinnedGroupAsync(
+                "00000333-0000-0000-0000-000000000333", "Group 3 Display Name", "test3@group.mail",
+                userId, this.firstIdentity);
+            await this.RegisterPinnedGroupAsync(
+                "00000444-0000-0000-0000-000000000444", "Group 4 Display Name", "test4@group.mail",
+                userId, this.firstIdentity);
+
+            // [WHEN] One group is deleted.
+            var okObjectAccessResult = await this.DeletePinnedGroupAsync(
+                "00000333-0000-0000-0000-000000000333", userId, this.firstIdentity);
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            // [THEN] One group is left in the database.
+            var existingPinnedGroups = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingPinnedGroups.Count, Is.EqualTo(1));
+
+            var existingGroupItem = existingPinnedGroups.First();
+            Assert.That(existingGroupItem.UserId, Is.EqualTo(userId));
+            Assert.That(existingGroupItem.GroupItemId, Is.EqualTo("00000444-0000-0000-0000-000000000444"));
+
+            // [THEN] Group items still contain group for delete pinned group.
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(2));
+
+            Assert.That(existingGroupItems[0].GroupId, Is.EqualTo("00000333-0000-0000-0000-000000000333"));
+            Assert.That(existingGroupItems[0].DisplayName, Is.EqualTo("Group 3 Display Name"));
+            Assert.That(existingGroupItems[0].GroupMail, Is.EqualTo("test3@group.mail"));
+
+            Assert.That(existingGroupItems[1].GroupId, Is.EqualTo("00000444-0000-0000-0000-000000000444"));
+            Assert.That(existingGroupItems[1].DisplayName, Is.EqualTo("Group 4 Display Name"));
+            Assert.That(existingGroupItems[1].GroupMail, Is.EqualTo("test4@group.mail"));
+        }
+
+        [Test]
         public async Task RegisterOnePinnedGroup_MultipleTimes()
         {
             // [GIVEN] No pinned groups or group items are persisted.
@@ -242,6 +281,44 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItem.DisplayName, Is.EqualTo("Group Display Name"));
             Assert.That(existingGroupItem.GroupMail, Is.EqualTo("test@group.mail"));
             Assert.That(existingGroupItem.CreatedBy, Is.EqualTo("User first@test.test"));
+        }
+
+        [Test]
+        public async Task RegisterPinnedGroups_TooMany()
+        {
+            // [GIVEN] No pinned groups or group items are persisted.
+            var existingPinnedGroups = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingPinnedGroups.Count, Is.EqualTo(0));
+
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
+            // [GIVEN] 100 groups are pinned for user A.
+            var maxGroups = SafeExchangePinnedGroups.MaxPinnedGroupsPerUser;
+            var userId = "32100111-0000-0000-0000-321000000111";
+            for (int c = 0; c < maxGroups; c++)
+            {
+                await this.RegisterPinnedGroupAsync(
+                    $"00000{c:000}-0000-0000-0000-000000000{c:000}",
+                    $"Group {c} Display Name",
+                    $"test{c}@group.mail",
+                    userId, this.firstIdentity);
+            }
+
+            // [WHEN] Group no. 101 is trying to be registered.
+            var response = await this.RegisterPinnedGroupAsync(
+                $"00000100-0000-0000-0000-000000000100",
+                $"Group 100 Display Name",
+                $"test100@group.mail",
+                userId, this.firstIdentity);
+
+            // [THEN] 'Bad request' is responded with explanation.
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+
+            var responseResult = response?.ReadBodyAsJson<BaseResponseObject<string>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("error"));
+            Assert.That(responseResult?.Error, Is.EqualTo("Pinned group count is 100, which is higher or equal than allowed no. of 100 pinned groups. Please remove pinned groups before adding new ones."));
         }
 
         [Test]
@@ -320,6 +397,16 @@ namespace SafeExchange.Tests
             var claimsPrincipal = new ClaimsPrincipal(identity);
             listPinnedGroupsRequest.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = userId;
             var groupResponse = await this.pinnedGroupsList.RunList(listPinnedGroupsRequest, claimsPrincipal, this.logger);
+
+            return groupResponse as TestHttpResponseData;
+        }
+
+        private async Task<TestHttpResponseData?> DeletePinnedGroupAsync(string groupId, string userId, CaseSensitiveClaimsIdentity identity)
+        {
+            var groupDeletionRequest = TestFactory.CreateHttpRequestData("delete");
+            groupDeletionRequest.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = userId;
+            var claimsPrincipal = new ClaimsPrincipal(identity);
+            var groupResponse = await this.pinnedGroups.Run(groupDeletionRequest, groupId, claimsPrincipal, this.logger);
 
             return groupResponse as TestHttpResponseData;
         }

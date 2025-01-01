@@ -181,7 +181,8 @@ namespace SafeExchange.Core.Functions
         private async Task<HttpResponseData> HandlePinnedGroupDeletion(HttpRequestData request, string pinnedGroupId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
-            var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(subjectId) && pg.GroupItemId.Equals(pinnedGroupId));
+            var userId = request.FunctionContext.GetUserId();
+            var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(userId) && pg.GroupItemId.Equals(pinnedGroupId));
             if (existingPinnedGroup == null)
             {
                 log.LogInformation($"Cannot delete group registration '{pinnedGroupId}', as it does not exist.");
