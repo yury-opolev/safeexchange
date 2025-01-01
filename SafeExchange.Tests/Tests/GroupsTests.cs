@@ -392,18 +392,18 @@ namespace SafeExchange.Tests
         [Test]
         public async Task ListGroupsAfterRegistration()
         {
-            // [GIVEN] Three groups are registered.
+            // [GIVEN] Three groups are registered, one of them does not have group mail.
             await this.RegisterGroupAsync(
                 "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
             await this.RegisterGroupAsync(
                 "00000022-0000-0000-0000-000000000022", "Group Display Name 2", null);
             await this.RegisterGroupAsync(
-                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", null);
+                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", "test3@group.mail");
 
             // [WHEN] Registered groups are listed.
             var okObjectAccessResult = await this.ListGroupsAsync();
 
-            // [THEN] The correct groups are returned.
+            // [THEN] Only the groups with registered emails are returned.
             Assert.That(okObjectAccessResult, Is.Not.Null);
             Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
@@ -411,16 +411,13 @@ namespace SafeExchange.Tests
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            Assert.That(responseResult.Result.Count, Is.EqualTo(3));
+            Assert.That(responseResult.Result.Count, Is.EqualTo(2));
 
             Assert.That(responseResult.Result[0].DisplayName, Is.EqualTo("Group Display Name"));
             Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
 
-            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 2"));
-            Assert.That(responseResult.Result[1].GroupMail, Is.Empty);
-
-            Assert.That(responseResult.Result[2].DisplayName, Is.EqualTo("Group Display Name 3"));
-            Assert.That(responseResult.Result[2].GroupMail, Is.Empty);
+            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 3"));
+            Assert.That(responseResult.Result[1].GroupMail, Is.EqualTo("test3@group.mail"));
         }
 
         [Test]
@@ -430,9 +427,9 @@ namespace SafeExchange.Tests
             await this.RegisterGroupAsync(
                 "00000011-0000-0000-0000-000000000011", "Group Display Name", "test@group.mail");
             await this.RegisterGroupAsync(
-                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", null);
+                "00000022-0000-0000-0000-000000000022", "Group Display Name 2", "test2@group.mail");
             await this.RegisterGroupAsync(
-                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", null);
+                "00000033-0000-0000-0000-000000000033", "Group Display Name 3", "test3@group.mail");
 
             // [WHEN] One group is deleted by admin.
             var deletionResult = await this.DeleteGroupAsync("00000022-0000-0000-0000-000000000022", this.adminIdentity);
@@ -457,7 +454,7 @@ namespace SafeExchange.Tests
             Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
 
             Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 3"));
-            Assert.That(responseResult.Result[1].GroupMail, Is.Empty);
+            Assert.That(responseResult.Result[1].GroupMail, Is.EqualTo("test3@group.mail"));
         }
 
         [Test]
@@ -483,21 +480,19 @@ namespace SafeExchange.Tests
             Assert.That(deletionResponse?.Error, Is.EqualTo("Not an admin or a member of an admin group."));
 
             // [THEN] The groups contain all previous items.
+            var groups = this.dbContext.GroupDictionary.ToList();
+            Assert.That(groups.Count, Is.EqualTo(3));
+
+            // [THEN] The groups list returns only groups with non-empty email.
             var okObjectAccessResult = await this.ListGroupsAsync();
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<GroupOverviewOutput>>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            Assert.That(responseResult.Result.Count, Is.EqualTo(3));
+            Assert.That(responseResult.Result.Count, Is.EqualTo(1));
 
             Assert.That(responseResult.Result[0].DisplayName, Is.EqualTo("Group Display Name"));
             Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
-
-            Assert.That(responseResult.Result[1].DisplayName, Is.EqualTo("Group Display Name 2"));
-            Assert.That(responseResult.Result[1].GroupMail, Is.Empty);
-
-            Assert.That(responseResult.Result[2].DisplayName, Is.EqualTo("Group Display Name 3"));
-            Assert.That(responseResult.Result[2].GroupMail, Is.Empty);
         }
 
         [Test]

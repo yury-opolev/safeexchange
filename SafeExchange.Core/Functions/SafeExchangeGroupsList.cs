@@ -1,6 +1,7 @@
 ﻿
 namespace SafeExchange.Core.Functions
 {
+    using Microsoft.Azure.Cosmos.Linq;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
@@ -60,7 +61,9 @@ namespace SafeExchange.Core.Functions
         private async Task<HttpResponseData> HandleListGroups(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
             {
-                var existingGroups = await this.dbContext.GroupDictionary.ToListAsync();
+                var existingGroups = await this.dbContext.GroupDictionary
+                    .Where(g => g.GroupMail != null && g.GroupMail != string.Empty)
+                    .ToListAsync();
 
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
