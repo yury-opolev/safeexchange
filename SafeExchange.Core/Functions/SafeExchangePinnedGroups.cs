@@ -16,6 +16,8 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangePinnedGroups
     {
+        public static int MaxPinnedGroupsPerUser = 100;
+
         private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
 
         private static int MaxEmailLength = 320;
@@ -157,6 +159,18 @@ namespace SafeExchange.Core.Functions
             }
 
             var userId = request.FunctionContext.GetUserId();
+            var existingPinnedGroupsCount = await this.dbContext.PinnedGroups
+                .Where(pg => pg.UserId.Equals(userId))
+                .CountAsync();
+
+            if (existingPinnedGroupsCount >= MaxPinnedGroupsPerUser)
+            {
+                log.LogInformation($"Existing number of pinned groups for the user is {existingPinnedGroupsCount}, which is more or equal to max. allowed count of {MaxPinnedGroupsPerUser}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = $"Pinned group count is {existingPinnedGroupsCount}, which is higher or equal than allowed no. of {MaxPinnedGroupsPerUser} pinned groups. Please remove pinned groups before adding new ones." });
+            }
+
             var groupItemForPinnedGroup = await this.GetOrAddPinnedGroupAsync(pinnedGroupId, registrationInput, userId, subjectType, subjectId, log);
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
