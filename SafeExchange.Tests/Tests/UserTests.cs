@@ -184,6 +184,9 @@ namespace SafeExchange.Tests
             Assert.That(userGroups?.Count, Is.EqualTo(2));
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
+
+            // [THEN] Function context contains UserId in its items.
+            Assert.That(request.FunctionContext.GetUserId(), Is.EqualTo(createdUser!.Id));
         }
 
         [Test]
@@ -326,6 +329,9 @@ namespace SafeExchange.Tests
             var userGroups = createdUser?.Groups;
             Assert.That(userGroups, Is.Not.Null);
             Assert.That(userGroups?.Count, Is.EqualTo(0));
+
+            // [THEN] Function context contains UserId in its items.
+            Assert.That(request.FunctionContext.GetUserId(), Is.EqualTo(createdUser!.Id));
         }
 
         [Test]

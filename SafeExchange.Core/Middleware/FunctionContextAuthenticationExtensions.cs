@@ -15,5 +15,11 @@ namespace SafeExchange.Core
             return context.Items[DefaultAuthenticationMiddleware.ClaimsPrincipalKey] as ClaimsPrincipal
                 ?? throw new ArgumentNullException(DefaultAuthenticationMiddleware.ClaimsPrincipalKey);
         }
+
+        public static string GetUserId(this FunctionContext context)
+        {
+            return context.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] as string
+                ?? throw new ArgumentNullException(DefaultAuthenticationMiddleware.InvocationContextUserIdKey);
+        }
     }
 }

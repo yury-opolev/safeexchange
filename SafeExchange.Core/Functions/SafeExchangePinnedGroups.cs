@@ -156,7 +156,8 @@ namespace SafeExchange.Core.Functions
                 }
             }
 
-            var groupItemForPinnedGroup = await this.GetOrAddPinnedGroupAsync(pinnedGroupId, registrationInput, subjectType, subjectId, log);
+            var userId = request.FunctionContext.GetUserId();
+            var groupItemForPinnedGroup = await this.GetOrAddPinnedGroupAsync(pinnedGroupId, registrationInput, userId, subjectType, subjectId, log);
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<GraphGroupOutput> { Status = "ok", Result = groupItemForPinnedGroup.ToDto() });
@@ -186,13 +187,13 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandlePinnedGroupDeletion), log);
 
-        private async Task<GroupDictionaryItem> GetOrAddPinnedGroupAsync(string pinnedGroupId, PinnedGroupInput? input, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<GroupDictionaryItem> GetOrAddPinnedGroupAsync(string pinnedGroupId, PinnedGroupInput? input, string userId, SubjectType subjectType, string subjectId, ILogger log)
         {
             var groupItem = await this.GetOrAddGroupItemAsync(pinnedGroupId, input, subjectType, subjectId, log);
-            var pinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(subjectId) && pg.GroupItemId.Equals(pinnedGroupId));
+            var pinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(userId) && pg.GroupItemId.Equals(pinnedGroupId));
             if (pinnedGroup == default)
             {
-                pinnedGroup = await this.RegisterPinnedGroupAsync(input, subjectType, subjectId, log);
+                pinnedGroup = await this.RegisterPinnedGroupAsync(input, userId, log);
                 log.LogInformation($"Pinned group '{pinnedGroupId}' ({input.GroupDisplayName}, {input.GroupMail}) registered by {subjectType} '{subjectId}'.");
             }
 
@@ -230,9 +231,9 @@ namespace SafeExchange.Core.Functions
                 log);
         }
 
-        private async Task<PinnedGroup> RegisterPinnedGroupAsync(PinnedGroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<PinnedGroup> RegisterPinnedGroupAsync(PinnedGroupInput registrationInput, string userId, ILogger log)
         {
-            var pinnedGroup = new PinnedGroup($"{subjectType} {subjectId}", registrationInput);
+            var pinnedGroup = new PinnedGroup(userId, registrationInput);
             return await DbUtils.TryAddOrGetEntityAsync(
                 async () =>
                 {
@@ -243,7 +244,7 @@ namespace SafeExchange.Core.Functions
                 async () =>
                 {
                     this.dbContext.PinnedGroups.Remove(pinnedGroup);
-                    var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstAsync(pg => pg.UserId.Equals(subjectId) && pg.GroupItemId.Equals(registrationInput.GroupId));
+                    var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstAsync(pg => pg.UserId.Equals(userId) && pg.GroupItemId.Equals(registrationInput.GroupId));
                     return existingPinnedGroup;
                 },
                 log);

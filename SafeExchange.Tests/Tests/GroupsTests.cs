@@ -53,9 +53,6 @@ namespace SafeExchange.Tests
         private SafeExchangeGroupSearch groupSearch;
         private SafeExchangeGroups groups;
         private SafeExchangeGroupsList groupsList;
-        private SafeExchangePinnedGroups pinnedGroups;
-        private SafeExchangePinnedGroupsList pinnedGroupsList;
-
         private SafeExchangeAdminGroups groupsAdministration;
 
         private DbContextOptions<SafeExchangeDbContext> dbContextOptions;
@@ -164,9 +161,6 @@ namespace SafeExchange.Tests
             this.groupsList = new SafeExchangeGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
 
             this.groupsAdministration = new SafeExchangeAdminGroups(this.dbContext, this.tokenHelper, this.globalFilters);
-
-            this.pinnedGroups = new SafeExchangePinnedGroups(this.dbContext, this.tokenHelper, this.globalFilters);
-            this.pinnedGroupsList = new SafeExchangePinnedGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
         }
 
         [TearDown]

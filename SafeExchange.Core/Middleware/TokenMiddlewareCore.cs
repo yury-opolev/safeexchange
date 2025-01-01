@@ -92,6 +92,7 @@ namespace SafeExchange.Core.Middleware
                 return result;
             }
 
+            request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = user.Id;
             await this.UpdateGroupsAsync(user, request, principal);
             return result;
         }
