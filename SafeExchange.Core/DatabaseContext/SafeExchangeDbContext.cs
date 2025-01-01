@@ -120,7 +120,7 @@ namespace SafeExchange.Core
                 .HasPartitionKey(wnd => wnd.PartitionKey);
 
             modelBuilder.Entity<PinnedGroup>()
-                .ToContainer("PinnedGroup")
+                .ToContainer("PinnedGroups")
                 .HasNoDiscriminator()
                 .HasPartitionKey(pg => pg.PartitionKey);
 
