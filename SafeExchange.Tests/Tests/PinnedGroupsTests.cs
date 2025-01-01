@@ -284,6 +284,53 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task RegisterOnePinnedGroup_Simultaneously()
+        {
+            // [GIVEN] No pinned group are persisted.
+            var existingPinnedGroups = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingPinnedGroups.Count, Is.EqualTo(0));
+
+            // [WHEN] New group is pinned in several calls simultaneously.
+            var userId = "00000191-0000-0000-0000-000000000191";
+            var groupId = "00000101-0000-0000-0000-000000000101";
+            var groupDisplayName = "Group Display Name";
+            var groupMail = "test@group.mail";
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var groups1 = new SafeExchangePinnedGroups(
+                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+            var groups2 = new SafeExchangePinnedGroups(
+                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+            var groups3 = new SafeExchangePinnedGroups(
+                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+
+            await Task.WhenAll([
+                Task.Run(async () =>
+                {
+                    var groupRegistrationRequest = this.CreatePinnedGroupRegistrationRequest(groupId, groupDisplayName, groupMail, userId);
+                    await groups1.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+                }),
+                Task.Run(async () =>
+                {
+                    var groupRegistrationRequest = this.CreatePinnedGroupRegistrationRequest(groupId, groupDisplayName, groupMail, userId);
+                    await groups2.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+                }),
+                Task.Run(async () =>
+                {
+                    var groupRegistrationRequest = this.CreatePinnedGroupRegistrationRequest(groupId, groupDisplayName, groupMail, userId);
+                    await groups3.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+                })
+            ]);
+
+            // [THEN] One pinned group is persisted in the database.
+            existingPinnedGroups = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingPinnedGroups.Count, Is.EqualTo(1));
+
+            var existingPinnedGroup = existingPinnedGroups.First();
+            Assert.That(existingPinnedGroup.UserId, Is.EqualTo(userId));
+            Assert.That(existingPinnedGroup.GroupItemId, Is.EqualTo("00000101-0000-0000-0000-000000000101"));
+        }
+
+        [Test]
         public async Task RegisterPinnedGroups_TooMany()
         {
             // [GIVEN] No pinned groups or group items are persisted.
