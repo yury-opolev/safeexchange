@@ -196,6 +196,58 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task RegisterOnePinnedGroup_MultipleTimes()
+        {
+            // [GIVEN] No pinned groups or group items are persisted.
+            var existingPinnedGroups = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingPinnedGroups.Count, Is.EqualTo(0));
+
+            var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(0));
+
+            // [WHEN] A group is pinned for user A two times.
+            var userId = "32100111-0000-0000-0000-321000000111";
+            await this.RegisterPinnedGroupAsync(
+                "00000111-0000-0000-0000-000000000111", "Group Display Name", "test@group.mail",
+                userId, this.firstIdentity);
+            await this.RegisterPinnedGroupAsync(
+                "00000111-0000-0000-0000-000000000111", "Group Display Name", "test@group.mail",
+                userId, this.firstIdentity);
+
+            // [THEN] One group is returned for pinned groups list .
+            var pinnedGroupsResponse = await this.ListPinnedGroupsAsync(userId, this.firstIdentity);
+            Assert.That(pinnedGroupsResponse, Is.Not.Null);
+            Assert.That(pinnedGroupsResponse?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = pinnedGroupsResponse?.ReadBodyAsJson<BaseResponseObject<List<PinnedGroupOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            Assert.That(responseResult.Result.Count, Is.EqualTo(1));
+            Assert.That(responseResult.Result[0].GroupId, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
+            Assert.That(responseResult.Result[0].GroupDisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test@group.mail"));
+
+            // [THEN] One pinned group is persisted in the database.
+            existingPinnedGroups = await this.dbContext.PinnedGroups.ToListAsync();
+            Assert.That(existingPinnedGroups.Count, Is.EqualTo(1));
+
+            var existingPinnedGroup = existingPinnedGroups.First();
+            Assert.That(existingPinnedGroup.UserId, Is.EqualTo(userId));
+            Assert.That(existingPinnedGroup.GroupItemId, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
+
+            // [THEN] One group is persisted in the database.
+            existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
+            Assert.That(existingGroupItems.Count, Is.EqualTo(1));
+
+            var existingGroupItem = existingGroupItems.First();
+            Assert.That(existingGroupItem.GroupId, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
+            Assert.That(existingGroupItem.DisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(existingGroupItem.GroupMail, Is.EqualTo("test@group.mail"));
+            Assert.That(existingGroupItem.CreatedBy, Is.EqualTo("User first@test.test"));
+        }
+
+        [Test]
         public async Task RegisterPinnedGroups_DifferentUsers()
         {
             // [GIVEN] No pinned group items are persisted.
