@@ -58,13 +58,6 @@
                 "description": "Name of AFD endpoint for web client. Value is required."
             }
         },
-        "safeexchange_webclientstorage_name": {
-            "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'web')]",
-            "type": "string",
-            "metadata": {
-                "description": "Azure storage account name for static web client."
-            }
-        },
         "safeexchange_webjobsstorage_name": {
             "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'wj')]",
             "type": "string",
@@ -160,6 +153,14 @@
                 "False"
             ]
         },
+        "settings-features-useGraphGroupSearch": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
         "settings-adminConfiguration-adminUsers": {
             "defaultValue": "00000000-0000-0000-0000-000000000000",
             "type": "string"
@@ -179,7 +180,6 @@
         "storage_role_queueDataContributor": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
         "cosmosDb_role_operator": "230815da-be43-4aae-9cb4-875f7bd000aa",
         "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
-        "safeexchange_staticwebsite_deployment_name": "safeexchange-blob-static-website",
         "appinsights_workspace_retention_days": 90,
         "appinsights_workspace_resource_permissions": true
     },
@@ -204,112 +204,6 @@
             "name": "[variables('safeexchange_userassigned_mi_name')]",
             "apiVersion": "2018-11-30",
             "location": "[parameters('default_location')]"
-        },
-        {
-            "type": "Microsoft.Resources/deployments",
-            "apiVersion": "2019-10-01",
-            "name": "[variables('safeexchange_staticwebsite_deployment_name')]",
-            "resourceGroup": "[resourceGroup().name]",
-            "properties": {
-                "mode": "Incremental",
-                "expressionEvaluationOptions": {
-                    "scope": "inner"
-                },
-                "parameters": {
-                    "staticwebsite_deployment_storage_name": {
-                        "value": "[parameters('safeexchange_webclientstorage_name')]"
-                    },
-                    "staticwebsite_deployment_location": {
-                        "value": "[parameters('default_location')]"
-                    },
-                    "template_storage_role_storageAccountContributor": {
-                        "value": "[variables('storage_role_storageAccountContributor')]"
-                    }
-                },
-                "template": {
-                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-                    "contentVersion": "1.0.0.0",
-                    "parameters": {
-                        "staticwebsite_deployment_storage_name": {
-                            "type": "string"
-                        },
-                        "staticwebsite_deployment_location": {
-                            "type": "string"
-                        },
-                        "template_storage_role_storageAccountContributor": {
-                            "type": "string"
-                        }
-                    },
-                    "variables": {},
-                    "resources": [
-                        {
-                            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-                            "name": "DeploymentScript-MI",
-                            "apiVersion": "2018-11-30",
-                            "location": "[parameters('staticwebsite_deployment_location')]"
-                        },
-                        {
-                            "type": "Microsoft.Authorization/roleAssignments",
-                            "apiVersion": "2020-04-01-preview",
-                            "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('staticwebsite_deployment_storage_name'))]",
-                            "name": "[guid(resourceGroup().id, parameters('staticwebsite_deployment_storage_name'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor')))]",
-                            "properties": {
-                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor'))]",
-                                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')).principalId]",
-                                "principalType": "ServicePrincipal"
-                            },
-                            "dependsOn": [
-                                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]"
-                            ]
-                        },
-                        {
-                            "type": "Microsoft.Resources/deploymentScripts",
-                            "apiVersion": "2020-10-01",
-                            "name": "deploymentScript-static-webSite",
-                            "location": "[parameters('staticwebsite_deployment_location')]",
-                            "kind": "AzurePowerShell",
-                            "identity": {
-                                "type": "UserAssigned",
-                                "userAssignedIdentities": {
-                                    "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'))]": {}
-                                }
-                            },
-                            "properties": {
-                                "azPowerShellVersion": "3.0",
-                                "scriptContent": "$ErrorActionPreference = 'Stop'\n$storageAccount = Get-AzStorageAccount -ResourceGroupName $env:ResourceGroupName -AccountName $env:StorageAccountName\n\n# Enable the static website feature on the storage account.\n$ctx = $storageAccount.Context\nEnable-AzStorageStaticWebsite -Context $ctx -IndexDocument $env:IndexDocumentPath -ErrorDocument404Path $env:IndexDocumentPath\n",
-                                "retentionInterval": "PT4H",
-                                "environmentVariables": [
-                                    {
-                                        "name": "ResourceGroupName",
-                                        "value": "[resourceGroup().name]"
-                                    },
-                                    {
-                                        "name": "StorageAccountName",
-                                        "value": "[parameters('staticwebsite_deployment_storage_name')]"
-                                    },
-                                    {
-                                        "name": "IndexDocumentPath",
-                                        "value": "index.html"
-                                    }
-                                ]
-                            },
-                            "dependsOn": [
-                                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI')]",
-                                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), 'Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, parameters('staticwebsite_deployment_storage_name'), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'DeploymentScript-MI'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('template_storage_role_storageAccountContributor'))))]"
-                            ]
-                        }
-                    ],
-                    "outputs": {
-                        "staticWebsiteDomain": {
-                            "type": "string",
-                            "value": "[replace(replace(reference(resourceId('Microsoft.Storage/storageAccounts', parameters('staticwebsite_deployment_storage_name')), '2023-01-01', 'Full').properties.primaryEndpoints.web, 'https://' ,''), '/', '')]"
-                        }
-                    }
-                }
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
-            ]
         },
         {
             "type": "Microsoft.DocumentDB/databaseAccounts",
@@ -599,33 +493,6 @@
                     },
                     "keySource": "Microsoft.Storage"
                 }
-            }
-        },
-        {
-            "type": "Microsoft.Storage/storageAccounts",
-            "apiVersion": "2023-01-01",
-            "name": "[parameters('safeexchange_webclientstorage_name')]",
-            "location": "[parameters('default_location')]",
-            "sku": {
-                "name": "Standard_RAGRS"
-            },
-            "kind": "StorageV2",
-            "properties": {
-                "dnsEndpointType": "Standard",
-                "defaultToOAuthAuthentication": true,
-                "publicNetworkAccess": "Enabled",
-                "allowCrossTenantReplication": true,
-                "minimumTlsVersion": "TLS1_2",
-                "allowBlobPublicAccess": false,
-                "allowSharedKeyAccess": false,
-                "networkAcls": {
-                    "bypass": "AzureServices",
-                    "virtualNetworkRules": [],
-                    "ipRules": [],
-                    "defaultAction": "Allow"
-                },
-                "supportsHttpsTrafficOnly": true,
-                "accessTier": "Hot"
             }
         },
         {
@@ -1163,6 +1030,22 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseGraphGroupSearch')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-useGraphGroupSearch')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
             "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--WebClientBaseUri')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
@@ -1206,35 +1089,6 @@
                 },
                 "contentType": "text/plain",
                 "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name'))).clientId]"
-            }
-        },
-        {
-            "type": "Microsoft.Storage/storageAccounts/blobServices",
-            "apiVersion": "2023-01-01",
-            "name": "[concat(parameters('safeexchange_webclientstorage_name'), '/default')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webclientstorage_name'))]"
-            ],
-            "properties": {
-                "cors": {
-                    "corsRules": []
-                },
-                "deleteRetentionPolicy": {
-                    "allowPermanentDelete": false,
-                    "enabled": true,
-                    "days": 7
-                },
-                "isVersioningEnabled": false,
-                "changeFeed": {
-                    "enabled": false
-                },
-                "restorePolicy": {
-                    "enabled": false
-                },
-                "containerDeleteRetentionPolicy": {
-                    "enabled": true,
-                    "days": 7
-                }
             }
         },
         {
@@ -1677,6 +1531,55 @@
                 }
             }
         },
+{
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/PinnedGroups')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "PinnedGroups",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/UserId",
+                                    "/GroupItemId"
+                                ]
+                            }
+                        ]
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
         {
             "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
             "apiVersion": "2023-09-15",
@@ -1884,23 +1787,6 @@
                         "conflictResolutionPath": "/_ts"
                     }
                 }
-            }
-        },
-        {
-            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
-            "apiVersion": "2023-01-01",
-            "name": "[concat(parameters('safeexchange_webclientstorage_name'), '/default/$web')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('safeexchange_webclientstorage_name'), 'default')]",
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webclientstorage_name'))]"
-            ],
-            "properties": {
-                "immutableStorageWithVersioning": {
-                    "enabled": false
-                },
-                "defaultEncryptionScope": "$account-encryption-key",
-                "denyEncryptionScopeOverride": false,
-                "publicAccess": "None"
             }
         },
         {

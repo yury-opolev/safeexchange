@@ -5,6 +5,7 @@
 namespace SafeExchange.Tests
 {
     using Azure.Core.Serialization;
+    using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
@@ -63,10 +64,23 @@ namespace SafeExchange.Tests
             var builder = new ConfigurationBuilder().AddUserSecrets<UserTests>();
             var secretConfiguration = builder.Build();
 
+            var databaseName = $"{nameof(UserTests)}Database";
+            var cosmosClient = new CosmosClient(secretConfiguration.GetConnectionString("CosmosDb"));
+            cosmosClient.CreateDatabaseIfNotExistsAsync(databaseName).GetAwaiter().GetResult();
+            cosmosClient.GetDatabase(databaseName).DefineContainer(name: "Users", partitionKeyPath: "/PartitionKey")
+                .WithUniqueKey()
+                    .Path("/AadTenantId")
+                    .Path("/AadObjectId")
+                .Attach()
+                .WithUniqueKey()
+                    .Path("/AadUpn")
+                .Attach()
+                .CreateIfNotExistsAsync().GetAwaiter().GetResult();
+
             this.logger = TestFactory.CreateLogger();
 
             this.dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), $"{nameof(UserTests)}Database")
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName)
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
@@ -170,6 +184,94 @@ namespace SafeExchange.Tests
             Assert.That(userGroups?.Count, Is.EqualTo(2));
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
+
+            // [THEN] Function context contains UserId in its items.
+            Assert.That(request.FunctionContext.GetUserId(), Is.EqualTo(createdUser!.Id));
+        }
+
+        [Test]
+        public async Task SimultaneousUserCalls_WithGroups()
+        {
+            var builder = new ConfigurationBuilder().AddUserSecrets<UserTests>();
+            var secretConfiguration = builder.Build();
+
+            var dbContextOptionsLocal = new DbContextOptionsBuilder<SafeExchangeDbContext>()
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), $"{nameof(UserTests)}Database")
+                .Options;
+
+            // [GIVEN] A user with valid credentials, is member of several groups in AAD
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var graphDataProvider1 = new TestGraphDataProvider(TimeSpan.FromMilliseconds(100));
+            graphDataProvider1.GroupMemberships
+                ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
+                new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
+            var tokenMiddleware1 = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(dbContextOptionsLocal), this.tokenHelper,
+                graphDataProvider1, TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
+
+            var graphDataProvider2 = new TestGraphDataProvider(TimeSpan.FromMilliseconds(100));
+            graphDataProvider2.GroupMemberships
+                ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
+                new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
+            var tokenMiddleware2 = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(dbContextOptionsLocal), this.tokenHelper,
+                graphDataProvider2, TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
+
+            var graphDataProvider3 = new TestGraphDataProvider(TimeSpan.FromMilliseconds(100));
+            graphDataProvider3.GroupMemberships
+                ["00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001"] =
+                new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
+            var tokenMiddleware3 = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(dbContextOptionsLocal), this.tokenHelper,
+                graphDataProvider3, TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
+
+            var request = TestFactory.CreateHttpRequestData("get");
+
+            // [WHEN] The user makes 3 simultaneous calls to a service
+            var logger = TestFactory.CreateLogger(LoggerTypes.Console);
+            await Task.WhenAll([
+                Task.Run(async () =>
+            {
+                logger.LogInformation($"Call no. 1 started");
+                await tokenMiddleware1.RunAsync(request, claimsPrincipal);
+                logger.LogInformation($"Call no. 1 finished");
+            }),
+            Task.Run(async () =>
+            {
+                logger.LogInformation($"Call no. 2 started");
+                await tokenMiddleware2.RunAsync(request, claimsPrincipal);
+                logger.LogInformation($"Call no. 2 finished");
+            }),
+            Task.Run(async () =>
+            {
+                logger.LogInformation($"Call no. 3 started");
+                await tokenMiddleware3.RunAsync(request, claimsPrincipal);
+                logger.LogInformation($"Call no. 3 finished");
+            })]);
+
+            // [THEN] User is created in the database with UPN, DisplayName, TenantId and ObjectId
+            var assertionDbContext = new SafeExchangeDbContext(dbContextOptionsLocal);
+            var createdUsers = await assertionDbContext.Users.Where(u => u.AadUpn.Equals("first@test.test")).ToListAsync();
+
+            Assert.That(createdUsers.Count, Is.EqualTo(1));
+
+            var createdUser = createdUsers.Single();
+            Assert.That(createdUser, Is.Not.Null);
+            Assert.That(createdUser?.DisplayName, Is.EqualTo("First User"));
+            Assert.That(createdUser?.AadTenantId, Is.EqualTo("00000000-0000-0000-0000-000000000001"));
+            Assert.That(createdUser?.AadObjectId, Is.EqualTo("00000000-0000-0000-0000-000000000001"));
+
+            Assert.That(createdUser?.CreatedAt, Is.EqualTo(DateTimeProvider.SpecifiedDateTime));
+            Assert.That(createdUser?.ModifiedAt, Is.EqualTo(DateTime.MinValue));
+            Assert.That(createdUser?.GroupSyncNotBefore, Is.EqualTo(DateTimeProvider.SpecifiedDateTime + TokenMiddlewareCore.GroupSyncDelay));
+
+            // [THEN] User has his 'memberOf' groups persisted
+            var userGroups = createdUser?.Groups;
+            Assert.That(userGroups, Is.Not.Null);
+            Assert.That(userGroups?.Count, Is.EqualTo(2));
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000000001")), Is.True);
+            Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-000000009999")), Is.True);
         }
 
         [Test]
@@ -227,6 +329,9 @@ namespace SafeExchange.Tests
             var userGroups = createdUser?.Groups;
             Assert.That(userGroups, Is.Not.Null);
             Assert.That(userGroups?.Count, Is.EqualTo(0));
+
+            // [THEN] Function context contains UserId in its items.
+            Assert.That(request.FunctionContext.GetUserId(), Is.EqualTo(createdUser!.Id));
         }
 
         [Test]

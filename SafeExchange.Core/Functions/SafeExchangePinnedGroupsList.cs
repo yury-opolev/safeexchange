@@ -1,18 +1,17 @@
 ﻿
 namespace SafeExchange.Core.Functions
 {
-    using Microsoft.Azure.Cosmos.Linq;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
-    using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Model.Dto.Input;
     using System;
     using System.Net;
     using System.Security.Claims;
 
-    public class SafeExchangeGroupsList
+    public class SafeExchangePinnedGroupsList
     {
         private readonly SafeExchangeDbContext dbContext;
 
@@ -20,7 +19,7 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        public SafeExchangePinnedGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
@@ -37,19 +36,20 @@ namespace SafeExchange.Core.Functions
             }
 
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            if (SubjectType.Application.Equals(subjectType))
             {
                 await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangeGroupsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangePinnedGroupsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
 
+            var userId = request.FunctionContext.GetUserId();
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListGroups(request, subjectType, subjectId, log);
+                    return await this.HandleListPinnedGroups(request, userId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -58,21 +58,36 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> HandleListGroups(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleListPinnedGroups(HttpRequestData request, string userId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
             {
-                var existingGroups = await this.dbContext.GroupDictionary
-                    .Where(g => g.GroupMail != null && g.GroupMail != string.Empty)
-                    .ToListAsync();
+                var existingPinnedGroups = await this.dbContext.PinnedGroups.Where(pg => pg.UserId.Equals(userId)).ToListAsync();
+                if (existingPinnedGroups.Count == 0)
+                {
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.NoContent,
+                        new BaseResponseObject<List<PinnedGroupOutput>>
+                        {
+                            Status = "no_content",
+                            Result = Array.Empty<PinnedGroupOutput>().ToList()
+                        });
+                }
+
+                var result = new List<PinnedGroupOutput>(existingPinnedGroups.Count);
+                foreach (var pinnedGroup in existingPinnedGroups)
+                {
+                    var groupItem = await this.dbContext.GroupDictionary.FindAsync([pinnedGroup.GroupItemId]);
+                    result.Add(groupItem.ToPinnedGroupDto());
+                }
 
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
-                    new BaseResponseObject<List<GroupOverviewOutput>>
+                    new BaseResponseObject<List<PinnedGroupOutput>>
                     {
                         Status = "ok",
-                        Result = existingGroups.Select(g => g.ToOverviewDto()).ToList()
+                        Result = result
                     });
-            }, nameof(HandleListGroups), log);
+            }, nameof(HandleListPinnedGroups), log);
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {

@@ -1,18 +1,16 @@
 ﻿
-namespace SafeExchange.Core.Functions
+namespace SafeExchange.Core.Functions.Admin
 {
-    using Microsoft.Azure.Cosmos.Linq;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
-    using SafeExchange.Core.Model.Dto.Output;
     using System;
     using System.Net;
     using System.Security.Claims;
 
-    public class SafeExchangeGroupsList
+    public class SafeExchangeAdminGroups
     {
         private readonly SafeExchangeDbContext dbContext;
 
@@ -20,36 +18,38 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
-        public SafeExchangeGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
+        public SafeExchangeAdminGroups(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters)
         {
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
-        public async Task<HttpResponseData> RunList(
-            HttpRequestData request, ClaimsPrincipal principal, ILogger log)
+        public async Task<HttpResponseData> Run(
+            HttpRequestData request,
+            string groupId,
+            ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
                 return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
             }
 
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            if (SubjectType.Application.Equals(subjectType))
             {
                 await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                    new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangeGroupsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeAdminGroups)} triggered for '{groupId}' by {subjectType} {subjectId} [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
-                case "get":
-                    return await this.HandleListGroups(request, subjectType, subjectId, log);
+                case "delete":
+                    return await this.HandleGroupDeletion(request, groupId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -58,21 +58,28 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> HandleListGroups(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleGroupDeletion(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
+        {
+            var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
+            if (existingRegistration == null)
             {
-                var existingGroups = await this.dbContext.GroupDictionary
-                    .Where(g => g.GroupMail != null && g.GroupMail != string.Empty)
-                    .ToListAsync();
-
+                log.LogInformation($"Cannot delete group registration '{groupId}', as it does not exist.");
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.OK,
-                    new BaseResponseObject<List<GroupOverviewOutput>>
-                    {
-                        Status = "ok",
-                        Result = existingGroups.Select(g => g.ToOverviewDto()).ToList()
-                    });
-            }, nameof(HandleListGroups), log);
+                    request, HttpStatusCode.NoContent,
+                    new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
+            }
+
+            this.dbContext.GroupDictionary.Remove(existingRegistration);
+            await dbContext.SaveChangesAsync();
+
+            log.LogInformation($"{subjectType} '{subjectId}' deleted group registration '{groupId}'.");
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+
+        }, nameof(HandleGroupDeletion), log);
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
         {

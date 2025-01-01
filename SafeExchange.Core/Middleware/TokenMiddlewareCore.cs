@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Middleware
 {
+    using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
@@ -11,10 +12,12 @@ namespace SafeExchange.Core.Middleware
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
+    using User = Model.User;
 
     public class TokenMiddlewareCore : ITokenMiddlewareCore
     {
@@ -89,6 +92,7 @@ namespace SafeExchange.Core.Middleware
                 return result;
             }
 
+            request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = user.Id;
             await this.UpdateGroupsAsync(user, request, principal);
             return result;
         }
@@ -101,7 +105,13 @@ namespace SafeExchange.Core.Middleware
                 return default;
             }
 
-            var user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadObjectId.Equals(aadObjectId));
+            var aadTenantId = this.tokenHelper.GetTenantId(principal);
+            if (string.IsNullOrEmpty(aadTenantId))
+            {
+                return default;
+            }
+
+            var user = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(aadTenantId) && u.AadObjectId.Equals(aadObjectId));
             return user ?? await this.CreateUserAsync(principal);
         }
 
@@ -115,10 +125,24 @@ namespace SafeExchange.Core.Middleware
             this.log.LogInformation($"Creating user '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}'.");
 
             var user = new User(displayName, objectId, tenantId, userUpn, userUpn);
-            var createdEntity = await this.dbContext.Users.AddAsync(user);
-            await this.dbContext.SaveChangesAsync();
+            return await DbUtils.TryAddOrGetEntityAsync(
+                async () =>
+                {
+                    var createdEntity = await this.dbContext.Users.AddAsync(user);
+                    await this.dbContext.SaveChangesAsync();
+                    return createdEntity.Entity;
+                },
+                async () =>
+                {
+                    this.log.LogInformation($"User '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}' was created in a different process, returning existing entity.");
 
-            return createdEntity.Entity;
+                    this.dbContext.Users.Remove(user);
+                    var existingUser = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
+
+                    this.log.LogInformation($"User '{userUpn}' already exists with Id '{existingUser.Id}'.");
+                    return existingUser;
+                },
+                this.log);
         }
 
         private async ValueTask UpdateGroupsAsync(User user, HttpRequestData request, ClaimsPrincipal principal)
@@ -147,9 +171,10 @@ namespace SafeExchange.Core.Middleware
             {
                 user.ConsentRequired = userGroupsResult.ConsentRequired;
                 user.GroupSyncNotBefore = utcNow + GroupSyncDelay;
-                user.Groups = userGroupsResult.Groups.Select(g => new UserGroup() { AadGroupId = g }).ToList();
+                user.Groups = userGroupsResult.GroupIds.Select(g => new UserGroup() { AadGroupId = g }).ToList();
             }
 
+            this.log.LogInformation($"Updating groups for user '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}), Id {user.Id}.");
             await this.dbContext.SaveChangesAsync();
             this.log.LogInformation($"User '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}) groups synced from graph.");
         }

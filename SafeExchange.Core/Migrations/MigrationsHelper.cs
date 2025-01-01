@@ -57,6 +57,11 @@ namespace SafeExchange.Core.Migrations
                 {
                     await this.RunMigration00004Async();
                 }
+
+                if ("00005".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00005Async();
+                }
             }
             finally
             {
@@ -188,6 +193,26 @@ namespace SafeExchange.Core.Migrations
             }
         }
 
+        private async Task RunMigration00005Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer("GroupDictionary");
+            var query = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.LastUsedAt)");
+
+            using FeedIterator<MigrationItem00005> feed =
+                container.GetItemQueryIterator<MigrationItem00005>(queryDefinition: query);
+
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00005> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00005 item in response)
+                {
+                    await MigrateItem00005Async(container, item);
+                }
+            }
+        }
+
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)
         {
             this.log.LogInformation($"{nameof(MigrateItem00002Async)}, item '{item.id}'.");
@@ -289,6 +314,22 @@ namespace SafeExchange.Core.Migrations
 
             var contentString = await streamReader.ReadToEndAsync();
             var newContentString = contentString.Replace("\"Enabled", "\"ExternalNotificationsReader\": false, \"Enabled");
+
+            using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
+            using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
+
+            this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
+        }
+
+        private async Task MigrateItem00005Async(Container container, MigrationItem00005 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00005Async)}, item '{item.id}'.");
+
+            var response = await container.ReadItemStreamAsync(item.id, new PartitionKey(item.PartitionKey));
+            using var streamReader = new StreamReader(response.Content);
+
+            var contentString = await streamReader.ReadToEndAsync();
+            var newContentString = contentString.Replace("\"CreatedAt", "\"LastUsedAt\": \"0001-01-01T00:00:00\", \"CreatedAt");
 
             using var updatedItemStream = new MemoryStream(Encoding.UTF8.GetBytes(newContentString));
             using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));

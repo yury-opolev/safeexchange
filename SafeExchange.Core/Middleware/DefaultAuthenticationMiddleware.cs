@@ -16,6 +16,7 @@ namespace SafeExchange.Core.Middleware
     public class DefaultAuthenticationMiddleware : IFunctionsWorkerMiddleware
     {
         public static readonly string ClaimsPrincipalKey = "ClaimsPrincipal";
+        public static readonly string InvocationContextUserIdKey = "CurrentUserId";
 
         private const string AuthorizationHeaderName = "Authorization";
 

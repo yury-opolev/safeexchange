@@ -25,6 +25,8 @@ namespace SafeExchange.Core
 
         public DbSet<WebhookNotificationData> WebhookNotificationData { get; set; }
 
+        public DbSet<PinnedGroup> PinnedGroups { get; set; }
+
         public SafeExchangeDbContext(DbContextOptions<SafeExchangeDbContext> options)
             : base(options)
         { }
@@ -116,6 +118,14 @@ namespace SafeExchange.Core
                 .ToContainer("WebhookNotificationData")
                 .HasNoDiscriminator()
                 .HasPartitionKey(wnd => wnd.PartitionKey);
+
+            modelBuilder.Entity<PinnedGroup>()
+                .ToContainer("PinnedGroups")
+                .HasNoDiscriminator()
+                .HasPartitionKey(pg => pg.PartitionKey);
+
+            modelBuilder.Entity<PinnedGroup>()
+                .HasKey(pg => new { pg.UserId, pg.GroupItemId });
         }
     }
 }
