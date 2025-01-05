@@ -175,13 +175,13 @@ namespace SafeExchange.Tests
             Assert.That(okObjectAccessResult, Is.Not.Null);
             Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<GraphGroupOutput>>();
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<PinnedGroupOutput>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            Assert.That(responseResult.Result.Id, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
-            Assert.That(responseResult.Result.DisplayName, Is.EqualTo("Group Display Name"));
-            Assert.That(responseResult.Result.Mail, Is.EqualTo("test@group.mail"));
+            Assert.That(responseResult.Result.GroupId, Is.EqualTo("00000111-0000-0000-0000-000000000111"));
+            Assert.That(responseResult.Result.GroupDisplayName, Is.EqualTo("Group Display Name"));
+            Assert.That(responseResult.Result.GroupMail, Is.EqualTo("test@group.mail"));
 
             // [THEN] One group is persisted in the database.
             existingGroupItems = await this.dbContext.PinnedGroups.ToListAsync();

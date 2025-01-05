@@ -174,7 +174,7 @@ namespace SafeExchange.Core.Functions
             var groupItemForPinnedGroup = await this.GetOrAddPinnedGroupAsync(pinnedGroupId, registrationInput, userId, subjectType, subjectId, log);
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
-                    new BaseResponseObject<GraphGroupOutput> { Status = "ok", Result = groupItemForPinnedGroup.ToDto() });
+                    new BaseResponseObject<PinnedGroupOutput> { Status = "ok", Result = groupItemForPinnedGroup.ToPinnedGroupDto() });
 
         }, nameof(HandlePinnedGroupRegistration), log);
 
