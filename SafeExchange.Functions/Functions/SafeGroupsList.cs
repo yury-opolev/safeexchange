@@ -2,7 +2,7 @@
 /// SafeGroupsList
 /// </summary>
 
-namespace SafeExchange.Functions.AdminFunctions
+namespace SafeExchange.Functions.Functions
 {
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Azure.Functions.Worker;
@@ -19,7 +19,7 @@ namespace SafeExchange.Functions.AdminFunctions
 
         private readonly ILogger log;
 
-        public SafeGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeAdminApplications> log)
+        public SafeGroupsList(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeGroupsList> log)
         {
             this.safeExchangeGroupsListHandler = new SafeExchangeGroupsList(dbContext, tokenHelper, globalFilters);
             this.log = log ?? throw new ArgumentNullException(nameof(log));

@@ -8,10 +8,8 @@ namespace SafeExchange.Functions.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Logging;
-    using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
-    using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core;
     using Microsoft.Extensions.Configuration;
