@@ -1,5 +1,5 @@
 ﻿/// <summary>
-/// SafeUserSearch
+/// SafeGroupSearch
 /// </summary>
 
 namespace SafeExchange.Functions.Functions
@@ -14,27 +14,27 @@ namespace SafeExchange.Functions.Functions
     using SafeExchange.Core.Graph;
     using Microsoft.Extensions.Configuration;
 
-    public class SafeUserSearch
+    public class SafeGroupSearch
     {
         private const string Version = "v2";
 
-        private SafeExchangeUserSearch safeExchangeUserSearchHandler;
+        private SafeExchangeGroupSearch safeExchangeGroupSearchHandler;
 
         private readonly ILogger log;
 
-        public SafeUserSearch(IConfiguration configuration, SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeUserSearch> log)
+        public SafeGroupSearch(IConfiguration configuration, SafeExchangeDbContext dbContext, IGraphDataProvider graphDataProvider, ITokenHelper tokenHelper, GlobalFilters globalFilters, ILogger<SafeGroupSearch> log)
         {
-            this.safeExchangeUserSearchHandler = new SafeExchangeUserSearch(configuration, dbContext, graphDataProvider, tokenHelper, globalFilters);
+            this.safeExchangeGroupSearchHandler = new SafeExchangeGroupSearch(configuration, dbContext, graphDataProvider, tokenHelper, globalFilters);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        [Function("SafeExchange-UserSearch")]
+        [Function("SafeExchange-GroupSearch")]
         public async Task<HttpResponseData> RunUserSearch(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/user-search")]
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/group-search")]
             HttpRequestData request)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.safeExchangeUserSearchHandler.RunSearch(request, principal, this.log);
+            return await this.safeExchangeGroupSearchHandler.RunSearch(request, principal, this.log);
         }
     }
 }
