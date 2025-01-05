@@ -51,7 +51,6 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity adminIdentity;
 
         private SafeExchangeGroupSearch groupSearch;
-        private SafeExchangeGroups groups;
         private SafeExchangeGroupsList groupsList;
         private SafeExchangeAdminGroups groupsAdministration;
 
@@ -157,9 +156,7 @@ namespace SafeExchange.Tests
 
             this.groupSearch = new SafeExchangeGroupSearch(
                 this.testConfiguration, this.dbContext, this.graphDataProvider, this.tokenHelper, this.globalFilters);
-            this.groups = new SafeExchangeGroups(this.dbContext, this.tokenHelper, this.globalFilters);
             this.groupsList = new SafeExchangeGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
-
             this.groupsAdministration = new SafeExchangeAdminGroups(this.dbContext, this.tokenHelper, this.globalFilters);
         }
 
@@ -560,12 +557,12 @@ namespace SafeExchange.Tests
             var groupId = "00000011-0000-0000-0000-000000000011";
             var groupDisplayName = "Group Display Name";
             var groupMail = "test@group.mail";
-            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var groups1 = new SafeExchangeGroups(
+            var claimsPrincipal = new ClaimsPrincipal(this.adminIdentity);
+            var groups1 = new SafeExchangeAdminGroups(
                 new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
-            var groups2 = new SafeExchangeGroups(
+            var groups2 = new SafeExchangeAdminGroups(
                 new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
-            var groups3 = new SafeExchangeGroups(
+            var groups3 = new SafeExchangeAdminGroups(
                 new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
 
             await Task.WhenAll([
@@ -612,8 +609,8 @@ namespace SafeExchange.Tests
         private async Task<TestHttpResponseData?> RegisterGroupAsync(string groupId, string displayName, string? groupMail)
         {
             var groupRegistrationRequest = this.CreateGroupRegistrationRequest(groupId, displayName, groupMail);
-            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var groupResponse = await this.groups.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+            var claimsPrincipal = new ClaimsPrincipal(this.adminIdentity);
+            var groupResponse = await this.groupsAdministration.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
 
             return groupResponse as TestHttpResponseData;
         }
@@ -621,8 +618,8 @@ namespace SafeExchange.Tests
         private async Task<TestHttpResponseData?> GetGroupAsync(string groupId)
         {
             var groupRegistrationRequest = TestFactory.CreateHttpRequestData("get");
-            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
-            var groupResponse = await this.groups.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
+            var claimsPrincipal = new ClaimsPrincipal(this.adminIdentity);
+            var groupResponse = await this.groupsAdministration.Run(groupRegistrationRequest, groupId, claimsPrincipal, this.logger);
 
             return groupResponse as TestHttpResponseData;
         }
