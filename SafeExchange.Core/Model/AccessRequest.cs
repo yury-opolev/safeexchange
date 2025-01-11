@@ -15,13 +15,19 @@ namespace SafeExchange.Core.Model
         public AccessRequest()
         { }
 
-        public AccessRequest(string secretId, SubjectType subjectType, string subjectId, SubjectPermissionsInput source)
+        public AccessRequest(string secretId, SubjectType subjectType, string subjectName, SubjectPermissionsInput source)
+            : this(secretId, subjectType, subjectName, subjectName, source)
+        {
+        }
+
+        public AccessRequest(string secretId, SubjectType subjectType, string subjectName, string subjectId, SubjectPermissionsInput source)
         {
             this.Id = Guid.NewGuid().ToString();
             this.PartitionKey = this.GetPartitionKey();
 
             this.SubjectType = subjectType;
             this.SubjectName = subjectId;
+            this.SubjectId = subjectId;
             this.ObjectName = secretId;
 
             this.Permission = source.GetPermissionType();
@@ -47,6 +53,11 @@ namespace SafeExchange.Core.Model
         /// Requestor's name/id, can be either user UPN or application ID.
         /// </summary>
         public string SubjectName { get; set; }
+
+        /// <summary>
+        /// Requestor's name/id, can be either user UPN or application ID.
+        /// </summary>
+        public string SubjectId { get; set; }
 
         /// <summary>
         /// Secret name/id, which is the object to access
@@ -81,6 +92,7 @@ namespace SafeExchange.Core.Model
             Id = this.Id,
             SubjectType = this.SubjectType.ToDto(),
             SubjectName = this.SubjectName,
+            SubjectId = this.SubjectId,
             ObjectName = this.ObjectName,
 
             CanRead = (this.Permission & PermissionType.Read) == PermissionType.Read,

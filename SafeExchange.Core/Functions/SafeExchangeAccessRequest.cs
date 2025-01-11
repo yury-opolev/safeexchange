@@ -158,7 +158,7 @@ namespace SafeExchange.Core.Functions
 
             var requestedPermission = accessRequestInput.GetPermissionType();
             var existingRequest = await this.dbContext.AccessRequests
-                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(secretId) && ar.SubjectType.Equals(subjectType) && ar.SubjectName.Equals(subjectId));
+                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(secretId) && ar.SubjectType.Equals(subjectType) && ar.SubjectId.Equals(subjectId));
 
             if (existingRequest != null && existingRequest.Permission == requestedPermission)
             {
@@ -195,7 +195,7 @@ namespace SafeExchange.Core.Functions
             var outgoingRequests = await this.dbContext.AccessRequests.Where(
                 ar =>
                     ar.SubjectType.Equals(subjectType) &&
-                    ar.SubjectName.Equals(subjectId) &&
+                    ar.SubjectId.Equals(subjectId) &&
                     ar.Status == RequestStatus.InProgress)
                 .AsNoTracking().ToListAsync();
 
@@ -206,6 +206,7 @@ namespace SafeExchange.Core.Functions
                     "  AR.PartitionKey," +
                     "  AR.SubjectType," +
                     "  AR.SubjectName," +
+                    "  AR.SubjectId," +
                     "  AR.ObjectName," +
                     "  AR.Permission," +
                     "  AR.Recipients," +
@@ -214,7 +215,7 @@ namespace SafeExchange.Core.Functions
                     "  AR.FinishedBy," +
                     "  AR.FinishedAt" +
                     " FROM AccessRequests AR" +
-                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectType = {0} AND RECIP.SubjectName = {1})" +
+                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectType = {0} AND RECIP.SubjectId = {1})" +
                     " WHERE AR.Status = {2}", subjectType, subjectId, RequestStatus.InProgress)
                 .AsNoTracking().ToListAsync();
 

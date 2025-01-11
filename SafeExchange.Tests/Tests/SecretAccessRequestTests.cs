@@ -530,6 +530,7 @@ namespace SafeExchange.Tests
             var accessInput = new SubjectPermissionsInput()
             {
                 SubjectName = subjectName,
+                SubjectId = subjectName,
                 CanRead = read,
                 CanWrite = write,
                 CanGrantAccess = grantAccess,
