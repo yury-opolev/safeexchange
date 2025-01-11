@@ -248,7 +248,7 @@ namespace SafeExchange.Core.Migrations
                 FeedResponse<MigrationItem00006_2> response2 = await feed2.ReadNextAsync();
                 foreach (MigrationItem00006_2 item2 in response2)
                 {
-                    // TODO: set SubjectId from SubjectName for request recipients
+                    // TODO: set SubjectId from SubjectName for request recipients and requester
                 }
             }
         }

@@ -173,7 +173,13 @@ namespace SafeExchange.Core.Functions
             var subjectPermissions = await this.dbContext.Permissions
                 .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !(p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId)))
                 .ToListAsync();
-            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectType = p.SubjectType, SubjectId = p.SubjectId }).ToList();
+            var recipients = subjectPermissions.Select(p => new RequestRecipient()
+            {
+                AccessRequestId = accessRequest.Id,
+                SubjectType = p.SubjectType,
+                SubjectName = p.SubjectName,
+                SubjectId = p.SubjectId
+            }).ToList();
             accessRequest.Recipients = recipients;
 
             await this.dbContext.AccessRequests.AddAsync(accessRequest);

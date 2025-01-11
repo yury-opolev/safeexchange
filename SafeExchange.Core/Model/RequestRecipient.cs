@@ -12,6 +12,8 @@ namespace SafeExchange.Core.Model
 
         public SubjectType SubjectType { get; set; }
 
+        public string SubjectName { get; set; }
+
         public string SubjectId { get; set; }
     }
 }
