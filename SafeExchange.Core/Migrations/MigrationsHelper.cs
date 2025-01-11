@@ -253,7 +253,7 @@ namespace SafeExchange.Core.Migrations
                 FeedResponse<MigrationItem00006_2> response2 = await feed2.ReadNextAsync();
                 foreach (MigrationItem00006_2 item2 in response2)
                 {
-                    await MigrateItem00006_2_Async(container, item2);
+                    await MigrateItem00006_2_Async(container2, item2);
                 }
             }
         }
@@ -421,8 +421,8 @@ namespace SafeExchange.Core.Migrations
 
             try
             {
-                var response = await container.ReplaceItemAsync(newItem, newItem.id, new PartitionKey(newItem.PartitionKey));
-                this.log.LogInformation($"Item '{item.id}' migration finished successfully (response status: {response.StatusCode}).");
+                var response = await container.UpsertItemAsync(newItem, new PartitionKey(newItem.PartitionKey));
+                this.log.LogInformation($"Item '{newItem.id}' was upserted (response status: {response.StatusCode}).");
             }
             catch (Exception ex)
             {
