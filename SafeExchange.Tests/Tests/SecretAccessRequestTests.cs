@@ -320,7 +320,7 @@ namespace SafeExchange.Tests
             Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             var permissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("second@test.test"))
                 .ToListAsync();
 
             Assert.That(permissions.Count, Is.EqualTo(1));
@@ -477,7 +477,7 @@ namespace SafeExchange.Tests
             Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             var permissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("second@test.test"))
                 .ToListAsync();
 
             Assert.That(permissions.Count, Is.EqualTo(0));

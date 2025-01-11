@@ -327,7 +327,7 @@ namespace SafeExchange.Tests
             Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var dbPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("third@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("third@test.test"))
                 .ToListAsync();
 
             var thirdUserPermissions = dbPermissions.First();
@@ -383,7 +383,7 @@ namespace SafeExchange.Tests
             Assert.That(responseResult?.Result, Is.EqualTo("ok"));
 
             var dbPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("third@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("third@test.test"))
                 .ToListAsync();
 
             var thirdUserPermissions = dbPermissions.First();
@@ -432,7 +432,7 @@ namespace SafeExchange.Tests
 
             // [THEN] The database does not contain any records for second user to access the secret.
             var dbPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("second@test.test"))
                 .ToListAsync();
 
             Assert.That(dbPermissions.Any(), Is.False);
@@ -476,7 +476,7 @@ namespace SafeExchange.Tests
 
             // [THEN] The database contains 1 record for second user to access the secret, only for read access.
             var dbPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("second@test.test"))
                 .ToListAsync();
 
             Assert.That(dbPermissions?.Count, Is.EqualTo(1));
@@ -520,6 +520,7 @@ namespace SafeExchange.Tests
             Assert.That(permissions.Count, Is.EqualTo(1));
 
             Assert.That(permissions.First().SubjectName, Is.EqualTo("first@test.test"));
+            Assert.That(permissions.First().SubjectId, Is.EqualTo("first@test.test"));
             Assert.That(permissions.First().SecretName, Is.EqualTo("sunshine"));
 
             Assert.That(permissions.First().CanRead, Is.True);

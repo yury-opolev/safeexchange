@@ -8,17 +8,23 @@ namespace SafeExchange.Core.Model
     using SafeExchange.Core.Model.Dto.Output;
     using System;
 
-    [Index(nameof(SecretName), nameof(SubjectType), nameof(SubjectName))]
+    [Index(nameof(SecretName), nameof(SubjectType), nameof(SubjectId))]
     public class SubjectPermissions
     {
         public SubjectPermissions()
         { }
 
         public SubjectPermissions(string secretName, SubjectType subjectType, string subjectName)
+            : this(secretName, subjectType, subjectName, subjectName)
+        {
+        }
+
+        public SubjectPermissions(string secretName, SubjectType subjectType, string subjectName, string subjectId)
         {
             this.SecretName = secretName ?? throw new ArgumentNullException(nameof(secretName));
             this.SubjectType = subjectType;
             this.SubjectName = subjectName ?? throw new ArgumentNullException(nameof(subjectName));
+            this.SubjectId = subjectId ?? throw new ArgumentNullException(nameof(subjectId));
             this.PartitionKey = this.GetPartitionKey();
         }
 
@@ -29,6 +35,8 @@ namespace SafeExchange.Core.Model
         public SubjectType SubjectType { get; set; } = SubjectType.User;
 
         public string SubjectName { get; set; }
+
+        public string SubjectId { get; set; }
 
         public bool CanRead { get; set; }
 
@@ -43,6 +51,7 @@ namespace SafeExchange.Core.Model
             ObjectName = this.SecretName,
             SubjectType = this.SubjectType.ToDto(),
             SubjectName = this.SubjectName,
+            SubjectId = this.SubjectId,
 
             CanRead = this.CanRead,
             CanWrite = this.CanWrite,

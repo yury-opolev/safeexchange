@@ -131,7 +131,7 @@ namespace SafeExchange.Core.Functions
             => await TryCatch(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions
-                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId) && p.CanRead)
+                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
                 .ToListAsync();
 
             return await ActionResults.CreateResponseAsync(

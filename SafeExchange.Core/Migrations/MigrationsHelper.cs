@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Migrations
 {
+    using AngleSharp.Dom;
     using Azure;
     using Azure.Core;
     using Azure.Identity;
@@ -62,6 +63,13 @@ namespace SafeExchange.Core.Migrations
                 {
                     await this.RunMigration00005Async();
                 }
+
+                if ("00006".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00006Async();
+                }
+
+                this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
             {
@@ -213,6 +221,38 @@ namespace SafeExchange.Core.Migrations
             }
         }
 
+        private async Task RunMigration00006Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+
+            var container = database.GetContainer("SubjectPermissions");
+            var query = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.SubjectId)");
+            using FeedIterator<MigrationItem00006_1> feed =
+                container.GetItemQueryIterator<MigrationItem00006_1>(queryDefinition: query);
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00006_1> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00006_1 item in response)
+                {
+                    await MigrateItem00006_1_Async(container, item);
+                }
+            }
+
+            var container2 = database.GetContainer("AccessRequests");
+            var query2 = new QueryDefinition("SELECT * FROM c");
+            using FeedIterator<MigrationItem00006_2> feed2 =
+                container2.GetItemQueryIterator<MigrationItem00006_2>(queryDefinition: query2);
+            while (feed2.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00006_2> response2 = await feed2.ReadNextAsync();
+                foreach (MigrationItem00006_2 item2 in response2)
+                {
+                    // TODO: set SubjectId from SubjectName for request recipients
+                }
+            }
+        }
+
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)
         {
             this.log.LogInformation($"{nameof(MigrateItem00002Async)}, item '{item.id}'.");
@@ -335,6 +375,26 @@ namespace SafeExchange.Core.Migrations
             using var updateResponse = await container.ReplaceItemStreamAsync(updatedItemStream, item.id, new PartitionKey(item.PartitionKey));
 
             this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
+        }
+
+        private async Task MigrateItem00006_1_Async(Container container, MigrationItem00006_1 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00006_1_Async)}, item '{item.id}'.");
+
+            MigrationItem00006_1 newItem = new MigrationItem00006_1(item);
+
+            newItem.SubjectId = item.SubjectName;
+
+            try
+            {
+                await container.UpsertItemAsync(newItem);
+                this.log.LogInformation($"Item '{item.id}' migration finished successfully.");
+            }
+            catch (Exception ex)
+            {
+                // no-op
+                this.log.LogWarning($"Item '{item.id}' migration finished with {ex.GetType()}: '{ex.Message}'.");
+            }
         }
     }
 }

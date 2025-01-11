@@ -176,7 +176,7 @@ namespace SafeExchange.Core.Permissions
 
         private async Task<bool> HasPermissionAsync(SubjectType subjectType, string subjectId, string secretName, PermissionType permission)
         {
-            var permissions = await this.dbContext.Permissions.FirstOrDefaultAsync(p => p.SecretName.Equals(secretName) && p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId));
+            var permissions = await this.dbContext.Permissions.FirstOrDefaultAsync(p => p.SecretName.Equals(secretName) && p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId));
             if (permissions == default)
             {
                 return false;
@@ -214,7 +214,7 @@ namespace SafeExchange.Core.Permissions
             var groupPermissions = await this.GetGroupPermissionsAsync(secretName);
             foreach (var groupPermission in groupPermissions)
             { 
-                if (!this.TryGetGroup(groupPermission.SubjectName, out var group))
+                if (!this.TryGetGroup(groupPermission.SubjectId, out var group))
                 {
                     continue;
                 }

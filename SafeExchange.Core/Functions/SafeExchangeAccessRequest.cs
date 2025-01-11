@@ -171,9 +171,9 @@ namespace SafeExchange.Core.Functions
             var accessRequest = new AccessRequest(secretId, subjectType, subjectId, accessRequestInput);
 
             var subjectPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !(p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId)))
+                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !(p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId)))
                 .ToListAsync();
-            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectType = p.SubjectType, SubjectName = p.SubjectName }).ToList();
+            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectType = p.SubjectType, SubjectId = p.SubjectId }).ToList();
             accessRequest.Recipients = recipients;
 
             await this.dbContext.AccessRequests.AddAsync(accessRequest);
@@ -262,7 +262,7 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or is for different secret." });
             }
 
-            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
+            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectId.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
             if (foundRecipient == null)
             {
                 log.LogWarning($"{subjectType} '{subjectId}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");

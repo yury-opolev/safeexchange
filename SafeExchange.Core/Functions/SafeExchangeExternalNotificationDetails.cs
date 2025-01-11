@@ -127,7 +127,7 @@ namespace SafeExchange.Core.Functions
                     Url = $"{this.generalConfiguration.WebClientBaseUri.TrimEnd('/')}/accessrequests",
                     RecipientUpns = new List<string>(existingAccessRequest.Recipients
                         .Where(r => r.SubjectType.Equals(SubjectType.User))
-                        .Select(r => r.SubjectName))
+                        .Select(r => r.SubjectId))
                 };
 
                 try
