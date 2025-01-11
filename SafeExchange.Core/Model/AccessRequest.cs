@@ -26,7 +26,7 @@ namespace SafeExchange.Core.Model
             this.PartitionKey = this.GetPartitionKey();
 
             this.SubjectType = subjectType;
-            this.SubjectName = subjectId;
+            this.SubjectName = subjectName;
             this.SubjectId = subjectId;
             this.ObjectName = secretId;
 

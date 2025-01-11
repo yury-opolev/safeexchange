@@ -13,6 +13,7 @@ namespace SafeExchange.Core.Migrations
 
         public MigrationItem00006_2(MigrationItem00006_2 source)
         {
+            this.Id = source.Id;
             this.SubjectType = source.SubjectType;
             this.SubjectName = source.SubjectName;
             this.SubjectId = source.SubjectId;
@@ -36,6 +37,8 @@ namespace SafeExchange.Core.Migrations
         public string PartitionKey { get; set; }
 
         public string id { get; set; }
+
+        public string Id { get; set; }
 
         public int SubjectType { get; set; }
 

@@ -409,18 +409,20 @@ namespace SafeExchange.Core.Migrations
             MigrationItem00006_2 newItem = new MigrationItem00006_2(item);
 
             newItem.SubjectId = item.SubjectName;
-            this.log.LogInformation($"Set {nameof(newItem.SubjectId)} to '{newItem.SubjectId}' for item {newItem.id}.");
+            this.log.LogInformation($"Set {nameof(newItem.SubjectId)} to '{newItem.SubjectId}' for item {newItem.id} (was {item.SubjectId}).");
 
-            foreach (var subItem in newItem.Recipients)
+            for (int i = 0; i < (newItem.Recipients?.Count ?? 0); i++)
             {
-                subItem.SubjectId = subItem.SubjectName;
-                this.log.LogInformation($"Set {nameof(subItem.SubjectId)} to '{subItem.SubjectId}' for sub-item of {newItem.id}.");
+                var oldSubItem = item.Recipients[i];
+                var newSubItem = newItem.Recipients[i];
+                newSubItem.SubjectId = oldSubItem.SubjectName;
+                this.log.LogInformation($"Set {nameof(newSubItem.SubjectId)} to '{newSubItem.SubjectId}' for sub-item of {newItem.id} (was {oldSubItem.SubjectId}).");
             }
 
             try
             {
-                await container.UpsertItemAsync(newItem);
-                this.log.LogInformation($"Item '{item.id}' migration finished successfully.");
+                var response = await container.ReplaceItemAsync(newItem, newItem.id, new PartitionKey(newItem.PartitionKey));
+                this.log.LogInformation($"Item '{item.id}' migration finished successfully (response status: {response.StatusCode}).");
             }
             catch (Exception ex)
             {
