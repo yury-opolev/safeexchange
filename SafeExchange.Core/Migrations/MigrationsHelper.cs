@@ -47,26 +47,31 @@ namespace SafeExchange.Core.Migrations
                 if ("00002".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00002Async();
+                    return;
                 }
 
                 if ("00003".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00003Async();
+                    return;
                 }
 
                 if ("00004".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00004Async();
+                    return;
                 }
 
                 if ("00005".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00005Async();
+                    return;
                 }
 
                 if ("00006".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00006Async();
+                    return;
                 }
 
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
@@ -240,7 +245,7 @@ namespace SafeExchange.Core.Migrations
             }
 
             var container2 = database.GetContainer("AccessRequests");
-            var query2 = new QueryDefinition("SELECT * FROM c");
+            var query2 = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.SubjectId)");
             using FeedIterator<MigrationItem00006_2> feed2 =
                 container2.GetItemQueryIterator<MigrationItem00006_2>(queryDefinition: query2);
             while (feed2.HasMoreResults)
@@ -248,7 +253,7 @@ namespace SafeExchange.Core.Migrations
                 FeedResponse<MigrationItem00006_2> response2 = await feed2.ReadNextAsync();
                 foreach (MigrationItem00006_2 item2 in response2)
                 {
-                    // TODO: set SubjectId from SubjectName for request recipients and requester
+                    await MigrateItem00006_2_Async(container, item2);
                 }
             }
         }
@@ -384,6 +389,33 @@ namespace SafeExchange.Core.Migrations
             MigrationItem00006_1 newItem = new MigrationItem00006_1(item);
 
             newItem.SubjectId = item.SubjectName;
+
+            try
+            {
+                await container.UpsertItemAsync(newItem);
+                this.log.LogInformation($"Item '{item.id}' migration finished successfully.");
+            }
+            catch (Exception ex)
+            {
+                // no-op
+                this.log.LogWarning($"Item '{item.id}' migration finished with {ex.GetType()}: '{ex.Message}'.");
+            }
+        }
+
+        private async Task MigrateItem00006_2_Async(Container container, MigrationItem00006_2 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00006_2_Async)}, item '{item.id}'.");
+
+            MigrationItem00006_2 newItem = new MigrationItem00006_2(item);
+
+            newItem.SubjectId = item.SubjectName;
+            this.log.LogInformation($"Set {nameof(newItem.SubjectId)} to '{newItem.SubjectId}' for item {newItem.id}.");
+
+            foreach (var subItem in newItem.Recipients)
+            {
+                subItem.SubjectId = subItem.SubjectName;
+                this.log.LogInformation($"Set {nameof(subItem.SubjectId)} to '{subItem.SubjectId}' for sub-item of {newItem.id}.");
+            }
 
             try
             {
