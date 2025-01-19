@@ -500,7 +500,7 @@ namespace SafeExchange.Tests
 
             // [THEN] The result that is returned is 'no content'.
             Assert.That(okObjectAccessResult, Is.Not.Null);
-            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.That(responseResult?.Status, Is.EqualTo("no_content"));

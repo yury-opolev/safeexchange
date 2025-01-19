@@ -65,7 +65,7 @@ namespace SafeExchange.Core.Functions
                 if (existingPinnedGroups.Count == 0)
                 {
                     return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NoContent,
+                        request, HttpStatusCode.OK,
                         new BaseResponseObject<List<PinnedGroupOutput>>
                         {
                             Status = "no_content",

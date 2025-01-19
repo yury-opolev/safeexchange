@@ -254,7 +254,7 @@ namespace SafeExchange.Core.Functions.Admin
             {
                 log.LogInformation($"Cannot delete webhook subscription '{webhookSubscriptionId}', as it does not exist.");
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NoContent,
+                    request, HttpStatusCode.OK,
                     new BaseResponseObject<string> { Status = "no_content", Result = $"Webhook subscription '{webhookSubscriptionId}' does not exist." });
             }
 

@@ -82,7 +82,7 @@ namespace SafeExchange.Core.Functions.Admin
         if (existingGroup == default)
         {
             return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NoContent,
+                        request, HttpStatusCode.OK,
                         new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
         }
 
@@ -178,7 +178,7 @@ namespace SafeExchange.Core.Functions.Admin
             {
                 log.LogInformation($"Cannot delete group registration '{groupId}', as it does not exist.");
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NoContent,
+                    request, HttpStatusCode.OK,
                     new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{groupId}' does not exist." });
             }
 

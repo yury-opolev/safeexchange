@@ -74,11 +74,11 @@ namespace SafeExchange.Core.Functions
                 if (!this.features.UseGraphUserSearch)
                 {
                     return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NoContent,
+                        request, HttpStatusCode.OK,
                         new BaseResponseObject<List<GraphUserOutput>>
                         {
                             Status = "no_content",
-                            Result = []
+                            Result = Array.Empty<GraphUserOutput>().ToList()
                         });
                 }
 

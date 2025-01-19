@@ -92,16 +92,16 @@ namespace SafeExchange.Core.Functions
             if (existingPinnedGroup == default)
             {
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NoContent,
-                    new BaseResponseObject<string> { Status = "no_content", Result = $"Pinned group '{pinnedGroupId}' does not exist." });
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<string> { Status = "no_content", Result = default });
             }
 
             var existingGroup = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(pinnedGroupId));
             if (existingGroup == default)
             {
                 return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NoContent,
-                    new BaseResponseObject<string> { Status = "no_content", Result = $"Group '{pinnedGroupId}' does not exist." });
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<string> { Status = "no_content", Result = default });
             }
 
             return await ActionResults.CreateResponseAsync(
@@ -187,7 +187,7 @@ namespace SafeExchange.Core.Functions
             {
                 log.LogInformation($"Cannot delete group registration '{pinnedGroupId}', as it does not exist.");
                 return await ActionResults.CreateResponseAsync(
-                            request, HttpStatusCode.NoContent,
+                            request, HttpStatusCode.OK,
                             new BaseResponseObject<string> { Status = "no_content", Result = $"Group registration '{pinnedGroupId}' does not exist." });
             }
 
