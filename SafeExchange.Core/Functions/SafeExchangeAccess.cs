@@ -138,6 +138,11 @@ namespace SafeExchange.Core.Functions
                 }
 
                 var subjectType = permissionInput.SubjectType.ToModel();
+                if (subjectType.Equals(SubjectType.Group) && Guid.TryParse(permissionInput.SubjectId, out _))
+                {
+                    await this.EnsureGroupExistsAsync(permissionInput);
+                }
+
                 log.LogInformation($"Setting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
                 await this.permissionsManager.SetPermissionAsync(subjectType, permissionInput.SubjectName, secretId, permission);
             }
@@ -202,6 +207,12 @@ namespace SafeExchange.Core.Functions
                 log.LogWarning(exception, "Could not parse input data for permissions input.");
                 return null;
             }
+        }
+
+        private async Task EnsureGroupExistsAsync(SubjectPermissionsInput permissionInput)
+        {
+            // TODO: ensure that group exists.
+            await Task.CompletedTask;
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
