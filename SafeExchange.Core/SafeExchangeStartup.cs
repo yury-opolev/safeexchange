@@ -28,6 +28,7 @@ namespace SafeExchange.Core
     using System.Text.Json;
     using Microsoft.Extensions.Options;
     using System.Configuration;
+    using SafeExchange.Core.Groups;
 
     public class SafeExchangeStartup
     {
@@ -78,6 +79,7 @@ namespace SafeExchange.Core
             services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
+            services.AddScoped<IGroupsManager, GroupsManager>();
 
             services.AddScoped<IQueueHelper, QueueHelper>();
             services.AddScoped<IDelayedTaskScheduler, DelayedTaskScheduler>();
