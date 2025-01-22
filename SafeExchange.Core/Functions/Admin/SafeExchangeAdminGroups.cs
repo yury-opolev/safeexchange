@@ -9,7 +9,6 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
-    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
