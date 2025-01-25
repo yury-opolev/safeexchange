@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Core.Groups
 {
-    using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
 
@@ -19,6 +18,13 @@ namespace SafeExchange.Core.Groups
         /// <param name="groupId">Group Id.</param>
         /// <returns>Task, representing asynchronous operation.</returns>
         public Task<GroupDictionaryItem?> GetGroupAsync(string groupId);
+
+        /// <summary>
+        /// Get an existing group with specified mail, if any.
+        /// </summary>
+        /// <param name="groupMail">Group mail.</param>
+        /// <returns>Task, representing asynchronous operation.</returns>
+        public Task<GroupDictionaryItem?> TryFindGroupByMailAsync(string groupMail);
 
         /// <summary>
         /// Put group, i.e. create group if it does not exist, and skip it if it already exists.

@@ -18,6 +18,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Groups;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
@@ -60,6 +61,9 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity firstIdentity;
         private CaseSensitiveClaimsIdentity secondIdentity;
         private CaseSensitiveClaimsIdentity thirdIdentity;
+
+        private GroupDictionaryItem existingGroupOne;
+        private GroupDictionaryItem existingGroupTwo;
 
         [OneTimeSetUp]
         public void OneTimeSetup()
@@ -159,6 +163,27 @@ namespace SafeExchange.Tests
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager);
+
+            var groupOneId = "01010101-0101-0101-0101-010101010101";
+            var groupOneInput = new GroupInput()
+            {
+                DisplayName = "Existing Test Group One",
+                Mail = "existing.test.group.one@test.test"
+            };
+
+            this.existingGroupOne = this.groupsManager
+                .PutGroupAsync(groupOneId, groupOneInput, SubjectType.User, "test@test.test")
+                .GetAwaiter().GetResult();
+
+            var groupTwoId = "02020202-0202-0202-0202-020202020202";
+            var groupTwoInput = new GroupInput()
+            {
+                DisplayName = "Existing Test Group Two"
+            };
+
+            this.existingGroupTwo = this.groupsManager
+                .PutGroupAsync(groupTwoId, groupTwoInput, SubjectType.User, "test@test.test")
+                .GetAwaiter().GetResult();
         }
 
         [TearDown]
@@ -399,6 +424,176 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task GrantAccessToExistingGroup_OldApi()
+        {
+            // [GIVEN] A user with valid credentials created a secret.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [WHEN] The user has granted full access for the secret to an existing group.
+            await this.GrantGroupAccess(
+                this.firstIdentity, "sunshine",
+                null, this.existingGroupOne.GroupMail!,
+                true, true, true, true);
+
+            // [THEN] Permissions are added to the database.
+            var dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine"))
+                .ToListAsync();
+
+            var allSecretPermissions = dbPermissions.ToList();
+            Assert.That (allSecretPermissions.Count, Is.EqualTo(2));
+
+            dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals(this.existingGroupOne.GroupId))
+                .ToListAsync();
+
+            var groupPermissions = dbPermissions.Single();
+
+            Assert.That(groupPermissions.SubjectType, Is.EqualTo(SubjectType.Group));
+            Assert.That(groupPermissions.SubjectId, Is.EqualTo(this.existingGroupOne.GroupId));
+            Assert.That(groupPermissions.SubjectName, Is.EqualTo(this.existingGroupOne.DisplayName));
+
+            Assert.That(groupPermissions.CanRead, Is.True);
+            Assert.That(groupPermissions.CanWrite, Is.True);
+            Assert.That(groupPermissions.CanGrantAccess, Is.True);
+            Assert.That(groupPermissions.CanRevokeAccess, Is.True);
+        }
+
+        [Test]
+        public async Task GrantAccessToInexistentGroup_OldApi()
+        {
+            // [GIVEN] A user with valid credentials created a secret.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [WHEN] The user has granted full access for the secret to an inexistent group.
+            var accessRequest = TestFactory.CreateHttpRequestData("post");
+            var accessInput = new List<SubjectPermissionsInput>()
+            {
+                new SubjectPermissionsInput()
+                {
+                    SubjectType = SubjectTypeInput.Group,
+                    SubjectName = "some.inexistent.group@test.test",
+                    CanRead = true,
+                    CanWrite = true,
+                    CanGrantAccess = true,
+                    CanRevokeAccess = true
+                }
+            };
+
+            accessRequest.SetBodyAsJson(accessInput);
+
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", claimsPrincipal, this.logger);
+
+            // [THEN] OK is returned with Status = 'ok', but permissions for inexistent group are not added.
+            var okAccessResult = accessResponse as TestHttpResponseData;
+
+            Assert.That(okAccessResult, Is.Not.Null);
+            Assert.That(okAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+            Assert.That(responseResult?.Result, Is.EqualTo("ok"));
+
+            // [THEN] The secret only has permissions for the user which created it.
+            var dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine"))
+                .ToListAsync();
+
+            var existingPermissions = dbPermissions.Single();
+
+            Assert.That(existingPermissions.SubjectType, Is.EqualTo(SubjectType.User));
+            Assert.That(existingPermissions.SubjectName, Is.EqualTo("first@test.test"));
+            Assert.That(existingPermissions.SubjectId, Is.EqualTo("first@test.test"));
+        }
+
+        [Test]
+        public async Task GrantAccessToExistingGroup_NewApi()
+        {
+            // [GIVEN] A user with valid credentials created a secret.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [WHEN] The user has granted full access for the secret to an existing group.
+            await this.GrantGroupAccess(
+                this.firstIdentity, "sunshine",
+                this.existingGroupTwo.GroupId, this.existingGroupTwo.DisplayName,
+                true, true, true, true);
+
+            // [THEN] Permissions are added to the database.
+            var dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine"))
+                .ToListAsync();
+
+            var allSecretPermissions = dbPermissions.ToList();
+            Assert.That(allSecretPermissions.Count, Is.EqualTo(2));
+
+            dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals(this.existingGroupTwo.GroupId))
+                .ToListAsync();
+
+            var groupPermissions = dbPermissions.Single();
+
+            Assert.That(groupPermissions.SubjectType, Is.EqualTo(SubjectType.Group));
+            Assert.That(groupPermissions.SubjectId, Is.EqualTo(this.existingGroupTwo.GroupId));
+            Assert.That(groupPermissions.SubjectName, Is.EqualTo(this.existingGroupTwo.DisplayName));
+
+            Assert.That(groupPermissions.CanRead, Is.True);
+            Assert.That(groupPermissions.CanWrite, Is.True);
+            Assert.That(groupPermissions.CanGrantAccess, Is.True);
+            Assert.That(groupPermissions.CanRevokeAccess, Is.True);
+        }
+
+        [Test]
+        public async Task GrantAccessToInexistentGroup_NewApi()
+        {
+            // [GIVEN] A user with valid credentials created a secret.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [WHEN] The user has granted full access for the secret to inexistent group.
+            var groupId = "00000000-abcd-0000-0000-000300030003";
+            var groupDisplayName = "Newly Created Group";
+            await this.GrantGroupAccess(
+                this.firstIdentity, "sunshine",
+                groupId, groupDisplayName,
+                true, true, true, true);
+
+            // [THEN] Permissions are added to the database, new group created.
+            var dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine"))
+                .ToListAsync();
+
+            var allSecretPermissions = dbPermissions.ToList();
+            Assert.That(allSecretPermissions.Count, Is.EqualTo(2));
+
+            dbPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals(groupId))
+                .ToListAsync();
+
+            var groupPermissions = dbPermissions.Single();
+
+            Assert.That(groupPermissions.SubjectType, Is.EqualTo(SubjectType.Group));
+            Assert.That(groupPermissions.SubjectId, Is.EqualTo(groupId));
+            Assert.That(groupPermissions.SubjectName, Is.EqualTo(groupDisplayName));
+
+            Assert.That(groupPermissions.CanRead, Is.True);
+            Assert.That(groupPermissions.CanWrite, Is.True);
+            Assert.That(groupPermissions.CanGrantAccess, Is.True);
+            Assert.That(groupPermissions.CanRevokeAccess, Is.True);
+
+            var groupList = await this.dbContext.GroupDictionary
+                .Where(p => p.GroupId.Equals(groupId))
+                .ToListAsync();
+
+            Assert.That(groupList.Count, Is.EqualTo(1));
+            var group = groupList.Single();
+
+            Assert.That(group.GroupId, Is.EqualTo(groupId));
+            Assert.That(group.DisplayName, Is.EqualTo(groupDisplayName));
+            Assert.That(group.GroupMail, Is.EqualTo(string.Empty));
+        }
+
+        [Test]
         public async Task GrantAndRevokeAccess()
         {
             // [GIVEN] A user with valid credentials created a secret.
@@ -593,6 +788,9 @@ namespace SafeExchange.Tests
             Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
 
+        private async Task GrantGroupAccess(CaseSensitiveClaimsIdentity identity, string secretName, string? subjectId, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
+            => await this.InternalAccessRequest(identity, "post", secretName, SubjectTypeInput.Group, subjectId, subjectName, read, write, grantAccess, revokeAccess);
+
         private async Task GrantAccess(CaseSensitiveClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
             => await this.InternalAccessRequest(identity, "post", secretName, subjectName, read, write, grantAccess, revokeAccess);
 
@@ -600,12 +798,17 @@ namespace SafeExchange.Tests
             => await this.InternalAccessRequest(identity, "delete", secretName, subjectName, read, write, grantAccess, revokeAccess);
 
         private async Task InternalAccessRequest(CaseSensitiveClaimsIdentity identity, string method, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
+            => await InternalAccessRequest(identity, method, secretName, SubjectTypeInput.User, null, subjectName, read, write, grantAccess, revokeAccess);
+
+        private async Task InternalAccessRequest(CaseSensitiveClaimsIdentity identity, string method, string secretName, SubjectTypeInput subjectType, string? subjectId, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
         {
             var accessRequest = TestFactory.CreateHttpRequestData(method);
             var accessInput = new List<SubjectPermissionsInput>()
             {
                 new SubjectPermissionsInput()
                 {
+                    SubjectType = subjectType,
+                    SubjectId = subjectId!,
                     SubjectName = subjectName,
                     CanRead = read,
                     CanWrite = write,

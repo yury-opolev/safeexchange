@@ -35,6 +35,18 @@ namespace SafeExchange.Core.Groups
         }
 
         /// <inheritdoc/>
+        public async Task<GroupDictionaryItem?> TryFindGroupByMailAsync(string groupMail)
+        {
+            var existingGroup = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupMail.Equals(groupMail));
+            if (existingGroup == default)
+            {
+                this.logger.LogInformation($"Group with mail '{groupMail}' does not exist.");
+            }
+
+            return existingGroup;
+        }
+
+        /// <inheritdoc/>
         public async Task<GroupDictionaryItem> PutGroupAsync(string groupId, GroupInput registrationInput, SubjectType subjectType, string subjectId)
         {
             var existingGroup = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));

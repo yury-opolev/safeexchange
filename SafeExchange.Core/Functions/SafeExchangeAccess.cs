@@ -142,11 +142,9 @@ namespace SafeExchange.Core.Functions
                 }
 
                 var subjectType = permissionInput.SubjectType.ToModel();
-                if (subjectType.Equals(SubjectType.Group) && Guid.TryParse(permissionInput.SubjectId, out _))
+                if (subjectType.Equals(SubjectType.Group))
                 {
-                    await this.EnsureGroupExistsAsync(permissionInput, subjectType, subjectId);
-                    log.LogInformation($"Setting permissions for '{secretId}': group '{permissionInput.SubjectName}' ({permissionInput.SubjectId}) -> '{permission}'");
-                    await this.permissionsManager.SetPermissionAsync(subjectType, permissionInput.SubjectId, permissionInput.SubjectName, secretId, permission);
+                    await this.GrantAccessToGroupAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
                 }
                 else
                 {
@@ -162,6 +160,37 @@ namespace SafeExchange.Core.Functions
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(GrantAccessAsync), log);
+
+        private async Task GrantAccessToGroupAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            if (Guid.TryParse(permissionInput.SubjectId, out _))
+            {
+                await this.GrantAccessToGroupIdAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
+                return;
+            }
+
+            await this.GrantAccessToGroupMailAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
+        }
+
+        private async Task GrantAccessToGroupIdAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            await this.EnsureGroupExistsAsync(permissionInput, subjectType, subjectId);
+
+            log.LogInformation($"Setting permissions for '{secretId}': group '{permissionInput.SubjectName}' ({permissionInput.SubjectId}) -> '{permission}'");
+            await this.permissionsManager.SetPermissionAsync(subjectType, permissionInput.SubjectId, permissionInput.SubjectName, secretId, permission);
+        }
+
+        private async Task GrantAccessToGroupMailAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            var existingGroup = await this.groupsManager.TryFindGroupByMailAsync(permissionInput.SubjectName);
+            if (existingGroup == default)
+            {
+                return;
+            }
+
+            log.LogInformation($"Setting permissions for '{secretId}': group mail '{permissionInput.SubjectName}', id: '{existingGroup.GroupId}' -> '{permission}'");
+            await this.permissionsManager.SetPermissionAsync(subjectType, existingGroup.GroupId, existingGroup.DisplayName, secretId, permission);
+        }
 
         private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, ILogger log)
             => await TryCatch(request, async () =>
