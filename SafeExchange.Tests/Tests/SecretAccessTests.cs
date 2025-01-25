@@ -509,6 +509,50 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task GrantAccessToExistingGroup_OldApi_Read()
+        {
+            // [GIVEN] A user with valid credentials created a secret.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [GIVEN] The user has granted full access for the secret to an existing group.
+            await this.GrantGroupAccess(
+                this.firstIdentity, "sunshine",
+                null, this.existingGroupOne.GroupMail!,
+                true, true, true, true);
+
+            // [WHEN] The user is requesting list of permissions to a secret.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var accessRequest = TestFactory.CreateHttpRequestData("get");
+            var accessResponse = await this.secretAccess.Run(accessRequest, "sunshine", claimsPrincipal, this.logger);
+            var okObjectAccessResult = accessResponse as TestHttpResponseData;
+
+            // [THEN] OkObjectResult is returned with Status = 'ok', non-null Result and null Error.
+            Assert.That(okObjectAccessResult, Is.Not.Null);
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Error, Is.Null);
+
+            var permissions = responseResult?.Result;
+            if (permissions == null)
+            {
+                throw new AssertionException("Permissions list is null.");
+            }
+
+            Assert.That(permissions.Count, Is.EqualTo(2));
+
+            var permission = permissions.Where(p => p.SubjectId == this.existingGroupOne.GroupId).Single();
+            Assert.That(permission.SubjectType, Is.EqualTo(SubjectTypeOutput.Group));
+            Assert.That(permission.SubjectName, Is.EqualTo(this.existingGroupOne.DisplayName));
+
+            Assert.That(permission.CanRead, Is.True);
+            Assert.That(permission.CanWrite, Is.True);
+            Assert.That(permission.CanGrantAccess, Is.True);
+            Assert.That(permission.CanRevokeAccess, Is.True);
+        }
+
+        [Test]
         public async Task GrantAccessToExistingGroup_NewApi()
         {
             // [GIVEN] A user with valid credentials created a secret.
