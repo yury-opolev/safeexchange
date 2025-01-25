@@ -10,6 +10,7 @@ namespace SafeExchange.Core.Migrations
     using Azure.Identity;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Graph.Models;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Model;
     using System;
@@ -71,6 +72,12 @@ namespace SafeExchange.Core.Migrations
                 if ("00006".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     await this.RunMigration00006Async();
+                    return;
+                }
+
+                if ("00007".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00007Async();
                     return;
                 }
 
@@ -258,6 +265,45 @@ namespace SafeExchange.Core.Migrations
             }
         }
 
+        private async Task RunMigration00007Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+
+            var usersContainer = database.GetContainer("Users");
+            var usersQuery = new QueryDefinition("SELECT * FROM c");
+            using FeedIterator<MigrationItem00007_User> usersFeed =
+                usersContainer.GetItemQueryIterator<MigrationItem00007_User>(queryDefinition: usersQuery);
+
+            var users = new List<MigrationItem00007_User>();
+            while (usersFeed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00007_User> response = await usersFeed.ReadNextAsync();
+                foreach (MigrationItem00007_User item in response)
+                {
+                    users.Add(item);
+                }
+            }
+
+            var targetContainer = database.GetContainer("PinnedGroups");
+            var sourceContainer = database.GetContainer("GroupDictionary");
+            var sourceQuery = new QueryDefinition("SELECT * FROM c");
+            using FeedIterator<MigrationItem00007> sourceFeed =
+                sourceContainer.GetItemQueryIterator<MigrationItem00007>(queryDefinition: sourceQuery);
+            while (sourceFeed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00007> response = await sourceFeed.ReadNextAsync();
+                foreach (MigrationItem00007 item in response)
+                {
+                    this.log.LogInformation($"Processing {nameof(MigrationItem00007)} '{item.id}'.");
+                    foreach (var user in users)
+                    {
+                        await MigrateItem00007_Async(targetContainer, user.id, item);
+                    }
+                }
+            }
+        }
+
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)
         {
             this.log.LogInformation($"{nameof(MigrateItem00002Async)}, item '{item.id}'.");
@@ -428,6 +474,26 @@ namespace SafeExchange.Core.Migrations
             {
                 // no-op
                 this.log.LogWarning($"Item '{item.id}' migration finished with {ex.GetType()}: '{ex.Message}'.");
+            }
+        }
+
+        private async Task MigrateItem00007_Async(Container container, string userId, MigrationItem00007 item)
+        {
+            this.log.LogInformation($"{nameof(MigrateItem00007_Async)}, item '{item.id}'.");
+
+            MigrationItem00007_Target newItem = new MigrationItem00007_Target(userId, item);
+
+            this.log.LogInformation($"Adding {nameof(PinnedGroup)} for user '{userId}' for group {item.GroupId}.");
+
+            try
+            {
+                var response = await container.UpsertItemAsync(newItem, new PartitionKey(newItem.PartitionKey));
+                this.log.LogInformation($"{nameof(PinnedGroup)} was upserted (response status: {response.StatusCode}).");
+            }
+            catch (Exception ex)
+            {
+                // no-op
+                this.log.LogWarning($"{nameof(PinnedGroup)} upsert finished with {ex.GetType()}: '{ex.Message}'.");
             }
         }
     }
