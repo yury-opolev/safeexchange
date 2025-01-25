@@ -333,8 +333,9 @@ namespace SafeExchange.Core.Functions
         {
             var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} {subjectId}");
             var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
-            
-            await this.permissionsManager.SetPermissionAsync(subjectType, subjectId, secretId, PermissionType.Full);
+
+            var subjectName = subjectId;
+            await this.permissionsManager.SetPermissionAsync(subjectType, subjectId, subjectName, secretId, PermissionType.Full);
             
             await this.dbContext.SaveChangesAsync();
 

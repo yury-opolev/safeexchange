@@ -289,7 +289,7 @@ namespace SafeExchange.Core.Functions
 
             if (accessRequestInput.Approve)
             {
-                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectType, existingRequest.SubjectName, secretId, existingRequest.Permission);
+                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectType, existingRequest.SubjectId, existingRequest.SubjectName, secretId, existingRequest.Permission);
                 existingRequest.Status = RequestStatus.Approved;
             }
             else

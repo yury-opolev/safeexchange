@@ -17,6 +17,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Groups;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
@@ -41,6 +42,8 @@ namespace SafeExchange.Tests
         private IConfiguration testConfiguration;
 
         private SafeExchangeDbContext dbContext;
+
+        private IGroupsManager groupsManager;
 
         private ITokenHelper tokenHelper;
 
@@ -83,6 +86,7 @@ namespace SafeExchange.Tests
             this.dbContext = new SafeExchangeDbContext(dbContextOptions);
             this.dbContext.Database.EnsureCreated();
 
+            this.groupsManager = new GroupsManager(this.dbContext, Mock.Of<ILogger<GroupsManager>>());
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
 
@@ -153,7 +157,7 @@ namespace SafeExchange.Tests
                 this.globalFilters, this.purger, this.permissionsManager);
 
             this.secretAccess = new SafeExchangeAccess(
-                this.dbContext, this.tokenHelper,
+                this.dbContext, this.groupsManager, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager);
         }
 

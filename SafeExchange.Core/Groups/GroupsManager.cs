@@ -37,6 +37,12 @@ namespace SafeExchange.Core.Groups
         /// <inheritdoc/>
         public async Task<GroupDictionaryItem> PutGroupAsync(string groupId, GroupInput registrationInput, SubjectType subjectType, string subjectId)
         {
+            var existingGroup = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
+            if (existingGroup != default)
+            {
+                return existingGroup;
+            }
+
             var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
             var result = await DbUtils.TryAddOrGetEntityAsync(
                 async () =>

@@ -65,6 +65,9 @@ namespace SafeExchange.Core.Permissions
         }
 
         public async Task SetPermissionAsync(SubjectType subjectType, string subjectId, string secretId, PermissionType permission)
+            => await this.SetPermissionAsync(subjectType, subjectId, subjectId, secretId, permission);
+
+        public async Task SetPermissionAsync(SubjectType subjectType, string subjectId, string subjectName, string secretId, PermissionType permission)
         {
             if (subjectType == SubjectType.User)
             {
@@ -86,7 +89,7 @@ namespace SafeExchange.Core.Permissions
             }
             else
             {
-                var newPermissions = new SubjectPermissions(secretId, subjectType, subjectId)
+                var newPermissions = new SubjectPermissions(secretId, subjectType, subjectName, subjectId)
                 {
                     CanRead = canRead,
                     CanWrite = canWrite,

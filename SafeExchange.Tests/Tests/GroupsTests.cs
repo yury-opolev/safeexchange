@@ -509,8 +509,7 @@ namespace SafeExchange.Tests
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.That(responseResult?.Status, Is.EqualTo("no_content"));
             Assert.That(responseResult?.Error, Is.Null);
-
-            Assert.That(responseResult.Result, Is.EqualTo("Group registration '00000033-0000-0000-0000-000000000033' does not exist."));
+            Assert.That(responseResult.Result, Is.Null);
         }
 
         [Test]
