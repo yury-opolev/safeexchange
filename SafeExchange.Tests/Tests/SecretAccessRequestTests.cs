@@ -239,6 +239,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read | PermissionType.Write));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -250,6 +251,7 @@ namespace SafeExchange.Tests
             Assert.That(requests.Count, Is.EqualTo(1));
 
             var requestId = requests.First().Id;
+            Assert.That(requests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().ObjectName, Is.EqualTo("sunshine"));
 
@@ -264,6 +266,7 @@ namespace SafeExchange.Tests
             Assert.That(requests.Count, Is.EqualTo(1));
 
             requestId = requests.First().Id;
+            Assert.That(requests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().ObjectName, Is.EqualTo("sunshine"));
 
@@ -287,6 +290,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -347,6 +351,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -444,6 +449,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
