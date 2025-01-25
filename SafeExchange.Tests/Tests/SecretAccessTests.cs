@@ -542,6 +542,7 @@ namespace SafeExchange.Tests
 
             Assert.That(permissions.Count, Is.EqualTo(2));
 
+            // [THEN] Rewturned permissions contain the group permissions.
             var permission = permissions.Where(p => p.SubjectId == this.existingGroupOne.GroupId).Single();
             Assert.That(permission.SubjectType, Is.EqualTo(SubjectTypeOutput.Group));
             Assert.That(permission.SubjectName, Is.EqualTo(this.existingGroupOne.DisplayName));
