@@ -27,8 +27,6 @@ namespace SafeExchange.Core.Permissions
 
         private readonly SafeExchangeDbContext dbContext;
 
-        private List<GroupDictionaryItem> GroupItems;
-
         private readonly ILogger<PermissionsManager> logger;
 
         public PermissionsManager(IConfiguration configuration, SafeExchangeDbContext dbContext, ILogger<PermissionsManager> logger)
@@ -216,13 +214,8 @@ namespace SafeExchange.Core.Permissions
 
             var groupPermissions = await this.GetGroupPermissionsAsync(secretName);
             foreach (var groupPermission in groupPermissions)
-            { 
-                if (!this.TryGetGroup(groupPermission.SubjectId, out var group))
-                {
-                    continue;
-                }
-
-                var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(group?.GroupId));
+            {
+                var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(groupPermission.SubjectId));
                 if (foundGroup != default && IsPresentPermission(groupPermission, permission))
                 {
                     this.logger.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {groupPermission.SubjectName} ({foundGroup.AadGroupId}).");
@@ -232,17 +225,6 @@ namespace SafeExchange.Core.Permissions
 
             this.logger.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via groups ({userGroups.Count} groups total).");
             return false;
-        }
-
-        private bool TryGetGroup(string subjectName, out GroupDictionaryItem? group)
-        {
-            if (this.GroupItems is null)
-            {
-                this.GroupItems = this.dbContext.GroupDictionary.ToList();
-            }
-
-            group = this.GroupItems.FirstOrDefault(g => g.GroupMail.Equals(subjectName));
-            return group != default;
         }
 
         private async Task<List<SubjectPermissions>> GetGroupPermissionsAsync(string secretName)
