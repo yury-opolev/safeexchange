@@ -238,6 +238,21 @@ namespace SafeExchange.Core.Migrations
             using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
             var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
 
+            var groups = new List<MigrationItem00006_Group>();
+            var sourceContainer = database.GetContainer("GroupDictionary");
+            var sourceQuery = new QueryDefinition("SELECT * FROM c");
+            using FeedIterator<MigrationItem00006_Group> sourceFeed =
+                sourceContainer.GetItemQueryIterator<MigrationItem00006_Group>(queryDefinition: sourceQuery);
+            while (sourceFeed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00006_Group> response = await sourceFeed.ReadNextAsync();
+                foreach (MigrationItem00006_Group item in response)
+                {
+                    this.log.LogInformation($"Reading {nameof(MigrationItem00006_Group)} '{item.id}'.");
+                    groups.Add(item);
+                }
+            }
+
             var container = database.GetContainer("SubjectPermissions");
             var query = new QueryDefinition("SELECT * FROM c WHERE NOT IS_DEFINED(c.SubjectId)");
             using FeedIterator<MigrationItem00006_1> feed =
@@ -247,7 +262,7 @@ namespace SafeExchange.Core.Migrations
                 FeedResponse<MigrationItem00006_1> response = await feed.ReadNextAsync();
                 foreach (MigrationItem00006_1 item in response)
                 {
-                    await MigrateItem00006_1_Async(container, item);
+                    await MigrateItem00006_1_Async(container, item, groups);
                 }
             }
 
@@ -428,18 +443,25 @@ namespace SafeExchange.Core.Migrations
             this.log.LogInformation($"Item '{item.id}' migration {(updateResponse.IsSuccessStatusCode ? "successful" : "unsuccessful")}.");
         }
 
-        private async Task MigrateItem00006_1_Async(Container container, MigrationItem00006_1 item)
+        private async Task MigrateItem00006_1_Async(Container container, MigrationItem00006_1 item, List<MigrationItem00006_Group> groups)
         {
             this.log.LogInformation($"{nameof(MigrateItem00006_1_Async)}, item '{item.id}'.");
 
             MigrationItem00006_1 newItem = new MigrationItem00006_1(item);
 
-            newItem.SubjectId = item.SubjectName;
+            if (newItem.SubjectType == 1) // group
+            {
+                newItem.SubjectId = groups.Where(x => x.GroupMail?.Equals(item.SubjectName) ?? false).SingleOrDefault()?.GroupId ?? item.SubjectName;
+            }
+            else
+            {
+                newItem.SubjectId = item.SubjectName;
+            }
 
             try
             {
                 await container.UpsertItemAsync(newItem);
-                this.log.LogInformation($"Item '{item.id}' migration finished successfully.");
+                this.log.LogInformation($"Item '{item.id}' migration finished successfully (id: {newItem.SubjectId}).");
             }
             catch (Exception ex)
             {
