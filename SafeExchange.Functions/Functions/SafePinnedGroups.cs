@@ -29,7 +29,7 @@ namespace SafeExchange.Functions.Functions
         }
 
         [Function("SafeExchange-PinnedGroups")]
-        public async Task<HttpResponseData> RunListGroups(
+        public async Task<HttpResponseData> RunGroups(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "put", "delete", Route = $"{Version}/pinnedgroups/{{pinnedGroupId}}")]
             HttpRequestData request,
             string pinnedGroupId)
