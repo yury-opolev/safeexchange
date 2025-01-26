@@ -15,7 +15,7 @@ namespace SafeExchange.Core.Migrations
         public MigrationItem00007_Target(string userId, MigrationItem00007 source)
         {
             this.PartitionKey = PinnedGroup.DefaultPartitionKey;
-            this.id = source.id;
+            this.id = $"{userId}|{source.id}";
 
             this.UserId = userId;
             this.GroupItemId = source.GroupId;
