@@ -13,8 +13,8 @@ namespace SafeExchange.Core
         public static async Task<HttpResponseData> CreateResponseAsync<T>(HttpRequestData request, HttpStatusCode statusCode, T resultObject)
         {
             var response = request.CreateResponse();
-            await response.WriteAsJsonAsync(resultObject);
             response.StatusCode = statusCode;
+            await response.WriteAsJsonAsync(resultObject);
             return response;
         }
 
