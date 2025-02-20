@@ -19,6 +19,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Functions.Admin;
     using SafeExchange.Core.Graph;
+    using SafeExchange.Core.Groups;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
@@ -39,6 +40,7 @@ namespace SafeExchange.Tests
 
         private SafeExchangeDbContext dbContext;
 
+        private IGroupsManager groupsManager;
         private ITokenHelper tokenHelper;
 
         private TestGraphDataProvider graphDataProvider;
@@ -81,6 +83,8 @@ namespace SafeExchange.Tests
 
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
             this.dbContext.Database.EnsureCreated();
+
+            this.groupsManager = new GroupsManager(this.dbContext, Mock.Of<ILogger<GroupsManager>>());
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
@@ -157,7 +161,7 @@ namespace SafeExchange.Tests
             this.groupSearch = new SafeExchangeGroupSearch(
                 this.testConfiguration, this.dbContext, this.graphDataProvider, this.tokenHelper, this.globalFilters);
             this.groupsList = new SafeExchangeGroupsList(this.dbContext, this.tokenHelper, this.globalFilters);
-            this.groupsAdministration = new SafeExchangeAdminGroups(this.dbContext, this.tokenHelper, this.globalFilters);
+            this.groupsAdministration = new SafeExchangeAdminGroups(this.dbContext, this.groupsManager, this.tokenHelper, this.globalFilters);
         }
 
         [TearDown]
@@ -500,13 +504,12 @@ namespace SafeExchange.Tests
 
             // [THEN] The result that is returned is 'no content'.
             Assert.That(okObjectAccessResult, Is.Not.Null);
-            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
+            Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
             var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<string>>();
             Assert.That(responseResult?.Status, Is.EqualTo("no_content"));
             Assert.That(responseResult?.Error, Is.Null);
-
-            Assert.That(responseResult.Result, Is.EqualTo("Group registration '00000033-0000-0000-0000-000000000033' does not exist."));
+            Assert.That(responseResult.Result, Is.Null);
         }
 
         [Test]
@@ -558,12 +561,16 @@ namespace SafeExchange.Tests
             var groupDisplayName = "Group Display Name";
             var groupMail = "test@group.mail";
             var claimsPrincipal = new ClaimsPrincipal(this.adminIdentity);
+
+            var dbContext1 = new SafeExchangeDbContext(this.dbContextOptions);
             var groups1 = new SafeExchangeAdminGroups(
-                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+                dbContext1, new GroupsManager(dbContext1, Mock.Of<ILogger<GroupsManager>>()), this.tokenHelper, this.globalFilters);
+            var dbContext2 = new SafeExchangeDbContext(this.dbContextOptions);
             var groups2 = new SafeExchangeAdminGroups(
-                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+                dbContext2, new GroupsManager(dbContext2, Mock.Of<ILogger<GroupsManager>>()), this.tokenHelper, this.globalFilters);
+            var dbContext3 = new SafeExchangeDbContext(this.dbContextOptions);
             var groups3 = new SafeExchangeAdminGroups(
-                new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper, this.globalFilters);
+                dbContext3, new GroupsManager(dbContext3, Mock.Of<ILogger<GroupsManager>>()), this.tokenHelper, this.globalFilters);
 
             await Task.WhenAll([
                 Task.Run(async () =>

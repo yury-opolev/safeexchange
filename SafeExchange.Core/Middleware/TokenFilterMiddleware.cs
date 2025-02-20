@@ -49,8 +49,8 @@ namespace SafeExchange.Core.Middleware
         private static async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)
         {
             var response = httpRequestData!.CreateResponse();
-            await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = errorMessage });
             response.StatusCode = HttpStatusCode.Unauthorized;
+            await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = errorMessage });
 
             SetResponse(context, response);
         }

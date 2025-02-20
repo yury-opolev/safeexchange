@@ -131,7 +131,7 @@ namespace SafeExchange.Core.Functions
             => await TryCatch(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions
-                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId) && p.CanRead)
+                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
                 .ToListAsync();
 
             return await ActionResults.CreateResponseAsync(
@@ -333,8 +333,9 @@ namespace SafeExchange.Core.Functions
         {
             var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} {subjectId}");
             var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
-            
-            await this.permissionsManager.SetPermissionAsync(subjectType, subjectId, secretId, PermissionType.Full);
+
+            var subjectName = subjectId;
+            await this.permissionsManager.SetPermissionAsync(subjectType, subjectId, subjectName, secretId, PermissionType.Full);
             
             await this.dbContext.SaveChangesAsync();
 

@@ -10,9 +10,9 @@ namespace SafeExchange.Functions
     using SafeExchange.Core;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Groups;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
-    using System.Security.Claims;
     using System.Threading.Tasks;
 
     public class SafeAccess
@@ -23,9 +23,9 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeAccess(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAccess> log)
+        public SafeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAccess> log)
         {
-            this.accessHandler = new SafeExchangeAccess(dbContext, tokenHelper, globalFilters, purger, permissionsManager);
+            this.accessHandler = new SafeExchangeAccess(dbContext, groupsManager, tokenHelper, globalFilters, purger, permissionsManager);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

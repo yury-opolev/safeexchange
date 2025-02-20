@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
+    using SafeExchange.Core.Groups;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
@@ -22,6 +23,8 @@ namespace SafeExchange.Core.Functions
     {
         private readonly SafeExchangeDbContext dbContext;
 
+        private readonly IGroupsManager groupsManager;
+
         private readonly ITokenHelper tokenHelper;
 
         private readonly GlobalFilters globalFilters;
@@ -30,9 +33,10 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeAccess(SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        public SafeExchangeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.groupsManager = groupsManager ?? throw new ArgumentNullException(nameof(groupsManager));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
@@ -81,7 +85,7 @@ namespace SafeExchange.Core.Functions
                         }
 
                         var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess);
-                        return await this.GrantAccessAsync(existingMetadata.ObjectName, request, userCanRevokeAccess, log);
+                        return await this.GrantAccessAsync(existingMetadata.ObjectName, request, userCanRevokeAccess, subjectType, subjectId, log);
                     }
 
                 case "get":
@@ -117,7 +121,7 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> GrantAccessAsync(string secretId, HttpRequestData request, bool userCanRevokeAccess, ILogger log)
+        private async Task<HttpResponseData> GrantAccessAsync(string secretId, HttpRequestData request, bool userCanRevokeAccess, SubjectType subjectType, string subjectId, ILogger log)
             => await TryCatch(request, async () =>
         {
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
@@ -138,8 +142,16 @@ namespace SafeExchange.Core.Functions
                 }
 
                 var subjectType = permissionInput.SubjectType.ToModel();
-                log.LogInformation($"Setting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
-                await this.permissionsManager.SetPermissionAsync(subjectType, permissionInput.SubjectName, secretId, permission);
+                if (subjectType.Equals(SubjectType.Group))
+                {
+                    await this.GrantAccessToGroupAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
+                }
+                else
+                {
+                    var permissionsSubjectId = permissionInput.SubjectName;
+                    log.LogInformation($"Setting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                    await this.permissionsManager.SetPermissionAsync(subjectType, permissionsSubjectId, permissionInput.SubjectName, secretId, permission);
+                }
             }
 
             await this.dbContext.SaveChangesAsync();
@@ -148,6 +160,37 @@ namespace SafeExchange.Core.Functions
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(GrantAccessAsync), log);
+
+        private async Task GrantAccessToGroupAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            if (Guid.TryParse(permissionInput.SubjectId, out _))
+            {
+                await this.GrantAccessToGroupIdAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
+                return;
+            }
+
+            await this.GrantAccessToGroupMailAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
+        }
+
+        private async Task GrantAccessToGroupIdAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            await this.EnsureGroupExistsAsync(permissionInput, subjectType, subjectId);
+
+            log.LogInformation($"Setting permissions for '{secretId}': group '{permissionInput.SubjectName}' ({permissionInput.SubjectId}) -> '{permission}'");
+            await this.permissionsManager.SetPermissionAsync(subjectType, permissionInput.SubjectId, permissionInput.SubjectName, secretId, permission);
+        }
+
+        private async Task GrantAccessToGroupMailAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
+        {
+            var existingGroup = await this.groupsManager.TryFindGroupByMailAsync(permissionInput.SubjectName);
+            if (existingGroup == default)
+            {
+                return;
+            }
+
+            log.LogInformation($"Setting permissions for '{secretId}': group mail '{permissionInput.SubjectName}', id: '{existingGroup.GroupId}' -> '{permission}'");
+            await this.permissionsManager.SetPermissionAsync(subjectType, existingGroup.GroupId, existingGroup.DisplayName, secretId, permission);
+        }
 
         private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, ILogger log)
             => await TryCatch(request, async () =>
@@ -202,6 +245,21 @@ namespace SafeExchange.Core.Functions
                 log.LogWarning(exception, "Could not parse input data for permissions input.");
                 return null;
             }
+        }
+
+        private async Task<GroupDictionaryItem> EnsureGroupExistsAsync(SubjectPermissionsInput permissionInput, SubjectType subjectType, string subjectId)
+        {
+            if (permissionInput.SubjectType != SubjectTypeInput.Group)
+            {
+                throw new ArgumentException($"{nameof(permissionInput)} is not of subject type {SubjectTypeInput.Group}.");
+            }
+
+            var groupIntput = new GroupInput()
+            {
+                DisplayName = permissionInput.SubjectName
+            };
+
+            return await this.groupsManager.PutGroupAsync(permissionInput.SubjectId, groupIntput, subjectType, subjectId);
         }
 
         private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)

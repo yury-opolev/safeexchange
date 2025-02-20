@@ -13,6 +13,8 @@ namespace SafeExchange.Core.Model.Dto.Input
 
         public string SubjectName { get; set; }
 
+        public string SubjectId { get; set; }
+
         public bool CanRead { get; set; }
 
         public bool CanWrite { get; set; }

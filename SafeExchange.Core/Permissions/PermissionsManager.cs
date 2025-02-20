@@ -27,8 +27,6 @@ namespace SafeExchange.Core.Permissions
 
         private readonly SafeExchangeDbContext dbContext;
 
-        private List<GroupDictionaryItem> GroupItems;
-
         private readonly ILogger<PermissionsManager> logger;
 
         public PermissionsManager(IConfiguration configuration, SafeExchangeDbContext dbContext, ILogger<PermissionsManager> logger)
@@ -65,6 +63,9 @@ namespace SafeExchange.Core.Permissions
         }
 
         public async Task SetPermissionAsync(SubjectType subjectType, string subjectId, string secretId, PermissionType permission)
+            => await this.SetPermissionAsync(subjectType, subjectId, subjectId, secretId, permission);
+
+        public async Task SetPermissionAsync(SubjectType subjectType, string subjectId, string subjectName, string secretId, PermissionType permission)
         {
             if (subjectType == SubjectType.User)
             {
@@ -86,7 +87,7 @@ namespace SafeExchange.Core.Permissions
             }
             else
             {
-                var newPermissions = new SubjectPermissions(secretId, subjectType, subjectId)
+                var newPermissions = new SubjectPermissions(secretId, subjectType, subjectName, subjectId)
                 {
                     CanRead = canRead,
                     CanWrite = canWrite,
@@ -176,7 +177,7 @@ namespace SafeExchange.Core.Permissions
 
         private async Task<bool> HasPermissionAsync(SubjectType subjectType, string subjectId, string secretName, PermissionType permission)
         {
-            var permissions = await this.dbContext.Permissions.FirstOrDefaultAsync(p => p.SecretName.Equals(secretName) && p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId));
+            var permissions = await this.dbContext.Permissions.FirstOrDefaultAsync(p => p.SecretName.Equals(secretName) && p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId));
             if (permissions == default)
             {
                 return false;
@@ -213,13 +214,8 @@ namespace SafeExchange.Core.Permissions
 
             var groupPermissions = await this.GetGroupPermissionsAsync(secretName);
             foreach (var groupPermission in groupPermissions)
-            { 
-                if (!this.TryGetGroup(groupPermission.SubjectName, out var group))
-                {
-                    continue;
-                }
-
-                var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(group?.GroupId));
+            {
+                var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(groupPermission.SubjectId));
                 if (foundGroup != default && IsPresentPermission(groupPermission, permission))
                 {
                     this.logger.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {groupPermission.SubjectName} ({foundGroup.AadGroupId}).");
@@ -229,17 +225,6 @@ namespace SafeExchange.Core.Permissions
 
             this.logger.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via groups ({userGroups.Count} groups total).");
             return false;
-        }
-
-        private bool TryGetGroup(string subjectName, out GroupDictionaryItem? group)
-        {
-            if (this.GroupItems is null)
-            {
-                this.GroupItems = this.dbContext.GroupDictionary.ToList();
-            }
-
-            group = this.GroupItems.FirstOrDefault(g => g.GroupMail.Equals(subjectName));
-            return group != default;
         }
 
         private async Task<List<SubjectPermissions>> GetGroupPermissionsAsync(string secretName)

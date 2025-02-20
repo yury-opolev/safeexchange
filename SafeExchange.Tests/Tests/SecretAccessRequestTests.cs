@@ -18,6 +18,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Groups;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
@@ -45,6 +46,8 @@ namespace SafeExchange.Tests
         private IConfiguration testConfiguration;
 
         private SafeExchangeDbContext dbContext;
+
+        private IGroupsManager groupsManager;
 
         private ITokenHelper tokenHelper;
 
@@ -89,6 +92,7 @@ namespace SafeExchange.Tests
             this.dbContext = new SafeExchangeDbContext(dbContextOptions);
             this.dbContext.Database.EnsureCreated();
 
+            this.groupsManager = new GroupsManager(this.dbContext, Mock.Of<ILogger<GroupsManager>>());
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
 
@@ -161,7 +165,7 @@ namespace SafeExchange.Tests
                 this.globalFilters, this.purger, this.permissionsManager);
 
             this.secretAccess = new SafeExchangeAccess(
-                this.dbContext, this.tokenHelper,
+                this.dbContext, this.groupsManager, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager);
 
             this.secretAccessRequest = new SafeExchangeAccessRequest(
@@ -235,6 +239,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read | PermissionType.Write));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -246,6 +251,7 @@ namespace SafeExchange.Tests
             Assert.That(requests.Count, Is.EqualTo(1));
 
             var requestId = requests.First().Id;
+            Assert.That(requests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().ObjectName, Is.EqualTo("sunshine"));
 
@@ -260,6 +266,7 @@ namespace SafeExchange.Tests
             Assert.That(requests.Count, Is.EqualTo(1));
 
             requestId = requests.First().Id;
+            Assert.That(requests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(requests.First().ObjectName, Is.EqualTo("sunshine"));
 
@@ -283,6 +290,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -320,7 +328,7 @@ namespace SafeExchange.Tests
             Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             var permissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("second@test.test"))
                 .ToListAsync();
 
             Assert.That(permissions.Count, Is.EqualTo(1));
@@ -343,6 +351,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -440,6 +449,7 @@ namespace SafeExchange.Tests
             var accessRequests = await this.dbContext.AccessRequests.Where(ar => ar.ObjectName.Equals("sunshine")).ToListAsync();
 
             Assert.That(accessRequests.Count, Is.EqualTo(1));
+            Assert.That(accessRequests.First().SubjectId, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().SubjectName, Is.EqualTo("second@test.test"));
             Assert.That(accessRequests.First().Permission, Is.EqualTo(PermissionType.Read));
             Assert.That(accessRequests.First().Status, Is.EqualTo(RequestStatus.InProgress));
@@ -477,7 +487,7 @@ namespace SafeExchange.Tests
             Assert.That(await this.permissionsManager.IsAuthorizedAsync(SubjectType.User, "second@test.test", "sunshine", PermissionType.RevokeAccess), Is.False);
 
             var permissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectName.Equals("second@test.test"))
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId.Equals("second@test.test"))
                 .ToListAsync();
 
             Assert.That(permissions.Count, Is.EqualTo(0));
@@ -530,6 +540,7 @@ namespace SafeExchange.Tests
             var accessInput = new SubjectPermissionsInput()
             {
                 SubjectName = subjectName,
+                SubjectId = subjectName,
                 CanRead = read,
                 CanWrite = write,
                 CanGrantAccess = grantAccess,

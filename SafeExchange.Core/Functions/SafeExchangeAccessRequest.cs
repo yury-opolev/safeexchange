@@ -158,7 +158,7 @@ namespace SafeExchange.Core.Functions
 
             var requestedPermission = accessRequestInput.GetPermissionType();
             var existingRequest = await this.dbContext.AccessRequests
-                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(secretId) && ar.SubjectType.Equals(subjectType) && ar.SubjectName.Equals(subjectId));
+                .FirstOrDefaultAsync(ar => ar.Status == RequestStatus.InProgress && ar.ObjectName.Equals(secretId) && ar.SubjectType.Equals(subjectType) && ar.SubjectId.Equals(subjectId));
 
             if (existingRequest != null && existingRequest.Permission == requestedPermission)
             {
@@ -171,9 +171,15 @@ namespace SafeExchange.Core.Functions
             var accessRequest = new AccessRequest(secretId, subjectType, subjectId, accessRequestInput);
 
             var subjectPermissions = await this.dbContext.Permissions
-                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !(p.SubjectType.Equals(subjectType) && p.SubjectName.Equals(subjectId)))
+                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess && !(p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId)))
                 .ToListAsync();
-            var recipients = subjectPermissions.Select(p => new RequestRecipient() { AccessRequestId = accessRequest.Id, SubjectType = p.SubjectType, SubjectName = p.SubjectName }).ToList();
+            var recipients = subjectPermissions.Select(p => new RequestRecipient()
+            {
+                AccessRequestId = accessRequest.Id,
+                SubjectType = p.SubjectType,
+                SubjectName = p.SubjectName,
+                SubjectId = p.SubjectId
+            }).ToList();
             accessRequest.Recipients = recipients;
 
             await this.dbContext.AccessRequests.AddAsync(accessRequest);
@@ -195,7 +201,7 @@ namespace SafeExchange.Core.Functions
             var outgoingRequests = await this.dbContext.AccessRequests.Where(
                 ar =>
                     ar.SubjectType.Equals(subjectType) &&
-                    ar.SubjectName.Equals(subjectId) &&
+                    ar.SubjectId.Equals(subjectId) &&
                     ar.Status == RequestStatus.InProgress)
                 .AsNoTracking().ToListAsync();
 
@@ -206,6 +212,7 @@ namespace SafeExchange.Core.Functions
                     "  AR.PartitionKey," +
                     "  AR.SubjectType," +
                     "  AR.SubjectName," +
+                    "  AR.SubjectId," +
                     "  AR.ObjectName," +
                     "  AR.Permission," +
                     "  AR.Recipients," +
@@ -214,7 +221,7 @@ namespace SafeExchange.Core.Functions
                     "  AR.FinishedBy," +
                     "  AR.FinishedAt" +
                     " FROM AccessRequests AR" +
-                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectType = {0} AND RECIP.SubjectName = {1})" +
+                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectType = {0} AND RECIP.SubjectId = {1})" +
                     " WHERE AR.Status = {2}", subjectType, subjectId, RequestStatus.InProgress)
                 .AsNoTracking().ToListAsync();
 
@@ -262,7 +269,7 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Access request not exists or is for different secret." });
             }
 
-            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
+            var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectId.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
             if (foundRecipient == null)
             {
                 log.LogWarning($"{subjectType} '{subjectId}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
@@ -282,7 +289,7 @@ namespace SafeExchange.Core.Functions
 
             if (accessRequestInput.Approve)
             {
-                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectType, existingRequest.SubjectName, secretId, existingRequest.Permission);
+                await this.permissionsManager.SetPermissionAsync(existingRequest.SubjectType, existingRequest.SubjectId, existingRequest.SubjectName, secretId, existingRequest.Permission);
                 existingRequest.Status = RequestStatus.Approved;
             }
             else

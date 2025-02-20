@@ -14,6 +14,8 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         public string SubjectName { get; set; }
 
+        public string SubjectId { get; set; }
+
         public string ObjectName { get; set; }
 
         public bool CanRead { get; set; }

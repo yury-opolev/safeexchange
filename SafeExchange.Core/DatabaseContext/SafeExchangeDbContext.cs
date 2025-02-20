@@ -68,7 +68,7 @@ namespace SafeExchange.Core
                 });
 
             modelBuilder.Entity<SubjectPermissions>()
-                .HasKey(sp => new { sp.SecretName, sp.SubjectType, sp.SubjectName });
+                .HasKey(sp => new { sp.SecretName, sp.SubjectType, sp.SubjectId });
 
             modelBuilder.Entity<SubjectPermissions>()
                 .ToContainer("SubjectPermissions")
@@ -87,10 +87,10 @@ namespace SafeExchange.Core
                        ar => ar.Recipients,
                        rrb =>
                        {
-                           rrb.HasKey(rr => new { rr.AccessRequestId, rr.SubjectType, rr.SubjectName });
+                           rrb.HasKey(rr => new { rr.AccessRequestId, rr.SubjectType, rr.SubjectId });
                            rrb.Property(rr => rr.AccessRequestId).IsRequired();
                            rrb.Property(rr => rr.SubjectType).IsRequired();
-                           rrb.Property(rr => rr.SubjectName).IsRequired();
+                           rrb.Property(rr => rr.SubjectId).IsRequired();
                        });
                });
 
