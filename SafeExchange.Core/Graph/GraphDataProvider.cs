@@ -16,11 +16,11 @@ namespace SafeExchange.Core.Graph
     {
         public const string ConsentRequiredSubStatus = "consent_required";
 
-        private readonly static string[] MemberOfGraphScopes = [ "User.Read" ];
+        private readonly static string[] UserReadGraphScopes = [ "User.Read" ];
 
-        private readonly static string[] UserSearchGraphScopes = [ "User.ReadBasic.All" ];
+        private readonly static string[] UserReadBasicGraphScopes = [ "User.ReadBasic.All" ];
 
-        private readonly static string[] GroupSearchGraphScopes = [ "GroupMember.Read.All" ];
+        private readonly static string[] GroupMemberReadGraphScopes = [ "GroupMember.Read.All" ];
 
         private readonly IConfidentialClientProvider aadClientProvider;
 
@@ -40,7 +40,7 @@ namespace SafeExchange.Core.Graph
             try
             {
                 var aadClient = this.aadClientProvider.GetConfidentialClient();
-                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, MemberOfGraphScopes, this.log);
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, UserReadGraphScopes, this.log);
                 var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
 
                 var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
@@ -49,7 +49,7 @@ namespace SafeExchange.Core.Graph
                     return new GroupIdListResult()
                     {
                         ConsentRequired = tokenResult.ConsentRequired,
-                        ScopesToConsent = string.Join(' ', MemberOfGraphScopes)
+                        ScopesToConsent = string.Join(' ', UserReadGraphScopes)
                     };
                 }
 
@@ -82,6 +82,56 @@ namespace SafeExchange.Core.Graph
             return new GroupIdListResult() { Success = true, GroupIds = totalGroups };
         }
 
+        /// <inheritdoc />
+        public async Task<GroupIdListResult> TryGetTransitiveMemberOfAsync(AccountIdAndToken accountIdAndToken)
+        {
+            var totalGroups = new List<string>();
+
+            try
+            {
+                var aadClient = this.aadClientProvider.GetConfidentialClient();
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GroupMemberReadGraphScopes, this.log);
+                var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
+
+                var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
+                if (!tokenResult.Success)
+                {
+                    return new GroupIdListResult()
+                    {
+                        ConsentRequired = tokenResult.ConsentRequired,
+                        ScopesToConsent = string.Join(' ', GroupMemberReadGraphScopes)
+                    };
+                }
+
+                var memberOf = await graphClient.Me.TransitiveMemberOf.GetAsync(
+                    requestConfiguration => requestConfiguration.QueryParameters.Select = ["id"]);
+
+                if (memberOf == null)
+                {
+                    return new GroupIdListResult() { Success = true, GroupIds = totalGroups };
+                }
+
+                var pageIterator = PageIterator<DirectoryObject, DirectoryObjectCollectionResponse>
+                    .CreatePageIterator(
+                        graphClient,
+                        memberOf,
+                        (group) =>
+                        {
+                            totalGroups.Add(group.Id);
+                            return true;
+                        });
+
+                await pageIterator.IterateAsync();
+            }
+            catch (Exception exception)
+            {
+                this.log.LogWarning($"Cannot retrieve transitive user groups, {TelemetryUtils.GetDescription(exception)}.");
+                return new GroupIdListResult();
+            }
+
+            return new GroupIdListResult() { Success = true, GroupIds = totalGroups };
+        }
+
         public async Task<UsersListResult> TryFindUsersAsync(AccountIdAndToken accountIdAndToken, string searchString)
         {
             var totalUsers = new List<GraphUserInfo>(100);
@@ -89,7 +139,7 @@ namespace SafeExchange.Core.Graph
             try
             {
                 var aadClient = this.aadClientProvider.GetConfidentialClient();
-                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, UserSearchGraphScopes, this.log);
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, UserReadBasicGraphScopes, this.log);
                 var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
 
                 var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
@@ -98,7 +148,7 @@ namespace SafeExchange.Core.Graph
                     return new UsersListResult()
                     {
                         ConsentRequired = tokenResult.ConsentRequired,
-                        ScopesToConsent = string.Join(' ', UserSearchGraphScopes)
+                        ScopesToConsent = string.Join(' ', UserReadBasicGraphScopes)
                     };
                 }
 
@@ -151,7 +201,7 @@ namespace SafeExchange.Core.Graph
             try
             {
                 var aadClient = this.aadClientProvider.GetConfidentialClient();
-                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GroupSearchGraphScopes, this.log);
+                var accessTokenProvider = new OnBehalfOfAuthProvider(aadClient, accountIdAndToken, GroupMemberReadGraphScopes, this.log);
                 var graphClient = new GraphServiceClient(new BaseBearerTokenAuthenticationProvider(accessTokenProvider));
 
                 var tokenResult = await accessTokenProvider.TryGetAccessTokenAsync();
@@ -160,7 +210,7 @@ namespace SafeExchange.Core.Graph
                     return new GroupsListResult()
                     {
                         ConsentRequired = tokenResult.ConsentRequired,
-                        ScopesToConsent = string.Join(' ', GroupSearchGraphScopes)
+                        ScopesToConsent = string.Join(' ', GroupMemberReadGraphScopes)
                     };
                 }
 

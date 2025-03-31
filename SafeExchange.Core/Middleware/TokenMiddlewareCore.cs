@@ -159,7 +159,7 @@ namespace SafeExchange.Core.Middleware
             }
 
             var accountIdAndToken = this.tokenHelper.GetAccountIdAndToken(request, principal);
-            var userGroupsResult = await this.graphDataProvider.TryGetMemberOfAsync(accountIdAndToken);
+            var userGroupsResult = await this.graphDataProvider.TryGetTransitiveMemberOfAsync(accountIdAndToken);
 
             if (!userGroupsResult.Success)
             {

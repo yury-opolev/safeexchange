@@ -42,6 +42,18 @@ namespace SafeExchange.Tests
             return await Task.FromResult(new GroupIdListResult() { Success = true, GroupIds = [] });
         }
 
+        public async Task<GroupIdListResult> TryGetTransitiveMemberOfAsync(AccountIdAndToken accountIdAndToken)
+        {
+            await Task.Delay(this.CallDelay);
+
+            if (this.GroupMemberships.TryGetValue(accountIdAndToken.AccountId, out var result))
+            {
+                return await Task.FromResult(new GroupIdListResult() { Success = true, GroupIds = result ?? [] });
+            }
+
+            return await Task.FromResult(new GroupIdListResult() { Success = true, GroupIds = [] });
+        }
+
         public async Task<UsersListResult> TryFindUsersAsync(AccountIdAndToken accountIdAndToken, string searchString)
         {
             await Task.Delay(this.CallDelay);
