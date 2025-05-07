@@ -28,7 +28,7 @@ namespace SafeExchange.Core.Migrations
 
         public MigrationsHelper(CosmosDbConfiguration dbConfiguration, ILogger<MigrationsHelper> log)
         {
-            this.tokenCredential = new DefaultAzureCredential();
+            this.tokenCredential = DefaultCredentialProvider.CreateDefaultCredential();
             this.dbConfiguration = dbConfiguration ?? throw new ArgumentNullException(nameof(dbConfiguration));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }

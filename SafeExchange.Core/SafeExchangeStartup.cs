@@ -48,7 +48,7 @@ namespace SafeExchange.Core
             var keyVaultUri = new Uri(interimConfiguration["KEYVAULT_BASEURI"]);
 
             configurationBuilder.AddAzureKeyVault(
-                keyVaultUri, new DefaultAzureCredential(), new AzureKeyVaultConfigurationOptions()
+                keyVaultUri, DefaultCredentialProvider.CreateDefaultCredential(), new AzureKeyVaultConfigurationOptions()
                 {
                     Manager = new KeyVaultSecretManager(),
                     ReloadInterval = TimeSpan.FromMinutes(5)
@@ -62,12 +62,12 @@ namespace SafeExchange.Core
             services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
-            var defaultAzureCredential = new DefaultAzureCredential();
+            var defaultCredential = DefaultCredentialProvider.CreateDefaultCredential();
             var cosmosDbConfig = configuration.GetSection("CosmosDb").Get<CosmosDbConfiguration>() ?? throw new ConfigurationErrorsException("Cannot get CosmosDb configuration.");
             services.AddDbContext<SafeExchangeDbContext>(
                 options => options.UseCosmos(
                     cosmosDbConfig.CosmosDbEndpoint,
-                    defaultAzureCredential,
+                    defaultCredential,
                     cosmosDbConfig.DatabaseName));
 
             services.AddSingleton<ITokenHelper, TokenHelper>();
