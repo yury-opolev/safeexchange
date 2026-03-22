@@ -4,11 +4,9 @@
 
 namespace SafeExchange.Core.Model
 {
-    using Microsoft.EntityFrameworkCore;
     using SafeExchange.Core.Model.Dto.Output;
     using System;
 
-    [Index(nameof(SecretName), nameof(SubjectType), nameof(SubjectId))]
     public class SubjectPermissions
     {
         public SubjectPermissions()

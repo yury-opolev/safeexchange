@@ -6,12 +6,9 @@ namespace SafeExchange.Core.Model
 {
     using System;
     using System.ComponentModel.DataAnnotations;
-    using Microsoft.EntityFrameworkCore;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
 
-    [Index(nameof(AadTenantId), nameof(AadClientId), IsUnique = true)]
-    [Index(nameof(DisplayName), IsUnique = true)]
     public class Application
 	{
         public const string DefaultPartitionKey = "APPLICATION";

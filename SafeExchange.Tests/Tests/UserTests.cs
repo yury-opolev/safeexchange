@@ -59,7 +59,7 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity secondIdentity;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<UserTests>();
             var secretConfiguration = builder.Build();
@@ -84,7 +84,7 @@ namespace SafeExchange.Tests
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.firstIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {

@@ -2,11 +2,9 @@
 
 namespace SafeExchange.Core.Model
 {
-    using Microsoft.EntityFrameworkCore;
     using System;
     using System.ComponentModel.DataAnnotations;
 
-    [Index(nameof(WebhookSubscriptionId), nameof(EventType), nameof(EventId), IsUnique = true)]
     public class WebhookNotificationData
 	{
         public const string DefaultPartitionKey = "WEBHOOKNDAT";

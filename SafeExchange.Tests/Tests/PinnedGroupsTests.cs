@@ -53,7 +53,7 @@ namespace SafeExchange.Tests
         private DbContextOptions<SafeExchangeDbContext> dbContextOptions;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<GroupsTests>();
             var secretConfiguration = builder.Build();
@@ -76,7 +76,7 @@ namespace SafeExchange.Tests
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();

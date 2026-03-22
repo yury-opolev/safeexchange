@@ -4,11 +4,8 @@
 
 namespace SafeExchange.Core.Model
 {
-    using Microsoft.EntityFrameworkCore;
     using System;
 
-    [Index(nameof(AadTenantId), nameof(AadObjectId), IsUnique = true)]
-    [Index(nameof(AadUpn), IsUnique = true)]
     public class User
     {
         public const string DefaultPartitionKey = "USER";

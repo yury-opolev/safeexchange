@@ -68,7 +68,7 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity thirdIdentity;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<SecretAccessRequestTests>();
             var secretConfiguration = builder.Build();
@@ -90,7 +90,7 @@ namespace SafeExchange.Tests
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.groupsManager = new GroupsManager(this.dbContext, Mock.Of<ILogger<GroupsManager>>());
             this.tokenHelper = new TestTokenHelper();
