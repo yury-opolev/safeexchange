@@ -28,6 +28,12 @@
         },
         "settings-features-useGraphGroupSearch": {
             "value": "False"
+        },
+        "allowed_debug_ip_address": {
+            "value": ""
+        },
+        "enable_webjobsstorage_private_endpoints": {
+            "value": false
         }
     }
 }

@@ -164,6 +164,48 @@
         "settings-adminConfiguration-adminUsers": {
             "defaultValue": "00000000-0000-0000-0000-000000000000",
             "type": "string"
+        },
+        "safeexchange_vnet_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-vnet')]",
+            "type": "string",
+            "metadata": {
+                "description": "Name of the Virtual Network."
+            }
+        },
+        "safeexchange_vnet_address_prefix": {
+            "defaultValue": "10.0.0.0/16",
+            "type": "string",
+            "metadata": {
+                "description": "Address prefix for the VNet."
+            }
+        },
+        "safeexchange_natgw_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-natgw')]",
+            "type": "string",
+            "metadata": {
+                "description": "Name of the NAT Gateway."
+            }
+        },
+        "safeexchange_natgw_publicip_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-natgw-pip')]",
+            "type": "string",
+            "metadata": {
+                "description": "Name of the NAT Gateway public IP address."
+            }
+        },
+        "allowed_debug_ip_address": {
+            "defaultValue": "",
+            "type": "string",
+            "metadata": {
+                "description": "Optional IP address for dev/staging to allow direct resource access for debugging. Leave empty for production."
+            }
+        },
+        "enable_webjobsstorage_private_endpoints": {
+            "defaultValue": false,
+            "type": "bool",
+            "metadata": {
+                "description": "Whether to create private endpoints for the WebJobs storage account. When false, WebJobs storage remains publicly accessible."
+            }
         }
     },
     "variables": {
@@ -179,9 +221,33 @@
         "storage_role_blobDataOwner": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
         "storage_role_queueDataContributor": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
         "cosmosDb_role_operator": "230815da-be43-4aae-9cb4-875f7bd000aa",
-        "safeexchange_kv_deployment_name": "safeexchange-storage-connstr-kv-ref",
         "appinsights_workspace_retention_days": 90,
-        "appinsights_workspace_resource_permissions": true
+        "appinsights_workspace_resource_permissions": true,
+
+        "subnet_functionapp_name": "snet-functionapp",
+        "subnet_functionapp_prefix": "10.0.0.0/24",
+        "subnet_privateendpoints_name": "snet-privateendpoints",
+        "subnet_privateendpoints_prefix": "10.0.1.0/24",
+
+        "privateDnsZone_cosmosdb": "privatelink.documents.azure.com",
+        "privateDnsZone_blob": "privatelink.blob.core.windows.net",
+        "privateDnsZone_queue": "privatelink.queue.core.windows.net",
+        "privateDnsZone_table": "privatelink.table.core.windows.net",
+        "privateDnsZone_file": "privatelink.file.core.windows.net",
+        "privateDnsZone_vault": "privatelink.vaultcore.azure.net",
+
+        "pe_cosmosdb_name": "[concat(parameters('safeexchange_dbaccount_name'), '-pe')]",
+        "pe_datastorage_blob_name": "[concat(parameters('safeexchange_data_storage_name'), '-blob-pe')]",
+        "pe_datastorage_queue_name": "[concat(parameters('safeexchange_data_storage_name'), '-queue-pe')]",
+        "pe_wjstorage_blob_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-blob-pe')]",
+        "pe_wjstorage_queue_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-queue-pe')]",
+        "pe_wjstorage_table_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-table-pe')]",
+        "pe_wjstorage_file_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-file-pe')]",
+        "pe_keyvault_name": "[concat(parameters('safeexchange_kv_name'), '-pe')]",
+
+        "storage_role_tableDataContributor": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
+
+        "has_debug_ip": "[not(empty(parameters('allowed_debug_ip_address')))]"
     },
     "resources": [
         {
@@ -206,6 +272,83 @@
             "location": "[parameters('default_location')]"
         },
         {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2023-09-01",
+            "name": "[parameters('safeexchange_natgw_publicip_name')]",
+            "location": "[parameters('default_location')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "idleTimeoutInMinutes": 4
+            }
+        },
+        {
+            "type": "Microsoft.Network/natGateways",
+            "apiVersion": "2023-09-01",
+            "name": "[parameters('safeexchange_natgw_name')]",
+            "location": "[parameters('default_location')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "idleTimeoutInMinutes": 4,
+                "publicIpAddresses": [
+                    {
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('safeexchange_natgw_publicip_name'))]"
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', parameters('safeexchange_natgw_publicip_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2023-09-01",
+            "name": "[parameters('safeexchange_vnet_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('safeexchange_vnet_address_prefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnet_functionapp_name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('subnet_functionapp_prefix')]",
+                            "defaultOutboundAccess": false,
+                            "natGateway": {
+                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('safeexchange_natgw_name'))]"
+                            },
+                            "delegations": [
+                                {
+                                    "name": "Microsoft.App.environments",
+                                    "properties": {
+                                        "serviceName": "Microsoft.App/environments"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "[variables('subnet_privateendpoints_name')]",
+                        "properties": {
+                            "addressPrefix": "[variables('subnet_privateendpoints_prefix')]",
+                            "defaultOutboundAccess": false
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/natGateways', parameters('safeexchange_natgw_name'))]"
+            ]
+        },
+        {
             "type": "Microsoft.DocumentDB/databaseAccounts",
             "apiVersion": "2023-09-15",
             "name": "[parameters('safeexchange_dbaccount_name')]",
@@ -219,10 +362,10 @@
                 "type": "None"
             },
             "properties": {
-                "publicNetworkAccess": "Enabled",
+                "publicNetworkAccess": "[if(variables('has_debug_ip'), 'Enabled', 'Disabled')]",
                 "enableAutomaticFailover": false,
                 "enableMultipleWriteLocations": false,
-                "isVirtualNetworkFilterEnabled": false,
+                "isVirtualNetworkFilterEnabled": true,
                 "virtualNetworkRules": [],
                 "disableKeyBasedMetadataWriteAccess": false,
                 "enableFreeTier": false,
@@ -255,7 +398,7 @@
                         "name": "EnableServerless"
                     }
                 ],
-                "ipRules": [],
+                "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('ipAddressOrRange', parameters('allowed_debug_ip_address'))), createArray())]",
                 "backupPolicy": {
                     "type": "Periodic",
                     "periodicModeProperties": {
@@ -283,7 +426,8 @@
                 "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]",
                 "IngestionMode": "LogAnalytics",
                 "publicNetworkAccessForIngestion": "Enabled",
-                "publicNetworkAccessForQuery": "Enabled"
+                "publicNetworkAccessForQuery": "Enabled",
+                "DisableLocalAuth": true
             },
             "dependsOn": [
                 "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
@@ -307,7 +451,13 @@
                 "softDeleteRetentionInDays": 90,
                 "enableRbacAuthorization": true,
                 "vaultUri": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]",
-                "publicNetworkAccess": "Enabled"
+                "publicNetworkAccess": "[if(variables('has_debug_ip'), 'Enabled', 'Disabled')]",
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "defaultAction": "Deny",
+                    "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('value', parameters('allowed_debug_ip_address'))), createArray())]",
+                    "virtualNetworkRules": []
+                }
             }
         },
         {
@@ -461,6 +611,21 @@
             }
         },
         {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'table-data-contributor', 'systemassigned-mi')]",
+            "scope": "[concat('Microsoft.Storage/storageAccounts/', parameters('safeexchange_webjobsstorage_name'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                "[resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name'))]"
+            ],
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storage_role_tableDataContributor'))]",
+                "principalId": "[reference(resourceId('Microsoft.Web/sites', parameters('safeexchange_site_name')), '2022-09-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
             "type": "Microsoft.Storage/storageAccounts",
             "apiVersion": "2023-01-01",
             "name": "[parameters('safeexchange_webjobsstorage_name')]",
@@ -469,18 +634,21 @@
                 "name": "Standard_LRS",
                 "tier": "Standard"
             },
-            "kind": "Storage",
+            "kind": "StorageV2",
             "properties": {
                 "defaultToOAuthAuthentication": true,
+                "allowSharedKeyAccess": false,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
+                "publicNetworkAccess": "[if(and(parameters('enable_webjobsstorage_private_endpoints'), not(variables('has_debug_ip'))), 'Disabled', 'Enabled')]",
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
-                    "ipRules": [],
-                    "defaultAction": "Allow"
+                    "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('value', parameters('allowed_debug_ip_address'), 'action', 'Allow')), createArray())]",
+                    "defaultAction": "[if(parameters('enable_webjobsstorage_private_endpoints'), 'Deny', 'Allow')]"
                 },
                 "supportsHttpsTrafficOnly": true,
+                "accessTier": "Hot",
                 "encryption": {
                     "services": {
                         "file": {
@@ -508,7 +676,7 @@
             "properties": {
                 "dnsEndpointType": "Standard",
                 "defaultToOAuthAuthentication": true,
-                "publicNetworkAccess": "Enabled",
+                "publicNetworkAccess": "[if(variables('has_debug_ip'), 'Enabled', 'Disabled')]",
                 "allowCrossTenantReplication": true,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
@@ -516,36 +684,524 @@
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
-                    "ipRules": [],
-                    "defaultAction": "Allow"
+                    "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('value', parameters('allowed_debug_ip_address'), 'action', 'Allow')), createArray())]",
+                    "defaultAction": "Deny"
                 },
                 "supportsHttpsTrafficOnly": true,
                 "accessTier": "Hot"
             }
         },
+
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_cosmosdb')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_blob')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_queue')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_table')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_file')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_vault')]",
+            "location": "global",
+            "properties": {}
+        },
+
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_cosmosdb'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_cosmosdb'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_blob'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_blob'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_queue'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_queue'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_table'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_table'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_file'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_file'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_vault'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_vault'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+
+        {
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_cosmosdb_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_cosmosdb_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]",
+                            "groupIds": [ "Sql" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_datastorage_blob_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_datastorage_blob_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
+                            "groupIds": [ "blob" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_datastorage_queue_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_datastorage_queue_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
+                            "groupIds": [ "queue" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_wjstorage_blob_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_wjstorage_blob_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                            "groupIds": [ "blob" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_wjstorage_queue_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_wjstorage_queue_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                            "groupIds": [ "queue" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_wjstorage_table_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_wjstorage_table_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                            "groupIds": [ "table" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_wjstorage_file_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_wjstorage_file_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                            "groupIds": [ "file" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_keyvault_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_keyvault_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                            "groupIds": [ "vault" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ]
+        },
+
+        {
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_cosmosdb_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "cosmosdb-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_cosmosdb'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_cosmosdb_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_cosmosdb'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_datastorage_blob_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "blob-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_blob'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_datastorage_blob_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_blob'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_datastorage_queue_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "queue-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_queue'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_datastorage_queue_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_queue'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_wjstorage_blob_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "blob-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_blob'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_wjstorage_blob_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_blob'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_wjstorage_queue_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "queue-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_queue'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_wjstorage_queue_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_queue'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_wjstorage_table_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "table-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_table'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_wjstorage_table_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_table'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_wjstorage_file_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "file-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_file'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_wjstorage_file_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_file'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_keyvault_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "vault-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_vault'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_keyvault_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_vault'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
+            ]
+        },
+
         {
             "type": "Microsoft.Web/serverfarms",
-            "apiVersion": "2022-09-01",
+            "apiVersion": "2023-12-01",
             "name": "[parameters('safeexchange_serverfarm_name')]",
             "location": "[parameters('default_location')]",
             "sku": {
-                "name": "Y1",
-                "tier": "Dynamic",
-                "size": "Y1",
-                "family": "Y",
-                "capacity": 0
+                "name": "FC1",
+                "tier": "FlexConsumption"
             },
-            "kind": "functionapp",
+            "kind": "linux",
             "properties": {
-                "perSiteScaling": false,
-                "elasticScaleEnabled": false,
-                "maximumElasticWorkerCount": 1,
-                "isSpot": false,
-                "reserved": false,
-                "isXenon": false,
-                "hyperV": false,
-                "targetWorkerCount": 0,
-                "targetWorkerSizeId": 0,
+                "reserved": true,
                 "zoneRedundant": false
             }
         },
@@ -1135,81 +1791,23 @@
             }
         },
         {
-            "type": "Microsoft.Resources/deployments",
-            "apiVersion": "2019-10-01",
-            "name": "[variables('safeexchange_kv_deployment_name')]",
-            "resourceGroup": "[resourceGroup().name]",
-            "properties": {
-                "mode": "Incremental",
-                "expressionEvaluationOptions": {
-                    "scope": "inner"
-                },
-                "parameters": {
-                    "keyVaultName": {
-                        "value": "[parameters('safeexchange_kv_name')]"
-                    },
-                    "storageAccessKey": {
-                        "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',parameters('safeexchange_webjobsstorage_name'),';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
-                    },
-                    "storageAccessKeyExpiryTime": {
-                        "value": "[dateTimeToEpoch(dateTimeAdd(listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name')), '2023-01-01').keys[0].creationTime, 'P2Y'))]"
-                    }
-                },
-                "template": {
-                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-                    "contentVersion": "1.0.0.0",
-                    "parameters": {
-                        "keyVaultName": {
-                            "type": "string"
-                        },
-                        "storageAccessKey": {
-                            "type": "securestring"
-                        },
-                        "storageAccessKeyExpiryTime": {
-                            "type": "int"
-                        }
-                    },
-                    "variables": {},
-                    "resources": [
-                        {
-                            "type": "Microsoft.KeyVault/vaults/secrets",
-                            "name": "[concat(parameters('keyVaultName'), '/StorageAccountConnectionString')]",
-                            "apiVersion": "2016-10-01",
-                            "properties": {
-                                "attributes": {
-                                    "enabled": true,
-                                    "exp": "[parameters('storageAccessKeyExpiryTime')]"
-                                },
-                                "contentType": "text/plain",
-                                "value": "[parameters('storageAccessKey')]"
-                            }
-                        }
-                    ],
-                    "outputs": {
-                        "secretUri": {
-                            "type": "string",
-                            "value": "[reference(resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), 'StorageAccountConnectionString')).secretUri]"
-                        }
-                    }
-                }
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
-            ]
-        },
-        {
             "type": "Microsoft.Web/sites",
-            "apiVersion": "2022-09-01",
+            "apiVersion": "2023-12-01",
             "name": "[parameters('safeexchange_site_name')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
                 "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]",
-                "[variables('safeexchange_kv_deployment_name')]",
-                "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]"
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_keyvault_name'), 'default')]",
+                "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_cosmosdb_name'), 'default')]",
+                "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_datastorage_blob_name'), 'default')]",
+                "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_datastorage_queue_name'), 'default')]",
+                "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
             ],
             "tags": {},
-            "kind": "functionapp",
+            "kind": "functionapp,linux",
             "identity": {
                 "type": "SystemAssigned, UserAssigned",
                 "userAssignedIdentities": {
@@ -1218,60 +1816,46 @@
             },
             "properties": {
                 "enabled": true,
-                "hostNameSslStates": [
-                    {
-                        "name": "[concat(parameters('safeexchange_site_name'), '.azurewebsites.net')]",
-                        "sslState": "Disabled",
-                        "hostType": "Standard"
-                    },
-                    {
-                        "name": "[concat(parameters('safeexchange_site_name'), '.scm.azurewebsites.net')]",
-                        "sslState": "Disabled",
-                        "hostType": "Repository"
-                    }
-                ],
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('safeexchange_serverfarm_name'))]",
-                "reserved": false,
-                "isXenon": false,
-                "hyperV": false,
-                "vnetRouteAllEnabled": false,
+                "reserved": true,
+                "vnetRouteAllEnabled": true,
                 "vnetImagePullEnabled": false,
-                "vnetContentShareEnabled": false,
+                "vnetContentShareEnabled": true,
+                "virtualNetworkSubnetId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_functionapp_name'))]",
                 "siteConfig": {
-                    "numberOfWorkers": 1,
-                    "acrUseManagedIdentityCreds": false,
-                    "alwaysOn": false,
                     "http20Enabled": true,
-                    "functionAppScaleLimit": 200,
-                    "minimumElasticInstanceCount": 0,
                     "appSettings": [
                         {
                             "name": "FUNCTIONS_EXTENSION_VERSION",
                             "value": "~4"
                         },
                         {
-                            "name": "WEBSITE_RUN_FROM_PACKAGE",
-                            "value": "1"
-                        },
-                        {
-                            "name": "WEBSITE_LOAD_USER_PROFILE",
-                            "value": "1"
-                        },
-                        {
                             "name": "FUNCTIONS_WORKER_RUNTIME",
                             "value": "dotnet-isolated"
                         },
                         {
-                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
-                            "value": "[reference(concat('Microsoft.Insights/components/', parameters('safeexchange_appinsights_name'))).InstrumentationKey]"
+                            "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                            "value": "[reference(resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name')), '2020-02-02').ConnectionString]"
                         },
                         {
-                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
-                            "value": "[concat('@Microsoft.KeyVault(SecretUri=', reference(variables('safeexchange_kv_deployment_name')).outputs.secretUri.value, ')')]"
+                            "name": "APPLICATIONINSIGHTS_AUTHENTICATION_STRING",
+                            "value": "Authorization=AAD"
                         },
                         {
                             "name": "AzureWebJobsStorage__accountname",
                             "value": "[parameters('safeexchange_webjobsstorage_name')]"
+                        },
+                        {
+                            "name": "AzureWebJobsStorage__blobServiceUri",
+                            "value": "[concat('https://', parameters('safeexchange_webjobsstorage_name'), '.blob.core.windows.net')]"
+                        },
+                        {
+                            "name": "AzureWebJobsStorage__queueServiceUri",
+                            "value": "[concat('https://', parameters('safeexchange_webjobsstorage_name'), '.queue.core.windows.net')]"
+                        },
+                        {
+                            "name": "AzureWebJobsStorage__tableServiceUri",
+                            "value": "[concat('https://', parameters('safeexchange_webjobsstorage_name'), '.table.core.windows.net')]"
                         },
                         {
                             "name": "KEYVAULT_BASEURI",
@@ -1287,22 +1871,34 @@
                         }
                     ]
                 },
-                "scmSiteAlsoStopped": false,
+                "functionAppConfig": {
+                    "deployment": {
+                        "storage": {
+                            "type": "blobContainer",
+                            "value": "[concat('https://', parameters('safeexchange_webjobsstorage_name'), '.blob.core.windows.net/app-package-container')]",
+                            "authentication": {
+                                "type": "SystemAssignedIdentity"
+                            }
+                        }
+                    },
+                    "scaleAndConcurrency": {
+                        "maximumInstanceCount": 100,
+                        "instanceMemoryMB": 2048
+                    },
+                    "runtime": {
+                        "name": "dotnet-isolated",
+                        "version": "10.0"
+                    }
+                },
                 "clientAffinityEnabled": false,
-                "clientCertEnabled": false,
-                "clientCertMode": "Required",
-                "hostNamesDisabled": false,
-                "containerSize": 1536,
-                "dailyMemoryTimeQuota": 0,
                 "httpsOnly": true,
                 "redundancyMode": "None",
-                "storageAccountRequired": false,
                 "keyVaultReferenceIdentity": "[variables('safeexchange_userassigned_mi_resourceid')]"
             }
         },
         {
             "type": "Microsoft.Web/sites/config",
-            "apiVersion": "2022-09-01",
+            "apiVersion": "2023-12-01",
             "name": "[concat(parameters('safeexchange_site_name'), '/web')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
@@ -1310,44 +1906,16 @@
             ],
             "tags": {},
             "properties": {
-                "numberOfWorkers": 1,
-                "defaultDocuments": [
-                    "Default.htm",
-                    "Default.html",
-                    "Default.asp",
-                    "index.htm",
-                    "index.html",
-                    "iisstart.htm",
-                    "default.aspx",
-                    "index.php"
-                ],
-                "netFrameworkVersion": "v8.0",
                 "requestTracingEnabled": false,
                 "remoteDebuggingEnabled": false,
                 "httpLoggingEnabled": false,
-                "acrUseManagedIdentityCreds": false,
-                "logsDirectorySizeLimit": 35,
                 "detailedErrorLoggingEnabled": false,
-                "publishingUsername": "$safeexchange",
                 "scmType": "None",
                 "use32BitWorkerProcess": false,
                 "webSocketsEnabled": false,
-                "alwaysOn": false,
-                "managedPipelineMode": "Integrated",
-                "virtualApplications": [
-                    {
-                        "virtualPath": "/",
-                        "physicalPath": "site\\wwwroot",
-                        "preloadEnabled": false
-                    }
-                ],
                 "loadBalancing": "LeastRequests",
-                "experiments": {
-                    "rampUpRules": []
-                },
                 "autoHealEnabled": false,
-                "vnetRouteAllEnabled": false,
-                "vnetPrivatePortsCount": 0,
+                "vnetRouteAllEnabled": true,
                 "cors": {
                     "allowedOrigins": [
                         "https://portal.azure.com",
@@ -1356,7 +1924,6 @@
                     ],
                     "supportCredentials": false
                 },
-                "localMySqlEnabled": false,
                 "ipSecurityRestrictions": [
                     {
                         "ipAddress": "Any",
@@ -1379,12 +1946,7 @@
                 "http20Enabled": true,
                 "minTlsVersion": "1.2",
                 "scmMinTlsVersion": "1.2",
-                "ftpsState": "FtpsOnly",
-                "preWarmedInstanceCount": 0,
-                "functionAppScaleLimit": 200,
-                "functionsRuntimeScaleMonitoringEnabled": false,
-                "minimumElasticInstanceCount": 0,
-                "azureStorageAccounts": {}
+                "ftpsState": "Disabled"
             }
         },
         {

@@ -19,6 +19,12 @@
         },
         "settings-authentication-validIssuers": {
             "value": null
+        },
+        "allowed_debug_ip_address": {
+            "value": null
+        },
+        "enable_webjobsstorage_private_endpoints": {
+            "value": null
         }
     }
 }
