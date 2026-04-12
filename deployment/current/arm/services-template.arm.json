@@ -1804,7 +1804,8 @@
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_datastorage_blob_name'), 'default')]",
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_datastorage_queue_name'), 'default')]",
                 "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]",
-                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('safeexchange_webjobsstorage_name'), 'default', 'app-package-container')]"
             ],
             "tags": {},
             "kind": "functionapp,linux",
@@ -2364,6 +2365,33 @@
                 "immutableStorageWithVersioning": {
                     "enabled": false
                 },
+                "defaultEncryptionScope": "$account-encryption-key",
+                "denyEncryptionScopeOverride": false,
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_webjobsstorage_name'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2023-01-01",
+            "name": "[concat(parameters('safeexchange_webjobsstorage_name'), '/default/app-package-container')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('safeexchange_webjobsstorage_name'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]"
+            ],
+            "properties": {
                 "defaultEncryptionScope": "$account-encryption-key",
                 "denyEncryptionScopeOverride": false,
                 "publicAccess": "None"
