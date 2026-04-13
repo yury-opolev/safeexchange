@@ -29,28 +29,81 @@ namespace SafeExchange.Core
             var authConfig = new AuthenticationConfiguration();
             configuration.GetSection("Authentication").Bind(authConfig);
 
+            // Fail loudly at startup rather than silently accept every signed AAD token.
+            // With ValidateAudience / ValidateIssuer off, any JWT signed by the AAD
+            // common signing keys would authenticate — i.e. any user in any tenant
+            // could call this API (OWASP A02:2025 — CWE-1188, CWE-347).
+            AssertNotEmpty(authConfig.MetadataAddress, nameof(AuthenticationConfiguration.MetadataAddress));
+
+            if (!authConfig.ValidateAudience)
+            {
+                throw new ConfigurationErrorsException(
+                    "Authentication:ValidateAudience is false. Refusing to start — set it to true and populate Authentication:ValidAudiences.");
+            }
+
+            AssertNotEmpty(authConfig.ValidAudiences, nameof(AuthenticationConfiguration.ValidAudiences));
+
+            if (!authConfig.ValidateIssuer)
+            {
+                throw new ConfigurationErrorsException(
+                    "Authentication:ValidateIssuer is false. Refusing to start — set it to true and populate Authentication:ValidIssuers.");
+            }
+
+            AssertNotEmpty(authConfig.ValidIssuers, nameof(AuthenticationConfiguration.ValidIssuers));
+
+            var validAudiences = authConfig.ValidAudiences.Split(
+                ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var validIssuers = authConfig.ValidIssuers.Split(
+                ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (validAudiences.Length == 0)
+            {
+                throw new ConfigurationErrorsException(
+                    "Authentication:ValidAudiences contains no non-empty entries after splitting on ','.");
+            }
+
+            if (validIssuers.Length == 0)
+            {
+                throw new ConfigurationErrorsException(
+                    "Authentication:ValidIssuers contains no non-empty entries after splitting on ','.");
+            }
+
             this.tokenValidationParameters = new TokenValidationParameters()
             {
-                RequireExpirationTime = true,
-                RequireSignedTokens = true,
+                RequireExpirationTime    = true,
+                RequireSignedTokens      = true,
+                ValidateIssuerSigningKey = true,
+                ValidateLifetime         = true,
+                ValidateAudience         = true,
+                ValidateIssuer           = true,
+                ValidAudiences           = validAudiences,
+                ValidIssuers             = validIssuers,
 
-                ValidateAudience = authConfig.ValidateAudience,
-                ValidateIssuer = authConfig.ValidateIssuer,
+                // Algorithm allowlist — do not accept any algorithm the library may
+                // default to. Explicitly list the RSA family used by AAD-signed tokens.
+                // If AAD ever rotates to a new family the list will need an update —
+                // we want that to be a deliberate decision, not a silent acceptance.
+                ValidAlgorithms = new[]
+                {
+                    SecurityAlgorithms.RsaSha256,
+                    SecurityAlgorithms.RsaSha384,
+                    SecurityAlgorithms.RsaSha512,
+                },
             };
 
             this.tokenValidationParameters.EnableAadSigningKeyIssuerValidation();
 
-            if (authConfig.ValidateAudience)
-            {
-                this.tokenValidationParameters.ValidAudiences = authConfig.ValidAudiences.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            }
+            this.openIdConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                authConfig.MetadataAddress, new OpenIdConnectConfigurationRetriever());
+        }
 
-            if (authConfig.ValidateIssuer)
+        private static void AssertNotEmpty(string value, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
             {
-                this.tokenValidationParameters.ValidIssuers = authConfig.ValidIssuers.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                throw new ConfigurationErrorsException(
+                    $"Authentication:{propertyName} is empty. Refusing to start.");
             }
-
-            this.openIdConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(authConfig.MetadataAddress, new OpenIdConnectConfigurationRetriever());
         }
 
         public async Task<TokenValidationParameters> GetTokenValidationParametersAsync()
