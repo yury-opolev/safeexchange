@@ -86,7 +86,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandlePinnedGroupRead(HttpRequestData request, string pinnedGroupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(subjectId) && pg.GroupItemId.Equals(pinnedGroupId));
             if (existingPinnedGroup == default)
@@ -115,7 +115,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandlePinnedGroupRead), log);
 
         private async Task<HttpResponseData> HandlePinnedGroupRegistration(HttpRequestData request, string pinnedGroupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             PinnedGroupInput? registrationInput;
@@ -179,7 +179,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandlePinnedGroupRegistration), log);
 
         private async Task<HttpResponseData> HandlePinnedGroupDeletion(HttpRequestData request, string pinnedGroupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var userId = request.FunctionContext.GetUserId();
             var existingPinnedGroup = await this.dbContext.PinnedGroups.FirstOrDefaultAsync(pg => pg.UserId.Equals(userId) && pg.GroupItemId.Equals(pinnedGroupId));
@@ -265,20 +265,5 @@ namespace SafeExchange.Core.Functions
                 log);
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

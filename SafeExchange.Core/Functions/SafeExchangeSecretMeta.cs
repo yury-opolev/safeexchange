@@ -128,7 +128,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions
                 .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
@@ -145,7 +145,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleListSecretMeta), log);
 
         private async Task<HttpResponseData> HandleSecretMetaCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata != null)
@@ -195,7 +195,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleSecretMetaCreation), log);
 
         private async Task<HttpResponseData> HandleSecretMetaRead(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var metadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (metadata == null)
@@ -230,7 +230,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleSecretMetaRead), log);
 
         private async Task<HttpResponseData> HandleSecretMetaUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -295,7 +295,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleSecretMetaUpdate), log);
 
         private async Task<HttpResponseData> HandleSecretMetaDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -353,19 +353,5 @@ namespace SafeExchange.Core.Functions
             return existingMetadata;
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
-            }
-        }
     }
 }

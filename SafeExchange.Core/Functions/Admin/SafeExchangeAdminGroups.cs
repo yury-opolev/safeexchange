@@ -78,7 +78,7 @@ namespace SafeExchange.Core.Functions.Admin
         }
 
         private async Task<HttpResponseData> HandleGroupRead(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingGroup = await this.groupsManager.GetGroupAsync(groupId);
             if (existingGroup == default)
@@ -99,7 +99,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleGroupRead), log);
 
         private async Task<HttpResponseData> HandleGroupRegistration(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
             if (existingRegistration != null)
@@ -173,7 +173,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleGroupRegistration), log);
 
         private async Task<HttpResponseData> HandleGroupDeletion(HttpRequestData request, string groupId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingRegistration = await this.dbContext.GroupDictionary.FirstOrDefaultAsync(g => g.GroupId.Equals(groupId));
             if (existingRegistration == null)
@@ -194,20 +194,5 @@ namespace SafeExchange.Core.Functions.Admin
 
         }, nameof(HandleGroupDeletion), log);
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

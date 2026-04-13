@@ -132,7 +132,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleAccessRequestCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             SubjectPermissionsInput? accessRequestInput;
@@ -196,34 +196,44 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleAccessRequestCreation), log);
 
         private async Task<HttpResponseData> HandleAccessRequestList(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
-            var outgoingRequests = await this.dbContext.AccessRequests.Where(
-                ar =>
+            // Outgoing: access requests where the caller is the requestor.
+            var outgoingRequests = await this.dbContext.AccessRequests
+                .Where(ar =>
                     ar.SubjectType.Equals(subjectType) &&
                     ar.SubjectId.Equals(subjectId) &&
                     ar.Status == RequestStatus.InProgress)
-                .AsNoTracking().ToListAsync();
+                .AsNoTracking()
+                .ToListAsync();
 
+            // Incoming: access requests where the caller is listed as a recipient.
+            //
+            // This used to be a hand-written FromSqlRaw query with the Cosmos-specific
+            // JOIN-on-owned-array shape:
+            //
+            //     SELECT AR.Id, AR.PartitionKey, … FROM AccessRequests AR
+            //       JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients
+            //             WHERE RECIP.SubjectType = @0 AND RECIP.SubjectId = @1)
+            //     WHERE AR.Status = @2
+            //
+            // That workaround dates back to 2022 (EF Core 5/6) when the Cosmos LINQ
+            // translator couldn't handle .Any() on owned collections. Since EF Core 7
+            // the translation works, and since EF Core 8 it's a first-class feature,
+            // so the raw SQL is now net-negative: it bakes in the literal property
+            // names (AR.Id, AR.Recipients, …) which broke against the Linux
+            // vNext-preview Cosmos emulator's pgcosmos extension — SELECT AR.Id came
+            // back null and the no-tracking materializer threw
+            // InvalidOperationException("primary key property 'Id' is null").
+            // LINQ lets EF Core emit whatever the current provider needs.
             var incomingRequests = await this.dbContext.AccessRequests
-                .FromSqlRaw(
-                    " SELECT " +
-                    "  AR.Id," +
-                    "  AR.PartitionKey," +
-                    "  AR.SubjectType," +
-                    "  AR.SubjectName," +
-                    "  AR.SubjectId," +
-                    "  AR.ObjectName," +
-                    "  AR.Permission," +
-                    "  AR.Recipients," +
-                    "  AR.RequestedAt," +
-                    "  AR.Status," +
-                    "  AR.FinishedBy," +
-                    "  AR.FinishedAt" +
-                    " FROM AccessRequests AR" +
-                    "  JOIN (SELECT VALUE RECIP FROM RECIP IN AR.Recipients WHERE RECIP.SubjectType = {0} AND RECIP.SubjectId = {1})" +
-                    " WHERE AR.Status = {2}", subjectType, subjectId, RequestStatus.InProgress)
-                .AsNoTracking().ToListAsync();
+                .Where(ar =>
+                    ar.Status == RequestStatus.InProgress &&
+                    ar.Recipients.Any(r =>
+                        r.SubjectType == subjectType &&
+                        r.SubjectId == subjectId))
+                .AsNoTracking()
+                .ToListAsync();
 
             var requests = new List<AccessRequestOutput>(outgoingRequests.Count + incomingRequests.Count);
             requests.AddRange(outgoingRequests.Select(ar => ar.ToDto()));
@@ -236,7 +246,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleAccessRequestList), log);
 
         private async Task<HttpResponseData> HandleAccessRequestUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             AccessRequestUpdateInput? accessRequestInput;
@@ -311,7 +321,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleAccessRequestUpdate), log);
 
         private async Task<HttpResponseData> HandleAccessRequestDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             AccessRequestDeletionInput? accessRequestInput;
@@ -411,19 +421,5 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
-            }
-        }
     }
 }

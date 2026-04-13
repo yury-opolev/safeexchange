@@ -75,7 +75,7 @@ namespace SafeExchange.Core.Functions.Admin
         }
 
         private async Task<HttpResponseData> HandleWebhookSubscriptionCreation(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             WebhookSubscriptionCreationInput? creationInput;
@@ -163,7 +163,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleWebhookSubscriptionCreation), log);
 
         private async Task<HttpResponseData> HandleWebhookSubscriptionRead(HttpRequestData request, string webhookSubscriptionId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(webhookSubscriptionId));
             if (existingSubscription == null)
@@ -180,7 +180,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleWebhookSubscriptionRead), log);
 
         private async Task<HttpResponseData> HandleWebhookSubscriptionUpdate(HttpRequestData request, string webhookSubscriptionId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(webhookSubscriptionId));
             if (existingSubscription == null)
@@ -247,7 +247,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleWebhookSubscriptionUpdate), log);
 
         private async Task<HttpResponseData> HandleWebhookSubscriptionDeletion(HttpRequestData request, string webhookSubscriptionId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.Id.Equals(webhookSubscriptionId));
             if (existingSubscription == null)
@@ -307,20 +307,5 @@ namespace SafeExchange.Core.Functions.Admin
             return existingSubscription;
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

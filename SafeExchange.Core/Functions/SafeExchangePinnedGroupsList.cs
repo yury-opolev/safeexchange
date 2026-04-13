@@ -59,7 +59,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleListPinnedGroups(HttpRequestData request, string userId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
             {
                 var existingPinnedGroups = await this.dbContext.PinnedGroups.Where(pg => pg.UserId.Equals(userId)).ToListAsync();
                 if (existingPinnedGroups.Count == 0)
@@ -89,20 +89,5 @@ namespace SafeExchange.Core.Functions
                     });
             }, nameof(HandleListPinnedGroups), log);
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

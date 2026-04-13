@@ -58,7 +58,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleListApplications(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
             {
                 var existingRegistrations = await this.dbContext.Applications.ToListAsync();
 
@@ -71,20 +71,5 @@ namespace SafeExchange.Core.Functions
                     });
             }, nameof(HandleListApplications), log);
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

@@ -49,14 +49,14 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (!SubjectType.Application.Equals(subjectType))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Only applications can use this API." });
             }
 
             if (string.IsNullOrEmpty(subjectId))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
@@ -64,7 +64,7 @@ namespace SafeExchange.Core.Functions
             var application = this.dbContext.Applications.FirstOrDefault(a => a.DisplayName.Equals(subjectId));
             if (application?.ExternalNotificationsReader != true)
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered as external notifications reader." });
             }
@@ -84,7 +84,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleExternalNotificationDetailsRead(string webhookNotificationDataId, HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
             {
                 await this.purger.PurgeNotificationDataIfNeededAsync(webhookNotificationDataId, this.dbContext);
 
@@ -148,20 +148,5 @@ namespace SafeExchange.Core.Functions
                     });
             }, nameof(HandleExternalNotificationDetailsRead), log);
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

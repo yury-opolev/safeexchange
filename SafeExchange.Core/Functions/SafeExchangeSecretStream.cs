@@ -156,7 +156,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<HttpResponseData> HandleSecretStreamUpload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
         {
-            return await TryCatch(request, async () =>
+            return await ActionResults.TryCatchAsync(request, async () =>
             {
                 var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
                 if (existingMetadata == null)
@@ -278,7 +278,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<HttpResponseData> HandleSecretStreamDownload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
         {
-            return await TryCatch(request, async () =>
+            return await ActionResults.TryCatchAsync(request, async () =>
             {
                 var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
                 if (existingMetadata == null)
@@ -364,7 +364,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<HttpResponseData> HandleSecretContentStreamDownload(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
         {
-            return await TryCatch(request, async () =>
+            return await ActionResults.TryCatchAsync(request, async () =>
             {
                 var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
                 if (existingMetadata == null)
@@ -499,19 +499,5 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"{actionName} had exception {ex.GetType()}: {ex.Message}");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
-            }
-        }
     }
 }

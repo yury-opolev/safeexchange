@@ -77,7 +77,7 @@ namespace SafeExchange.Core.Functions.Admin
         }
 
         private async Task<HttpResponseData> HandleApplicationRegistration(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration != null)
@@ -186,7 +186,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleApplicationRegistration), log);
 
         private async Task<HttpResponseData> HandleApplicationRead(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration == null)
@@ -203,7 +203,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleApplicationRead), log);
 
         private async Task<HttpResponseData> HandleApplicationUpdate(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration == null)
@@ -262,7 +262,7 @@ namespace SafeExchange.Core.Functions.Admin
         }, nameof(HandleApplicationUpdate), log);
 
         private async Task<HttpResponseData> HandleApplicationDeletion(HttpRequestData request, string applicationId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingRegistration = await this.dbContext.Applications.FirstOrDefaultAsync(o => o.DisplayName.Equals(applicationId));
             if (existingRegistration == null)
@@ -316,20 +316,5 @@ namespace SafeExchange.Core.Functions.Admin
             return existingApplication;
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }
