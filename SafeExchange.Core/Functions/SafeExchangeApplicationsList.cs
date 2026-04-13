@@ -38,7 +38,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }

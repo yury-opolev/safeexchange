@@ -415,6 +415,83 @@ namespace SafeExchange.Tests
             Assert.That(responseResult.Result[0].GroupMail, Is.EqualTo("test2@group.mail"));
         }
 
+        /// <summary>
+        /// Regression guard for the repo-wide missing-return bug class.
+        ///
+        /// <see cref="SafeExchangePinnedGroupsList.RunList"/> has a guard of the shape
+        /// <c>if (SubjectType.Application.Equals(subjectType)) { /* 403 Forbidden */ }</c>
+        /// whose stated intent is "Applications cannot use this API." Before the
+        /// 2026-04-13 hardening commit, the guard built a 403 response and then
+        /// silently discarded it (no `return` statement), so an application token
+        /// fell through to <c>HandleListPinnedGroups</c> and received a 200 OK.
+        /// This is one of 9 "Pattern B" sites where the same bug existed.
+        ///
+        /// This test locks in the fix for PinnedGroupsList as a representative for
+        /// the whole class — if someone re-introduces the missing-return anywhere in
+        /// that code path, this assertion fails. We can't reasonably test all 20
+        /// sites, but one concrete integration assertion is more durable than a
+        /// static grep.
+        ///
+        /// The fixture-level <see cref="TestTokenHelper"/> hard-codes
+        /// <c>IsUserToken = true</c>, so we plug in a Moq'd <see cref="ITokenHelper"/>
+        /// that reports the principal as an application token for this test only.
+        /// </summary>
+        [Test]
+        public async Task RunList_ReturnsForbidden_ForApplicationToken()
+        {
+            // [GIVEN] A token helper that classifies the caller as an application
+            //         (no user assertion, no registered Application row).
+            var appTokenHelper = new Mock<ITokenHelper>();
+            appTokenHelper.Setup(h => h.IsUserToken(It.IsAny<ClaimsPrincipal>())).Returns(false);
+            appTokenHelper.Setup(h => h.GetTenantId(It.IsAny<ClaimsPrincipal>()))
+                .Returns("00000000-0000-0000-0000-000000000001");
+            appTokenHelper.Setup(h => h.GetApplicationClientId(It.IsAny<ClaimsPrincipal>()))
+                .Returns("00000000-0000-0000-0000-aaaaaaaaaaaa");
+            appTokenHelper.Setup(h => h.GetUpn(It.IsAny<ClaimsPrincipal>())).Returns(string.Empty);
+            appTokenHelper.Setup(h => h.GetObjectId(It.IsAny<ClaimsPrincipal>()))
+                .Returns("00000000-0000-0000-0000-999999999999");
+            appTokenHelper.Setup(h => h.GetDisplayName(It.IsAny<ClaimsPrincipal>())).Returns(string.Empty);
+
+            var appPinnedGroupsList = new SafeExchangePinnedGroupsList(
+                this.dbContext, appTokenHelper.Object, this.globalFilters);
+
+            // A minimal app-style ClaimsPrincipal. The mocked helper doesn't inspect
+            // the claims directly; this just has to be non-null so the handler can
+            // pass it to SubjectHelper.GetSubjectInfoAsync.
+            var appIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>
+            {
+                new Claim("appid", "00000000-0000-0000-0000-aaaaaaaaaaaa"),
+                new Claim("oid", "00000000-0000-0000-0000-999999999999"),
+                new Claim("tid", "00000000-0000-0000-0000-000000000001"),
+            }.AsEnumerable());
+            var claimsPrincipal = new ClaimsPrincipal(appIdentity);
+
+            var request = TestFactory.CreateHttpRequestData("get");
+            // Seed the CurrentUserId context item so that if the guard regresses
+            // and execution falls through to HandleListPinnedGroups, the fallthrough
+            // path doesn't crash on a missing dictionary key — it returns a clean
+            // 200 OK instead. That turns a regression into a "expected 403, got 200"
+            // assertion failure rather than an opaque KeyNotFoundException.
+            request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] =
+                "00000000-0000-0000-0000-999999999999";
+
+            // [WHEN] The application calls the pinned-groups list endpoint.
+            var rawResponse = await appPinnedGroupsList.RunList(request, claimsPrincipal, this.logger);
+
+            // [THEN] 403 Forbidden with the "Applications cannot use this API"
+            //        message — proving the guard returned early and the handler
+            //        body was never reached. Before the missing-return fix this
+            //        would have returned 200 OK with an empty pinned-groups list.
+            var response = rawResponse as TestHttpResponseData;
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+
+            var body = response.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(body, Is.Not.Null);
+            Assert.That(body!.Status, Is.EqualTo("forbidden"));
+            Assert.That(body.Error, Does.Contain("Applications cannot use this API"));
+        }
+
         private TestHttpRequestData CreatePinnedGroupRegistrationRequest(string groupId, string groupDisplayName, string? groupMail, string userId)
         {
             var groupRegistrationRequest = TestFactory.CreateHttpRequestData("put");
