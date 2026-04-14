@@ -200,11 +200,11 @@
                 "description": "Name of the NAT Gateway public IP address."
             }
         },
-        "allowed_debug_ip_address": {
-            "defaultValue": "",
-            "type": "string",
+        "deployer_ip_addresses": {
+            "defaultValue": [],
+            "type": "array",
             "metadata": {
-                "description": "Optional IP address for dev/staging to allow direct resource access for debugging. Leave empty for production."
+                "description": "Optional list of IP addresses or CIDR ranges allowed to reach the two resources that the ARM deploy itself has to talk to from the operator's machine: (1) Key Vault data plane — ARM writes every Microsoft.KeyVault/vaults/secrets resource through the data plane, so the vault must be reachable from the deploying IP during 'az deployment group create'; (2) WebJobs Storage — where 'func azure functionapp publish' uploads the deployment zip. Cosmos DB and Data Storage stay fully behind their private endpoints regardless of this value because their ARM child resources (sqlDatabases, roleAssignments, blob containers, queues) are all management-plane only. Populate with the public IP(s) of the operator's machine, or a CIDR range. Leave empty to require deploys from inside the VNet (e.g. via a self-hosted runner or VPN) — but note that with an empty list, 'az deployment' will fail on the Key Vault secrets unless public access is temporarily opened. Example: [\"203.0.113.42\", \"198.51.100.0/29\"]."
             }
         },
         "enable_webjobsstorage_private_endpoints": {
@@ -254,7 +254,7 @@
 
         "storage_role_tableDataContributor": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
 
-        "has_debug_ip": "[not(empty(parameters('allowed_debug_ip_address')))]"
+        "has_deployer_ips": "[greater(length(parameters('deployer_ip_addresses')), 0)]"
     },
     "resources": [
         {
@@ -369,7 +369,7 @@
                 "type": "None"
             },
             "properties": {
-                "publicNetworkAccess": "[if(variables('has_debug_ip'), 'Enabled', 'Disabled')]",
+                "publicNetworkAccess": "Disabled",
                 "enableAutomaticFailover": false,
                 "enableMultipleWriteLocations": false,
                 "isVirtualNetworkFilterEnabled": true,
@@ -405,7 +405,7 @@
                         "name": "EnableServerless"
                     }
                 ],
-                "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('ipAddressOrRange', parameters('allowed_debug_ip_address'))), createArray())]",
+                "ipRules": [],
                 "backupPolicy": {
                     "type": "Periodic",
                     "periodicModeProperties": {
@@ -458,11 +458,11 @@
                 "softDeleteRetentionInDays": 90,
                 "enableRbacAuthorization": true,
                 "vaultUri": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]",
-                "publicNetworkAccess": "[if(variables('has_debug_ip'), 'Enabled', 'Disabled')]",
+                "publicNetworkAccess": "[if(variables('has_deployer_ips'), 'Enabled', 'Disabled')]",
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "defaultAction": "Deny",
-                    "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('value', parameters('allowed_debug_ip_address'))), createArray())]",
+                    "ipRules": "[if(variables('has_deployer_ips'), map(parameters('deployer_ip_addresses'), lambda('ip', createObject('value', lambdaVariables('ip')))), createArray())]",
                     "virtualNetworkRules": []
                 }
             }
@@ -647,11 +647,11 @@
                 "allowSharedKeyAccess": false,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
-                "publicNetworkAccess": "[if(and(parameters('enable_webjobsstorage_private_endpoints'), not(variables('has_debug_ip'))), 'Disabled', 'Enabled')]",
+                "publicNetworkAccess": "[if(and(parameters('enable_webjobsstorage_private_endpoints'), not(variables('has_deployer_ips'))), 'Disabled', 'Enabled')]",
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
-                    "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('value', parameters('allowed_debug_ip_address'), 'action', 'Allow')), createArray())]",
+                    "ipRules": "[if(variables('has_deployer_ips'), map(parameters('deployer_ip_addresses'), lambda('ip', createObject('value', lambdaVariables('ip'), 'action', 'Allow'))), createArray())]",
                     "defaultAction": "[if(parameters('enable_webjobsstorage_private_endpoints'), 'Deny', 'Allow')]"
                 },
                 "supportsHttpsTrafficOnly": true,
@@ -683,7 +683,7 @@
             "properties": {
                 "dnsEndpointType": "Standard",
                 "defaultToOAuthAuthentication": true,
-                "publicNetworkAccess": "[if(variables('has_debug_ip'), 'Enabled', 'Disabled')]",
+                "publicNetworkAccess": "Disabled",
                 "allowCrossTenantReplication": true,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
@@ -691,7 +691,7 @@
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
-                    "ipRules": "[if(variables('has_debug_ip'), createArray(createObject('value', parameters('allowed_debug_ip_address'), 'action', 'Allow')), createArray())]",
+                    "ipRules": [],
                     "defaultAction": "Deny"
                 },
                 "supportsHttpsTrafficOnly": true,

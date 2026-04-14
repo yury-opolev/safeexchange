@@ -29,8 +29,8 @@
         "settings-features-useGraphGroupSearch": {
             "value": "False"
         },
-        "allowed_debug_ip_address": {
-            "value": ""
+        "deployer_ip_addresses": {
+            "value": []
         },
         "enable_webjobsstorage_private_endpoints": {
             "value": false

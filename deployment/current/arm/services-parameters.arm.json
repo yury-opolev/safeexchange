@@ -20,8 +20,8 @@
         "settings-authentication-validIssuers": {
             "value": null
         },
-        "allowed_debug_ip_address": {
-            "value": null
+        "deployer_ip_addresses": {
+            "value": []
         },
         "enable_webjobsstorage_private_endpoints": {
             "value": null
