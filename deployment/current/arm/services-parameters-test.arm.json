@@ -33,7 +33,7 @@
             "value": []
         },
         "enable_webjobsstorage_private_endpoints": {
-            "value": false
+            "value": true
         }
     }
 }
