@@ -51,6 +51,14 @@
     Override the path to the .env file. Defaults to
     deployment/.env alongside this script.
 
+.PARAMETER SkipOrphanCheck
+    Skip the orphaned-role-assignment scan. By default the script
+    looks for RBAC + Cosmos SQL role assignments in the target
+    resource group whose principal no longer exists in AAD (i.e.
+    leftovers from a deleted function app or managed identity)
+    and prompts to delete them, because Azure refuses to update
+    an existing role assignment's principalId on the next deploy.
+
 .EXAMPLE
     ./deployment/deploy.ps1 -Environment test
 
@@ -84,8 +92,16 @@ param(
     [switch]$SkipIpCheck,
 
     [Parameter()]
-    [string]$EnvFile
+    [string]$EnvFile,
+
+    [Parameter()]
+    [switch]$SkipOrphanCheck
 )
+
+# Disable Git Bash MSYS path translation for az CLI calls — without this,
+# the leading '/' on Azure resource IDs gets rewritten as 'C:/Program Files/Git/'
+# when `az` is launched from inside a bash shell on Windows.
+$env:MSYS_NO_PATHCONV = '1'
 
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
@@ -209,7 +225,7 @@ if ($SkipIpCheck) {
         Write-Host "The committed services-parameters-$Environment.arm.json is not modified."
         Write-Host ""
         $response = Read-Host 'Update .env and deploy? [y/N]'
-        if ($response.ToLower() -ne 'y') {
+        if ([string]::IsNullOrWhiteSpace($response) -or $response.Trim().ToLower() -ne 'y') {
             Write-Host "Cancelled. No files were modified." -ForegroundColor Yellow
             exit 0
         }
@@ -237,6 +253,145 @@ if ($SkipIpCheck) {
         Write-Host "Updated $EnvFile." -ForegroundColor Green
         $deployerIps = @($currentIpCidr)
         $deployerDisplay = $currentIpCidr
+    }
+}
+
+# ──────────────────────────────────────────────────────────────────
+# Orphaned role assignment cleanup
+# ──────────────────────────────────────────────────────────────────
+# When a function app (or any managed identity) is deleted and recreated,
+# its principalId changes. Existing role assignments still reference the
+# old principalId, and Azure refuses to update them in place — the next
+# ARM deployment fails with "Tenant ID, application ID, principal ID, and
+# scope are not allowed to be updated".
+#
+# The role assignment names in services-template.arm.json are a static
+# guid() of (rg, siteName, role) and do NOT include the principalId, so
+# the only way to recover is to delete the orphans before redeploying.
+# ARM rejects reference() inside resource name expressions, so this can't
+# be solved purely in the template.
+#
+# This function scans every role assignment scoped inside the resource
+# group, checks whether each principal still exists in AAD, and prompts
+# the operator to delete the ones that don't.
+
+# Returns true if the principal is alive in AAD (as a service principal
+# or user). Cached per-call by Find-OrphanedRoleAssignments.
+function Test-PrincipalExists {
+    param([string]$PrincipalId)
+
+    $found = az ad sp show --id $PrincipalId --query "id" -o tsv 2>$null
+    if ($found) { return $true }
+    $found = az ad user show --id $PrincipalId --query "id" -o tsv 2>$null
+    if ($found) { return $true }
+    return $false
+}
+
+function Find-OrphanedRoleAssignments {
+    param([string]$ResourceGroup)
+
+    $allJson = az role assignment list --all -o json 2>$null
+    if (-not $allJson) { return @() }
+    $all = $allJson | ConvertFrom-Json
+
+    # Match assignments whose scope is inside this RG. Azure returns the
+    # scope with a lowercase 'resourcegroups' segment, but be defensive.
+    $inRg = $all | Where-Object {
+        $_.scope -like "*/resourceGroups/$ResourceGroup/*" -or
+        $_.scope -like "*/resourcegroups/$ResourceGroup/*"
+    }
+
+    $aliveCache = @{}
+    $orphans = @()
+    foreach ($a in $inRg) {
+        if (-not $aliveCache.ContainsKey($a.principalId)) {
+            $aliveCache[$a.principalId] = Test-PrincipalExists -PrincipalId $a.principalId
+        }
+        if (-not $aliveCache[$a.principalId]) {
+            $orphans += $a
+        }
+    }
+    return $orphans
+}
+
+function Find-OrphanedCosmosSqlRoleAssignments {
+    param([string]$ResourceGroup)
+
+    $accountsRaw = az cosmosdb list -g $ResourceGroup --query "[].name" -o tsv 2>$null
+    if (-not $accountsRaw) { return @() }
+
+    $orphans = @()
+    foreach ($accountName in ($accountsRaw -split "`r?`n" | Where-Object { $_ })) {
+        $listJson = az cosmosdb sql role assignment list --account-name $accountName -g $ResourceGroup -o json 2>$null
+        if (-not $listJson) { continue }
+        $list = $listJson | ConvertFrom-Json
+        foreach ($a in $list) {
+            if (-not (Test-PrincipalExists -PrincipalId $a.principalId)) {
+                $orphans += [pscustomobject]@{
+                    AccountName = $accountName
+                    Name        = $a.name
+                    PrincipalId = $a.principalId
+                    Scope       = $a.scope
+                }
+            }
+        }
+    }
+    return $orphans
+}
+
+if ($SkipOrphanCheck) {
+    Write-Host "Skipping orphaned-role-assignment scan (-SkipOrphanCheck)." -ForegroundColor DarkGray
+} else {
+    Write-Host "Scanning $ResourceGroup for orphaned role assignments..." -ForegroundColor DarkGray
+    $rbacOrphans = @(Find-OrphanedRoleAssignments -ResourceGroup $ResourceGroup)
+    $cosmosOrphans = @(Find-OrphanedCosmosSqlRoleAssignments -ResourceGroup $ResourceGroup)
+
+    $totalOrphans = $rbacOrphans.Count + $cosmosOrphans.Count
+    if ($totalOrphans -eq 0) {
+        Write-Host "  No orphaned role assignments found." -ForegroundColor DarkGray
+    } else {
+        Write-Host ""
+        Write-Warning "Found $totalOrphans orphaned role assignment(s) referencing principals that no longer exist in AAD."
+        Write-Host ""
+        if ($rbacOrphans.Count -gt 0) {
+            Write-Host "RBAC ($($rbacOrphans.Count)):"
+            foreach ($o in $rbacOrphans) {
+                $scopeLeaf = ($o.scope -split '/')[-1]
+                Write-Host "  - $($o.roleDefinitionName) on $scopeLeaf  [principal: $($o.principalId)]"
+            }
+        }
+        if ($cosmosOrphans.Count -gt 0) {
+            Write-Host "Cosmos SQL ($($cosmosOrphans.Count)):"
+            foreach ($o in $cosmosOrphans) {
+                Write-Host "  - $($o.AccountName) / $($o.Name)  [principal: $($o.PrincipalId)]"
+            }
+        }
+        Write-Host ""
+        Write-Host "These will block the deployment because Azure refuses to update an"
+        Write-Host "existing role assignment's principalId. They typically appear after"
+        Write-Host "a function app or managed identity is deleted and recreated."
+        Write-Host ""
+        $response = Read-Host 'Delete orphaned role assignments and continue? [y/N]'
+        if ([string]::IsNullOrWhiteSpace($response) -or $response.Trim().ToLower() -ne 'y') {
+            Write-Host "Cancelled. No assignments were deleted." -ForegroundColor Yellow
+            exit 0
+        }
+
+        foreach ($o in $rbacOrphans) {
+            Write-Host "  Deleting RBAC: $($o.roleDefinitionName) on $(($o.scope -split '/')[-1])" -ForegroundColor DarkGray
+            az role assignment delete --ids $o.id 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "  Failed to delete $($o.id)"
+            }
+        }
+        foreach ($o in $cosmosOrphans) {
+            Write-Host "  Deleting Cosmos SQL: $($o.AccountName)/$($o.Name)" -ForegroundColor DarkGray
+            az cosmosdb sql role assignment delete --account-name $o.AccountName -g $ResourceGroup --role-assignment-id $o.Name --yes 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "  Failed to delete $($o.Name)"
+            }
+        }
+        Write-Host "Cleanup complete." -ForegroundColor Green
     }
 }
 

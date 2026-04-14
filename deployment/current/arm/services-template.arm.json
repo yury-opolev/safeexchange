@@ -474,7 +474,7 @@
             "scope": "[concat('Microsoft.KeyVault/vaults/', parameters('safeexchange_kv_name'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
-                "[variables('safeexchange_userassigned_mi_name')]"
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('safeexchange_userassigned_mi_name'))]"
             ],
             "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVault_role_secretsOfficer'))]",
@@ -1849,14 +1849,6 @@
                 "siteConfig": {
                     "http20Enabled": true,
                     "appSettings": [
-                        {
-                            "name": "FUNCTIONS_EXTENSION_VERSION",
-                            "value": "~4"
-                        },
-                        {
-                            "name": "FUNCTIONS_WORKER_RUNTIME",
-                            "value": "dotnet-isolated"
-                        },
                         {
                             "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
                             "value": "[reference(resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name')), '2020-02-02').ConnectionString]"
