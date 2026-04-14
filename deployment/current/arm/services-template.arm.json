@@ -137,6 +137,13 @@
                 "description": ""
             }
         },
+        "settings-authentication-upnClaims": {
+            "type": "string",
+            "defaultValue": "upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn",
+            "metadata": {
+                "description": "Comma-separated list of claim types, in preference order, that TokenHelper.GetUpn consults when resolving the caller's UPN. First non-empty claim wins. Defaults to the safe pair (raw 'upn' + ClaimTypes.Upn). Operators can restore the legacy fallback chain — e.g. 'upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn,preferred_username,email,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress' — if a specific deployment requires it, but note that preferred_username / email are not stable or unique per AAD identity and reintroduce a permission-aliasing risk."
+            }
+        },
         "settings-features-useGroupsAuthorization": {
             "defaultValue": "False",
             "type": "string",
@@ -1506,6 +1513,22 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-authentication-validIssuers')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Authentication--UpnClaims')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-authentication-upnClaims')]"
             }
         },
         {

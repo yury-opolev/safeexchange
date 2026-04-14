@@ -4,18 +4,46 @@
 
 namespace SafeExchange.Core
 {
+    using System;
+    using System.Configuration;
     using System.Net.Http.Headers;
     using System.Security.Claims;
     using Microsoft.Azure.Functions.Worker.Http;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Configuration;
 
     public class TokenHelper : ITokenHelper
     {
+        /// <summary>
+        /// Claim types, in priority order, that <see cref="GetUpn"/> will consult
+        /// when resolving the caller's UPN. Parsed once at construction from
+        /// <see cref="AuthenticationConfiguration.UpnClaims"/>.
+        /// </summary>
+        private readonly string[] upnClaims;
+
         private readonly ILogger<TokenHelper> log;
 
-        public TokenHelper(ILogger<TokenHelper> log)
+        public TokenHelper(IConfiguration configuration, ILogger<TokenHelper> log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
+
+            var authConfig = new AuthenticationConfiguration();
+            configuration.GetSection("Authentication").Bind(authConfig);
+
+            this.upnClaims = (authConfig.UpnClaims ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (this.upnClaims.Length == 0)
+            {
+                throw new ConfigurationErrorsException(
+                    "Authentication:UpnClaims must contain at least one claim name. " +
+                    "Default is 'upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn'.");
+            }
+
+            this.log.LogInformation(
+                "TokenHelper UPN claim chain: [{UpnClaims}]",
+                string.Join(", ", this.upnClaims));
         }
 
         /// <inheritdoc/>
@@ -46,28 +74,21 @@ namespace SafeExchange.Core
         /// <inheritdoc/>
         public string GetUpn(ClaimsPrincipal principal)
         {
-            var result = principal.FindFirst(ClaimTypes.Upn)?.Value;
-            if (string.IsNullOrEmpty(result))
+            if (principal is null)
             {
-                result = principal.FindFirst("upn")?.Value;
+                return string.Empty;
             }
 
-            if (string.IsNullOrEmpty(result))
+            foreach (var claimType in this.upnClaims)
             {
-                result = principal.FindFirst("preferred_username")?.Value;
+                var value = principal.FindFirst(claimType)?.Value;
+                if (!string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
             }
 
-            if (string.IsNullOrEmpty(result))
-            {
-                result = principal.FindFirst("email")?.Value;
-            }
-
-            if (string.IsNullOrEmpty(result))
-            {
-                result = principal.FindFirst(ClaimTypes.Email)?.Value;
-            }
-
-            return result ?? string.Empty;
+            return string.Empty;
         }
 
         /// <inheritdoc/>
