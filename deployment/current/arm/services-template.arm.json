@@ -651,7 +651,7 @@
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "virtualNetworkRules": [],
-                    "ipRules": "[if(variables('has_deployer_ips'), map(parameters('deployer_ip_addresses'), lambda('ip', createObject('value', lambdaVariables('ip'), 'action', 'Allow'))), createArray())]",
+                    "ipRules": "[if(variables('has_deployer_ips'), map(parameters('deployer_ip_addresses'), lambda('ip', createObject('value', replace(lambdaVariables('ip'), '/32', ''), 'action', 'Allow'))), createArray())]",
                     "defaultAction": "[if(parameters('enable_webjobsstorage_private_endpoints'), 'Deny', 'Allow')]"
                 },
                 "supportsHttpsTrafficOnly": true,
@@ -2330,6 +2330,17 @@
                         "kind": "Hash",
                         "version": 2
                     },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/WebhookSubscriptionId",
+                                    "/EventType",
+                                    "/EventId"
+                                ]
+                            }
+                        ]
+                    },
                     "conflictResolutionPolicy": {
                         "mode": "LastWriterWins",
                         "conflictResolutionPath": "/_ts"
@@ -2368,6 +2379,16 @@
                         ],
                         "kind": "Hash",
                         "version": 2
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/EventType",
+                                    "/Url"
+                                ]
+                            }
+                        ]
                     },
                     "conflictResolutionPolicy": {
                         "mode": "LastWriterWins",
