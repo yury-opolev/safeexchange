@@ -23,7 +23,7 @@
         "deployer_ip_addresses": {
             "value": []
         },
-        "enable_webjobsstorage_private_endpoints": {
+        "webjobsstorage_isolation_mode": {
             "value": null
         }
     }

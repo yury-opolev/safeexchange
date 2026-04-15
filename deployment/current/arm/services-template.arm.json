@@ -207,11 +207,15 @@
                 "description": "Optional list of IP addresses or CIDR ranges allowed to reach the two resources that the ARM deploy itself has to talk to from the operator's machine: (1) Key Vault data plane — ARM writes every Microsoft.KeyVault/vaults/secrets resource through the data plane, so the vault must be reachable from the deploying IP during 'az deployment group create'; (2) WebJobs Storage — where 'func azure functionapp publish' uploads the deployment zip. Cosmos DB and Data Storage stay fully behind their private endpoints regardless of this value because their ARM child resources (sqlDatabases, roleAssignments, blob containers, queues) are all management-plane only. Populate with the public IP(s) of the operator's machine, or a CIDR range. Leave empty to require deploys from inside the VNet (e.g. via a self-hosted runner or VPN) — but note that with an empty list, 'az deployment' will fail on the Key Vault secrets unless public access is temporarily opened. Example: [\"203.0.113.42\", \"198.51.100.0/29\"]."
             }
         },
-        "enable_webjobsstorage_private_endpoints": {
-            "defaultValue": false,
-            "type": "bool",
+        "webjobsstorage_isolation_mode": {
+            "defaultValue": "privateEndpoints",
+            "type": "string",
+            "allowedValues": [
+                "privateEndpoints",
+                "serviceEndpoint"
+            ],
             "metadata": {
-                "description": "Whether to create private endpoints for the WebJobs storage account. When false, WebJobs storage remains publicly accessible."
+                "description": "Network isolation mode for the WebJobs storage account. 'privateEndpoints' creates blob/queue/table/file private endpoints (and the table/file private DNS zones) and disables public network access. 'serviceEndpoint' keeps the storage account on its public DNS name but locks data-plane access to the snet-functionapp subnet via a Microsoft.Storage service endpoint + virtualNetworkRules entry, with networkAcls.defaultAction=Deny; the operator's deployer_ip_addresses still apply for 'func azure functionapp publish'. Only the WebJobs storage account is affected — the data storage account always uses private endpoints."
             }
         }
     },
@@ -254,7 +258,9 @@
 
         "storage_role_tableDataContributor": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
 
-        "has_deployer_ips": "[greater(length(parameters('deployer_ip_addresses')), 0)]"
+        "has_deployer_ips": "[greater(length(parameters('deployer_ip_addresses')), 0)]",
+        "is_wjs_pe_mode": "[equals(parameters('webjobsstorage_isolation_mode'), 'privateEndpoints')]",
+        "is_wjs_se_mode": "[equals(parameters('webjobsstorage_isolation_mode'), 'serviceEndpoint')]"
     },
     "resources": [
         {
@@ -332,6 +338,11 @@
                             "natGateway": {
                                 "id": "[resourceId('Microsoft.Network/natGateways', parameters('safeexchange_natgw_name'))]"
                             },
+                            "serviceEndpoints": [
+                                {
+                                    "service": "Microsoft.Storage"
+                                }
+                            ],
                             "delegations": [
                                 {
                                     "name": "Microsoft.App.environments",
@@ -637,6 +648,9 @@
             "apiVersion": "2023-01-01",
             "name": "[parameters('safeexchange_webjobsstorage_name')]",
             "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ],
             "sku": {
                 "name": "Standard_LRS",
                 "tier": "Standard"
@@ -647,12 +661,12 @@
                 "allowSharedKeyAccess": false,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
-                "publicNetworkAccess": "[if(and(parameters('enable_webjobsstorage_private_endpoints'), not(variables('has_deployer_ips'))), 'Disabled', 'Enabled')]",
+                "publicNetworkAccess": "[if(and(variables('is_wjs_pe_mode'), not(variables('has_deployer_ips'))), 'Disabled', 'Enabled')]",
                 "networkAcls": {
                     "bypass": "AzureServices",
-                    "virtualNetworkRules": [],
+                    "virtualNetworkRules": "[if(variables('is_wjs_se_mode'), createArray(createObject('id', resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_functionapp_name')), 'action', 'Allow')), createArray())]",
                     "ipRules": "[if(variables('has_deployer_ips'), map(parameters('deployer_ip_addresses'), lambda('ip', createObject('value', replace(lambdaVariables('ip'), '/32', ''), 'action', 'Allow'))), createArray())]",
-                    "defaultAction": "[if(parameters('enable_webjobsstorage_private_endpoints'), 'Deny', 'Allow')]"
+                    "defaultAction": "Deny"
                 },
                 "supportsHttpsTrafficOnly": true,
                 "accessTier": "Hot",
@@ -721,7 +735,7 @@
             "properties": {}
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_table')]",
@@ -729,7 +743,7 @@
             "properties": {}
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_file')]",
@@ -793,7 +807,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_table'), '/', parameters('safeexchange_vnet_name'), '-link')]",
@@ -810,7 +824,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_file'), '/', parameters('safeexchange_vnet_name'), '-link')]",
@@ -916,7 +930,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_wjstorage_blob_name')]",
@@ -941,7 +955,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_wjstorage_queue_name')]",
@@ -966,7 +980,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_wjstorage_table_name')]",
@@ -991,7 +1005,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_wjstorage_file_name')]",
@@ -1098,7 +1112,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_wjstorage_blob_name'), '/default')]",
@@ -1118,7 +1132,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_wjstorage_queue_name'), '/default')]",
@@ -1138,7 +1152,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_wjstorage_table_name'), '/default')]",
@@ -1158,7 +1172,7 @@
             ]
         },
         {
-            "condition": "[parameters('enable_webjobsstorage_private_endpoints')]",
+            "condition": "[variables('is_wjs_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_wjstorage_file_name'), '/default')]",

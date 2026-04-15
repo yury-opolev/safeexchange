@@ -53,8 +53,8 @@
         "deployer_ip_addresses": {
             "value": []
         },
-        "enable_webjobsstorage_private_endpoints": {
-            "value": true
+        "webjobsstorage_isolation_mode": {
+            "value": "privateEndpoints"
         }
     }
 }
