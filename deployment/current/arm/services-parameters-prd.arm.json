@@ -20,8 +20,11 @@
         "safeexchange_kv_name": {
             "value": "safeexchange-backend"
         },
-        "safeexchange_cdnprofile_endpoint_name": {
-            "value": "safeexchange"
+        "safeexchange_cosmosdb_pe_name": {
+            "value": "safeexchange-backend-cosmos-pe"
+        },
+        "safeexchange_keyvault_pe_name": {
+            "value": "safeexchange-backend-kv-pe"
         },
         "safeexchange_data_storage_name": {
             "value": "safeexchangebackend"
@@ -54,13 +57,13 @@
             "value": []
         },
         "webjobsstorage_isolation_mode": {
-            "value": "privateEndpoints"
+            "value": "serviceEndpoint"
         },
         "data_storage_isolation_mode": {
-            "value": "privateEndpoints"
+            "value": "serviceEndpoint"
         },
         "provision_nat_gateway": {
-            "value": true
+            "value": false
         }
     }
 }

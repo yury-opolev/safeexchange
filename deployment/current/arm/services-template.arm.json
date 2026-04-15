@@ -200,6 +200,20 @@
                 "description": "Name of the NAT Gateway public IP address."
             }
         },
+        "safeexchange_cosmosdb_pe_name": {
+            "defaultValue": "[concat(parameters('safeexchange_dbaccount_name'), '-pe')]",
+            "type": "string",
+            "metadata": {
+                "description": "Name of the Cosmos DB private endpoint. Defaults to '<dbaccount>-pe' which works when the Cosmos and KV accounts have differentiated base names (e.g. <site>-db and <site>-kv). Override explicitly when both accounts share the same base name (e.g. legacy prd where Cosmos and KV are both named 'safeexchange-backend' and the default would collide with the KV PE)."
+            }
+        },
+        "safeexchange_keyvault_pe_name": {
+            "defaultValue": "[concat(parameters('safeexchange_kv_name'), '-pe')]",
+            "type": "string",
+            "metadata": {
+                "description": "Name of the Key Vault private endpoint. Defaults to '<kv>-pe'. See safeexchange_cosmosdb_pe_name for when to override."
+            }
+        },
         "deployer_ip_addresses": {
             "defaultValue": [],
             "type": "array",
@@ -265,14 +279,14 @@
         "privateDnsZone_file": "privatelink.file.core.windows.net",
         "privateDnsZone_vault": "privatelink.vaultcore.azure.net",
 
-        "pe_cosmosdb_name": "[concat(parameters('safeexchange_dbaccount_name'), '-pe')]",
+        "pe_cosmosdb_name": "[parameters('safeexchange_cosmosdb_pe_name')]",
         "pe_datastorage_blob_name": "[concat(parameters('safeexchange_data_storage_name'), '-blob-pe')]",
         "pe_datastorage_queue_name": "[concat(parameters('safeexchange_data_storage_name'), '-queue-pe')]",
         "pe_wjstorage_blob_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-blob-pe')]",
         "pe_wjstorage_queue_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-queue-pe')]",
         "pe_wjstorage_table_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-table-pe')]",
         "pe_wjstorage_file_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-file-pe')]",
-        "pe_keyvault_name": "[concat(parameters('safeexchange_kv_name'), '-pe')]",
+        "pe_keyvault_name": "[parameters('safeexchange_keyvault_pe_name')]",
 
         "storage_role_tableDataContributor": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
 
