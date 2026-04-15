@@ -34,6 +34,12 @@
         },
         "webjobsstorage_isolation_mode": {
             "value": "serviceEndpoint"
+        },
+        "data_storage_isolation_mode": {
+            "value": "serviceEndpoint"
+        },
+        "provision_nat_gateway": {
+            "value": false
         }
     }
 }

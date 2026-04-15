@@ -55,6 +55,12 @@
         },
         "webjobsstorage_isolation_mode": {
             "value": "privateEndpoints"
+        },
+        "data_storage_isolation_mode": {
+            "value": "privateEndpoints"
+        },
+        "provision_nat_gateway": {
+            "value": true
         }
     }
 }

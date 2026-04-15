@@ -215,7 +215,25 @@
                 "serviceEndpoint"
             ],
             "metadata": {
-                "description": "Network isolation mode for the WebJobs storage account. 'privateEndpoints' creates blob/queue/table/file private endpoints (and the table/file private DNS zones) and disables public network access. 'serviceEndpoint' keeps the storage account on its public DNS name but locks data-plane access to the snet-functionapp subnet via a Microsoft.Storage service endpoint + virtualNetworkRules entry, with networkAcls.defaultAction=Deny; the operator's deployer_ip_addresses still apply for 'func azure functionapp publish'. Only the WebJobs storage account is affected — the data storage account always uses private endpoints."
+                "description": "Network isolation mode for the WebJobs storage account. 'privateEndpoints' creates blob/queue/table/file private endpoints (and the table/file private DNS zones) and disables public network access. 'serviceEndpoint' keeps the storage account on its public DNS name but locks data-plane access to the snet-functionapp subnet via a Microsoft.Storage service endpoint + virtualNetworkRules entry, with networkAcls.defaultAction=Deny; the operator's deployer_ip_addresses still apply for 'func azure functionapp publish'."
+            }
+        },
+        "data_storage_isolation_mode": {
+            "defaultValue": "privateEndpoints",
+            "type": "string",
+            "allowedValues": [
+                "privateEndpoints",
+                "serviceEndpoint"
+            ],
+            "metadata": {
+                "description": "Network isolation mode for the data storage account (cryptoblobs container + delayed-webhooks queue). 'privateEndpoints' creates blob + queue private endpoints and disables public network access. 'serviceEndpoint' keeps the account on its public DNS name but locks data-plane access to the snet-functionapp subnet via a Microsoft.Storage service endpoint + virtualNetworkRules entry, with networkAcls.defaultAction=Deny. Unlike WebJobs storage, the deployer's IP is never added to ipRules — the operator never writes to data storage from a laptop, only ARM management-plane operations touch it. Switching modes leaves the previous mode's resources orphaned in Azure (ARM ignores them); delete them manually post-deploy."
+            }
+        },
+        "provision_nat_gateway": {
+            "defaultValue": true,
+            "type": "bool",
+            "metadata": {
+                "description": "Whether to provision the NAT Gateway and its public IP for outbound internet from snet-functionapp. When true (default) the function app gets a deterministic outbound egress IP suitable for IP-allowlisting by webhook subscribers. When false, neither the NAT GW nor its PIP are created and snet-functionapp's natGateway property is null — the function app then has NO general outbound internet (defaultOutboundAccess stays false either way), only the resources reachable via the VNet (storage + Cosmos + KV via PE/serviceEndpoint). This breaks: webhook delivery to external URLs, Microsoft Graph calls, AAD JWKS rotation refresh, and App Insights ingestion. Switching this to false leaves the previous NAT GW and PIP orphaned in Azure (ARM ignores them); delete them manually post-deploy to actually save the ~$37/mo."
             }
         }
     },
@@ -260,7 +278,10 @@
 
         "has_deployer_ips": "[greater(length(parameters('deployer_ip_addresses')), 0)]",
         "is_wjs_pe_mode": "[equals(parameters('webjobsstorage_isolation_mode'), 'privateEndpoints')]",
-        "is_wjs_se_mode": "[equals(parameters('webjobsstorage_isolation_mode'), 'serviceEndpoint')]"
+        "is_wjs_se_mode": "[equals(parameters('webjobsstorage_isolation_mode'), 'serviceEndpoint')]",
+        "is_ds_pe_mode": "[equals(parameters('data_storage_isolation_mode'), 'privateEndpoints')]",
+        "is_ds_se_mode": "[equals(parameters('data_storage_isolation_mode'), 'serviceEndpoint')]",
+        "need_storage_data_zones": "[or(variables('is_wjs_pe_mode'), variables('is_ds_pe_mode'))]"
     },
     "resources": [
         {
@@ -285,6 +306,7 @@
             "location": "[parameters('default_location')]"
         },
         {
+            "condition": "[parameters('provision_nat_gateway')]",
             "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "2023-09-01",
             "name": "[parameters('safeexchange_natgw_publicip_name')]",
@@ -299,6 +321,7 @@
             }
         },
         {
+            "condition": "[parameters('provision_nat_gateway')]",
             "type": "Microsoft.Network/natGateways",
             "apiVersion": "2023-09-01",
             "name": "[parameters('safeexchange_natgw_name')]",
@@ -334,10 +357,8 @@
                         "name": "[variables('subnet_functionapp_name')]",
                         "properties": {
                             "addressPrefix": "[variables('subnet_functionapp_prefix')]",
-                            "defaultOutboundAccess": false,
-                            "natGateway": {
-                                "id": "[resourceId('Microsoft.Network/natGateways', parameters('safeexchange_natgw_name'))]"
-                            },
+                            "defaultOutboundAccess": "[not(parameters('provision_nat_gateway'))]",
+                            "natGateway": "[if(parameters('provision_nat_gateway'), createObject('id', resourceId('Microsoft.Network/natGateways', parameters('safeexchange_natgw_name'))), json('null'))]",
                             "serviceEndpoints": [
                                 {
                                     "service": "Microsoft.Storage"
@@ -690,6 +711,9 @@
             "apiVersion": "2023-01-01",
             "name": "[parameters('safeexchange_data_storage_name')]",
             "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ],
             "sku": {
                 "name": "[parameters('safeexchange_data_storage_sku')]"
             },
@@ -697,14 +721,14 @@
             "properties": {
                 "dnsEndpointType": "Standard",
                 "defaultToOAuthAuthentication": true,
-                "publicNetworkAccess": "Disabled",
+                "publicNetworkAccess": "[if(variables('is_ds_pe_mode'), 'Disabled', 'Enabled')]",
                 "allowCrossTenantReplication": true,
                 "minimumTlsVersion": "TLS1_2",
                 "allowBlobPublicAccess": false,
                 "allowSharedKeyAccess": false,
                 "networkAcls": {
                     "bypass": "AzureServices",
-                    "virtualNetworkRules": [],
+                    "virtualNetworkRules": "[if(variables('is_ds_se_mode'), createArray(createObject('id', resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_functionapp_name')), 'action', 'Allow')), createArray())]",
                     "ipRules": [],
                     "defaultAction": "Deny"
                 },
@@ -721,6 +745,7 @@
             "properties": {}
         },
         {
+            "condition": "[variables('need_storage_data_zones')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_blob')]",
@@ -728,6 +753,7 @@
             "properties": {}
         },
         {
+            "condition": "[variables('need_storage_data_zones')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_queue')]",
@@ -775,6 +801,7 @@
             ]
         },
         {
+            "condition": "[variables('need_storage_data_zones')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_blob'), '/', parameters('safeexchange_vnet_name'), '-link')]",
@@ -791,6 +818,7 @@
             ]
         },
         {
+            "condition": "[variables('need_storage_data_zones')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_queue'), '/', parameters('safeexchange_vnet_name'), '-link')]",
@@ -882,6 +910,7 @@
             ]
         },
         {
+            "condition": "[variables('is_ds_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_datastorage_blob_name')]",
@@ -906,6 +935,7 @@
             ]
         },
         {
+            "condition": "[variables('is_ds_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_datastorage_queue_name')]",
@@ -1074,6 +1104,7 @@
             ]
         },
         {
+            "condition": "[variables('is_ds_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_datastorage_blob_name'), '/default')]",
@@ -1093,6 +1124,7 @@
             ]
         },
         {
+            "condition": "[variables('is_ds_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_datastorage_queue_name'), '/default')]",
@@ -1840,6 +1872,7 @@
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_cosmosdb_name'), 'default')]",
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_datastorage_blob_name'), 'default')]",
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('pe_datastorage_queue_name'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_data_storage_name'))]",
                 "[guid(resourceGroup().name, parameters('safeexchange_site_name'), 'secrets-officer', 'userassigned-mi')]",
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('safeexchange_webjobsstorage_name'))]",
                 "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', parameters('safeexchange_webjobsstorage_name'), 'default', 'app-package-container')]"
