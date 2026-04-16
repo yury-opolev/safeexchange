@@ -20,6 +20,9 @@
         "settings-authentication-validIssuers": {
             "value": "https://sts.windows.net/1472703e-99d8-45ee-aeac-7ec3ae9ab104/"
         },
+        "settings-authentication-upnClaims": {
+            "value": "upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn,preferred_username,email,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+        },
         "settings-features-useGroupsAuthorization": {
             "value": "True"
         },
@@ -28,6 +31,18 @@
         },
         "settings-features-useGraphGroupSearch": {
             "value": "False"
+        },
+        "deployer_ip_addresses": {
+            "value": []
+        },
+        "webjobsstorage_isolation_mode": {
+            "value": "serviceEndpoint"
+        },
+        "data_storage_isolation_mode": {
+            "value": "serviceEndpoint"
+        },
+        "provision_nat_gateway": {
+            "value": false
         }
     }
 }

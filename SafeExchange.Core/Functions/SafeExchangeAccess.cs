@@ -56,7 +56,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
@@ -122,7 +122,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> GrantAccessAsync(string secretId, HttpRequestData request, bool userCanRevokeAccess, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
             if ((permissionsInput?.Count ?? 0) == 0)
@@ -193,7 +193,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretId)).ToListAsync();
 
@@ -207,7 +207,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(GetAccessListAsync), log);
 
         private async Task<HttpResponseData> RevokeAccessAsync(string secretId, HttpRequestData request, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
             if ((permissionsInput?.Count ?? 0) == 0)
@@ -262,19 +262,5 @@ namespace SafeExchange.Core.Functions
             return await this.groupsManager.PutGroupAsync(permissionInput.SubjectId, groupIntput, subjectType, subjectId);
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
-            }
-        }
     }
 }

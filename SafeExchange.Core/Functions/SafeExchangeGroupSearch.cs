@@ -49,7 +49,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
@@ -69,7 +69,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleSearchGroup(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
             {
                 if (!this.features.UseGraphGroupSearch)
                 {
@@ -109,22 +109,6 @@ namespace SafeExchange.Core.Functions
                         Result = foundGroups.Groups.Select(g => g.ToDto()).ToList()
                     });
             }, nameof(HandleSearchGroup), log);
-
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "internal_exception", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
 
         private async Task<SearchInput?> TryGetSearchInputAsync(HttpRequestData request, ILogger log)
         {

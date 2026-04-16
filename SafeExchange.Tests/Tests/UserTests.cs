@@ -5,6 +5,7 @@
 namespace SafeExchange.Tests
 {
     using Azure.Core.Serialization;
+    using SafeExchange.Tests.Utilities;
     using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
@@ -59,13 +60,13 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity secondIdentity;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<UserTests>();
             var secretConfiguration = builder.Build();
 
             var databaseName = $"{nameof(UserTests)}Database";
-            var cosmosClient = new CosmosClient(secretConfiguration.GetConnectionString("CosmosDb"));
+            var cosmosClient = CosmosTestOptions.CreateClient(secretConfiguration.GetConnectionString("CosmosDb"));
             cosmosClient.CreateDatabaseIfNotExistsAsync(databaseName).GetAwaiter().GetResult();
             cosmosClient.GetDatabase(databaseName).DefineContainer(name: "Users", partitionKeyPath: "/PartitionKey")
                 .WithUniqueKey()
@@ -80,11 +81,12 @@ namespace SafeExchange.Tests
             this.logger = TestFactory.CreateLogger();
 
             this.dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName)
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName, CosmosTestOptions.UseGateway)
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CosmosEventId.SyncNotSupported))
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.firstIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>()
                 {
@@ -196,7 +198,8 @@ namespace SafeExchange.Tests
             var secretConfiguration = builder.Build();
 
             var dbContextOptionsLocal = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), $"{nameof(UserTests)}Database")
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), $"{nameof(UserTests)}Database", CosmosTestOptions.UseGateway)
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CosmosEventId.SyncNotSupported))
                 .Options;
 
             // [GIVEN] A user with valid credentials, is member of several groups in AAD

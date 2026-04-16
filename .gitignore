@@ -275,3 +275,9 @@ paket-files/
 # Python Tools for Visual Studio (PTVS)
 __pycache__/
 *.pyc
+
+# Local deploy secrets — operator public IP, etc.
+# Tracked: .env.example. Never tracked: .env and variants.
+deployment/.env
+deployment/.env.*
+!deployment/.env.example

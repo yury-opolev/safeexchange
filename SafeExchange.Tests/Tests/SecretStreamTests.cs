@@ -75,7 +75,7 @@ namespace SafeExchange.Tests
         private byte[] imageContent_part_2;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<SecretStreamTests>();
             var secretConfiguration = builder.Build();
@@ -95,11 +95,12 @@ namespace SafeExchange.Tests
                 .Build();
 
             var dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(SecretStreamTests)}Database")
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(SecretStreamTests)}Database", CosmosTestOptions.UseGateway)
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CosmosEventId.SyncNotSupported))
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();

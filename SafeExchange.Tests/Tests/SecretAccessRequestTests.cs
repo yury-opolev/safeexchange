@@ -68,7 +68,7 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity thirdIdentity;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<SecretAccessRequestTests>();
             var secretConfiguration = builder.Build();
@@ -86,11 +86,12 @@ namespace SafeExchange.Tests
                 .Build();
 
             var dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(SecretAccessRequestTests)}Database")
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(SecretAccessRequestTests)}Database", CosmosTestOptions.UseGateway)
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CosmosEventId.SyncNotSupported))
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.groupsManager = new GroupsManager(this.dbContext, Mock.Of<ILogger<GroupsManager>>());
             this.tokenHelper = new TestTokenHelper();

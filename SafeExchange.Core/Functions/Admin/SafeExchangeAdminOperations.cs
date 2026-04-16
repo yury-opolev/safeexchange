@@ -48,7 +48,7 @@ namespace SafeExchange.Core.Functions.Admin
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
             }
@@ -69,7 +69,7 @@ namespace SafeExchange.Core.Functions.Admin
         }
 
         private async Task<HttpResponseData> PerformOperationAsync(string operationName, HttpRequestData request, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             switch (operationName)
             {
@@ -123,20 +123,5 @@ namespace SafeExchange.Core.Functions.Admin
                 new BaseResponseObject<object> { Status = "ok", Result = "ok" });
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"Exception in {actionName}: {ex.GetType()}: {ex.Message}.");
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", SubStatus = "error", Error = $"{ex.GetType()}: {ex.Message ?? "Unknown exception."}" });
-            }
-        }
     }
 }

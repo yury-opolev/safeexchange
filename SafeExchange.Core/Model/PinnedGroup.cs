@@ -4,11 +4,9 @@
 
 namespace SafeExchange.Core.Model
 {
-    using Microsoft.EntityFrameworkCore;
     using SafeExchange.Core.Model.Dto.Input;
     using System;
 
-    [Index(nameof(UserId), nameof(GroupItemId))]
     public class PinnedGroup
     {
         public const string DefaultPartitionKey = "PGRP";

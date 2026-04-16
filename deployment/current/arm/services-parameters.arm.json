@@ -19,6 +19,18 @@
         },
         "settings-authentication-validIssuers": {
             "value": null
+        },
+        "deployer_ip_addresses": {
+            "value": []
+        },
+        "webjobsstorage_isolation_mode": {
+            "value": null
+        },
+        "data_storage_isolation_mode": {
+            "value": null
+        },
+        "provision_nat_gateway": {
+            "value": null
         }
     }
 }

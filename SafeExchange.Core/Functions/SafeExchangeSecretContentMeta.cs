@@ -69,7 +69,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
@@ -109,7 +109,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
             {
-                await ActionResults.CreateResponseAsync(
+                return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
             }
@@ -131,7 +131,7 @@ namespace SafeExchange.Core.Functions
         }
 
         private async Task<HttpResponseData> HandleSecretContentMetaCreation(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () => 
+            => await ActionResults.TryCatchAsync(request, async () => 
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -193,7 +193,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleSecretContentMetaCreation), log);
 
         private async Task<HttpResponseData> HandleSecretContentMetaUpdate(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -264,7 +264,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleSecretContentMetaDeletion), log);
 
         private async Task<HttpResponseData> HandleSecretContentMetaDrop(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -319,7 +319,7 @@ namespace SafeExchange.Core.Functions
         }, nameof(HandleSecretContentMetaDeletion), log);
 
         private async Task<HttpResponseData> HandleSecretContentMetaDeletion(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await TryCatch(request, async () =>
+            => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
             if (existingMetadata == null)
@@ -449,19 +449,5 @@ namespace SafeExchange.Core.Functions
             return content.AccessTicket;
         }
 
-        private static async Task<HttpResponseData> TryCatch(HttpRequestData request, Func<Task<HttpResponseData>> action, string actionName, ILogger log)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, $"{actionName} had exception {ex.GetType()}: {ex.Message}");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object> { Status = "error", Error = $"{ex.GetType()}: {ex.Message}" });
-            }
-        }
     }
 }

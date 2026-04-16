@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="SafeExchange.Core/SafeExchange.Core.csproj" />
+  <Project Path="SafeExchange.Functions/SafeExchange.Functions.csproj" />
+  <Project Path="SafeExchange.Tests/SafeExchange.Tests.csproj" />
+</Solution>

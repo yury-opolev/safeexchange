@@ -56,7 +56,7 @@ namespace SafeExchange.Tests
         private CaseSensitiveClaimsIdentity secondIdentity;
 
         [OneTimeSetUp]
-        public void OneTimeSetup()
+        public async Task OneTimeSetup()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<SecretMetaTests>();
             var secretConfiguration = builder.Build();
@@ -74,11 +74,12 @@ namespace SafeExchange.Tests
                 .Build();
 
             var dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(SecretMetaTests)}Database")
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(SecretMetaTests)}Database", CosmosTestOptions.UseGateway)
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CosmosEventId.SyncNotSupported))
                 .Options;
 
             this.dbContext = new SafeExchangeDbContext(dbContextOptions);
-            this.dbContext.Database.EnsureCreated();
+            await this.dbContext.Database.EnsureCreatedAsync();
 
             this.tokenHelper = new TestTokenHelper();
             this.graphDataProvider = new TestGraphDataProvider();
