@@ -180,6 +180,38 @@ $deployerDisplay = if ($deployerIps.Count -gt 0) { $deployerIps -join ', ' } els
 Write-Host "deployer_ip_addresses from ${EnvFile}: $deployerDisplay"
 
 # ──────────────────────────────────────────────────────────────────
+# Read .env — extract ADMIN_USERS_<ENV>
+# ──────────────────────────────────────────────────────────────────
+# Returns the raw value (comma-separated oids) or empty string if the
+# variable is missing / blank. Passed through verbatim to ARM because
+# settings-adminConfiguration-adminUsers is typed as string.
+function Read-EnvValue {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+
+    if (-not (Test-Path $Path)) {
+        return ''
+    }
+
+    $pattern = '^' + [regex]::Escape($Name) + '\s*=\s*(.*)$'
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+        if ($trimmed -match $pattern) {
+            return $matches[1].Trim().Trim('"').Trim("'")
+        }
+    }
+    return ''
+}
+
+$adminUsersVar = "ADMIN_USERS_$($Environment.ToUpperInvariant())"
+$adminUsers    = Read-EnvValue -Path $EnvFile -Name $adminUsersVar
+$adminDisplay  = if ($adminUsers) { $adminUsers } else { '(empty — template default will apply)' }
+Write-Host "${adminUsersVar} from ${EnvFile}: $adminDisplay"
+
+# ──────────────────────────────────────────────────────────────────
 # Public-IP check
 # ──────────────────────────────────────────────────────────────────
 if ($SkipIpCheck) {
@@ -411,6 +443,15 @@ $overrideObject = @{
         }
     }
 }
+# Only override settings-adminConfiguration-adminUsers when .env supplies
+# a value. When absent we leave the template's placeholder default in
+# place — matching the pre-.env-wiring behavior and avoiding silently
+# clearing an operator-set Key Vault secret.
+if ($adminUsers) {
+    $overrideObject.parameters['settings-adminConfiguration-adminUsers'] = @{
+        value = $adminUsers
+    }
+}
 $overrideJson = $overrideObject | ConvertTo-Json -Depth 10
 $overrideFile = Join-Path ([System.IO.Path]::GetTempPath()) ("safeexchange-deploy-override-" + [System.Guid]::NewGuid().ToString('N') + ".json")
 Set-Content -LiteralPath $overrideFile -Value $overrideJson -NoNewline
@@ -436,6 +477,7 @@ try {
     Write-Host ""
     Write-Host "Running: az $($azArgs -join ' ')" -ForegroundColor DarkGray
     Write-Host "  (deployer_ip_addresses override: $deployerDisplay)" -ForegroundColor DarkGray
+    Write-Host "  (adminConfiguration-adminUsers override: $adminDisplay)" -ForegroundColor DarkGray
     Write-Host ""
     & az @azArgs
 
