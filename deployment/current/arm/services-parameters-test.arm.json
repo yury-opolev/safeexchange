@@ -41,6 +41,12 @@
         "data_storage_isolation_mode": {
             "value": "serviceEndpoint"
         },
+        "keyvault_isolation_mode": {
+            "value": "serviceEndpoint"
+        },
+        "cosmosdb_isolation_mode": {
+            "value": "serviceEndpoint"
+        },
         "provision_nat_gateway": {
             "value": false
         }

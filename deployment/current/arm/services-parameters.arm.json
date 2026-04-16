@@ -29,6 +29,12 @@
         "data_storage_isolation_mode": {
             "value": null
         },
+        "keyvault_isolation_mode": {
+            "value": null
+        },
+        "cosmosdb_isolation_mode": {
+            "value": null
+        },
         "provision_nat_gateway": {
             "value": null
         }

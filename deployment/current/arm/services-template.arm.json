@@ -243,6 +243,28 @@
                 "description": "Network isolation mode for the data storage account (cryptoblobs container + delayed-webhooks queue). 'privateEndpoints' creates blob + queue private endpoints and disables public network access. 'serviceEndpoint' keeps the account on its public DNS name but locks data-plane access to the snet-functionapp subnet via a Microsoft.Storage service endpoint + virtualNetworkRules entry, with networkAcls.defaultAction=Deny. Unlike WebJobs storage, the deployer's IP is never added to ipRules — the operator never writes to data storage from a laptop, only ARM management-plane operations touch it. Switching modes leaves the previous mode's resources orphaned in Azure (ARM ignores them); delete them manually post-deploy."
             }
         },
+        "keyvault_isolation_mode": {
+            "defaultValue": "privateEndpoints",
+            "type": "string",
+            "allowedValues": [
+                "privateEndpoints",
+                "serviceEndpoint"
+            ],
+            "metadata": {
+                "description": "Network isolation mode for the Key Vault. 'privateEndpoints' creates the vault private endpoint (and its privatelink.vaultcore.azure.net private DNS zone + vnet link + zone group), with publicNetworkAccess Disabled unless deployer_ip_addresses is populated (the ARM secrets resources need data-plane reach). 'serviceEndpoint' skips the PE/DNS chain and instead keeps publicNetworkAccess Enabled but locks data-plane access to the snet-functionapp subnet via a Microsoft.KeyVault service endpoint + virtualNetworkRules entry, with networkAcls.defaultAction=Deny still in effect; deployer_ip_addresses continues to apply so 'az deployment' can write KV secrets. Switching modes leaves the previous mode's resources orphaned in Azure (ARM ignores them); delete them manually post-deploy."
+            }
+        },
+        "cosmosdb_isolation_mode": {
+            "defaultValue": "privateEndpoints",
+            "type": "string",
+            "allowedValues": [
+                "privateEndpoints",
+                "serviceEndpoint"
+            ],
+            "metadata": {
+                "description": "Network isolation mode for the Cosmos DB account. 'privateEndpoints' creates the Sql-groupId private endpoint (and its privatelink.documents.azure.com private DNS zone + vnet link + zone group) and sets publicNetworkAccess=Disabled. 'serviceEndpoint' skips the PE/DNS chain and instead keeps publicNetworkAccess=Enabled but locks data-plane access to the snet-functionapp subnet via a Microsoft.AzureCosmosDB service endpoint + virtualNetworkRules entry; isVirtualNetworkFilterEnabled stays true so only allow-listed subnets can reach the account. Unlike Key Vault, the deployer's IP is never added to ipRules — the operator never writes to Cosmos from a laptop, only ARM management-plane operations touch it. Switching modes leaves the previous mode's resources orphaned in Azure (ARM ignores them); delete them manually post-deploy."
+            }
+        },
         "provision_nat_gateway": {
             "defaultValue": true,
             "type": "bool",
@@ -296,6 +318,10 @@
         "is_wjs_se_mode": "[equals(parameters('webjobsstorage_isolation_mode'), 'serviceEndpoint')]",
         "is_ds_pe_mode": "[equals(parameters('data_storage_isolation_mode'), 'privateEndpoints')]",
         "is_ds_se_mode": "[equals(parameters('data_storage_isolation_mode'), 'serviceEndpoint')]",
+        "is_kv_pe_mode": "[equals(parameters('keyvault_isolation_mode'), 'privateEndpoints')]",
+        "is_kv_se_mode": "[equals(parameters('keyvault_isolation_mode'), 'serviceEndpoint')]",
+        "is_cdb_pe_mode": "[equals(parameters('cosmosdb_isolation_mode'), 'privateEndpoints')]",
+        "is_cdb_se_mode": "[equals(parameters('cosmosdb_isolation_mode'), 'serviceEndpoint')]",
         "need_storage_data_zones": "[or(variables('is_wjs_pe_mode'), variables('is_ds_pe_mode'))]"
     },
     "resources": [
@@ -374,11 +400,7 @@
                             "addressPrefix": "[variables('subnet_functionapp_prefix')]",
                             "defaultOutboundAccess": "[not(parameters('provision_nat_gateway'))]",
                             "natGateway": "[if(parameters('provision_nat_gateway'), createObject('id', resourceId('Microsoft.Network/natGateways', parameters('safeexchange_natgw_name'))), json('null'))]",
-                            "serviceEndpoints": [
-                                {
-                                    "service": "Microsoft.Storage"
-                                }
-                            ],
+                            "serviceEndpoints": "[concat(createArray(createObject('service', 'Microsoft.Storage')), if(variables('is_kv_se_mode'), createArray(createObject('service', 'Microsoft.KeyVault')), createArray()), if(variables('is_cdb_se_mode'), createArray(createObject('service', 'Microsoft.AzureCosmosDB')), createArray()))]",
                             "delegations": [
                                 {
                                     "name": "Microsoft.App.environments",
@@ -407,6 +429,9 @@
             "apiVersion": "2023-09-15",
             "name": "[parameters('safeexchange_dbaccount_name')]",
             "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ],
             "tags": {
                 "defaultExperience": "Core (SQL)",
                 "hidden-cosmos-mmspecial": ""
@@ -416,11 +441,11 @@
                 "type": "None"
             },
             "properties": {
-                "publicNetworkAccess": "Disabled",
+                "publicNetworkAccess": "[if(variables('is_cdb_pe_mode'), 'Disabled', 'Enabled')]",
                 "enableAutomaticFailover": false,
                 "enableMultipleWriteLocations": false,
                 "isVirtualNetworkFilterEnabled": true,
-                "virtualNetworkRules": [],
+                "virtualNetworkRules": "[if(variables('is_cdb_se_mode'), createArray(createObject('id', resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_functionapp_name')), 'ignoreMissingVNetServiceEndpoint', false())), createArray())]",
                 "disableKeyBasedMetadataWriteAccess": false,
                 "enableFreeTier": false,
                 "enableAnalyticalStorage": false,
@@ -492,6 +517,9 @@
             "apiVersion": "2023-02-01",
             "name": "[parameters('safeexchange_kv_name')]",
             "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ],
             "properties": {
                 "tenantId": "[subscription().tenantId]",
                 "sku": {
@@ -505,12 +533,12 @@
                 "softDeleteRetentionInDays": 90,
                 "enableRbacAuthorization": true,
                 "vaultUri": "[concat('https://', parameters('safeexchange_kv_name'), '.vault.azure.net/')]",
-                "publicNetworkAccess": "[if(variables('has_deployer_ips'), 'Enabled', 'Disabled')]",
+                "publicNetworkAccess": "[if(or(variables('is_kv_se_mode'), variables('has_deployer_ips')), 'Enabled', 'Disabled')]",
                 "networkAcls": {
                     "bypass": "AzureServices",
                     "defaultAction": "Deny",
                     "ipRules": "[if(variables('has_deployer_ips'), map(parameters('deployer_ip_addresses'), lambda('ip', createObject('value', lambdaVariables('ip')))), createArray())]",
-                    "virtualNetworkRules": []
+                    "virtualNetworkRules": "[if(variables('is_kv_se_mode'), createArray(createObject('id', resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_functionapp_name')))), createArray())]"
                 }
             }
         },
@@ -768,6 +796,7 @@
         },
 
         {
+            "condition": "[variables('is_cdb_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_cosmosdb')]",
@@ -807,6 +836,7 @@
             "properties": {}
         },
         {
+            "condition": "[variables('is_kv_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_vault')]",
@@ -815,6 +845,7 @@
         },
 
         {
+            "condition": "[variables('is_cdb_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_cosmosdb'), '/', parameters('safeexchange_vnet_name'), '-link')]",
@@ -899,6 +930,7 @@
             ]
         },
         {
+            "condition": "[variables('is_kv_pe_mode')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_vault'), '/', parameters('safeexchange_vnet_name'), '-link')]",
@@ -916,6 +948,7 @@
         },
 
         {
+            "condition": "[variables('is_cdb_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_cosmosdb_name')]",
@@ -1090,6 +1123,7 @@
             ]
         },
         {
+            "condition": "[variables('is_kv_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints",
             "apiVersion": "2023-09-01",
             "name": "[variables('pe_keyvault_name')]",
@@ -1115,6 +1149,7 @@
         },
 
         {
+            "condition": "[variables('is_cdb_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_cosmosdb_name'), '/default')]",
@@ -1254,6 +1289,7 @@
             ]
         },
         {
+            "condition": "[variables('is_kv_pe_mode')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('pe_keyvault_name'), '/default')]",
