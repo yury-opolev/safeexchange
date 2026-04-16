@@ -44,6 +44,9 @@
         "settings-authentication-validIssuers": {
             "value": "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0"
         },
+        "settings-authentication-upnClaims": {
+            "value": "upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn,preferred_username,email,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"
+        },
         "settings-features-useGroupsAuthorization": {
             "value": "False"
         },
