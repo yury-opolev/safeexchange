@@ -80,9 +80,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
             log.LogInformation($"{nameof(SafeExchangeSecretStream)} triggered for '{secretId}' ({contentId}, {chunkId}) by {subjectType} {subjectId}, [{request.Method}].");
@@ -116,9 +114,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
             log.LogInformation($"{nameof(SafeExchangeSecretStream)}-ContentDownload triggered for '{secretId}' ({contentId}) by {subjectType} {subjectId}, [{request.Method}].");

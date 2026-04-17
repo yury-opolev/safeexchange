@@ -52,9 +52,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType))
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
+                return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
             if (!Regex.IsMatch(pinnedGroupId, DefaultGuidRegex))

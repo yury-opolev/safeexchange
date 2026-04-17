@@ -49,24 +49,18 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (!SubjectType.Application.Equals(subjectType))
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Only applications can use this API." });
+                return await ActionResults.ForbiddenAsync(request, "Only applications can use this API.");
             }
 
             if (string.IsNullOrEmpty(subjectId))
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered or disabled." });
+                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
             var application = this.dbContext.Applications.FirstOrDefault(a => a.DisplayName.Equals(subjectId));
             if (application?.ExternalNotificationsReader != true)
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Application is not registered as external notifications reader." });
+                return await ActionResults.ForbiddenAsync(request, "Application is not registered as external notifications reader.");
             }
 
             log.LogInformation($"{nameof(SafeExchangeExternalNotificationDetails)} triggered by {subjectType} {subjectId}, [{request.Method}].");

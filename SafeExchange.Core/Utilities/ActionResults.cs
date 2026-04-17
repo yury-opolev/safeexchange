@@ -22,6 +22,26 @@ namespace SafeExchange.Core
         }
 
         /// <summary>
+        /// Shorthand for the repeating
+        /// <c>await CreateResponseAsync(request, HttpStatusCode.Forbidden, new BaseResponseObject&lt;object&gt; { Status = "forbidden", Error = ... })</c>
+        /// idiom used by every per-handler "this principal type is not allowed to call
+        /// this API" guard.
+        ///
+        /// Exists so that a missing <c>return</c> before the guard cannot
+        /// silently fall through into the main handler body — that exact bug
+        /// was the OWASP A01:2025 P0 access-control bypass in
+        /// <c>SafeExchangeExternalNotificationDetails</c>. Call sites read as
+        /// <c>return await ActionResults.ForbiddenAsync(request, "...");</c>,
+        /// and a reviewer missing the <c>return</c> can never have the helper
+        /// itself swallow the decision.
+        /// </summary>
+        public static Task<HttpResponseData> ForbiddenAsync(HttpRequestData request, string error, string subStatus = "")
+            => CreateResponseAsync(
+                request,
+                HttpStatusCode.Forbidden,
+                new BaseResponseObject<object> { Status = "forbidden", Error = error, SubStatus = subStatus });
+
+        /// <summary>
         /// Executes <paramref name="action"/> and catches any exception, returning a
         /// generic 500 "Internal error" response whose body contains only a
         /// correlation identifier. The full exception (type, message, stack, inner

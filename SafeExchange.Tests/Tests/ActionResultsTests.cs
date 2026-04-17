@@ -171,6 +171,45 @@ namespace SafeExchange.Tests
                 Times.Once);
         }
 
+        /// <summary>
+        /// <see cref="ActionResults.ForbiddenAsync"/> exists so that the three-line
+        /// "return forbidden response" idiom — historically prone to missing the
+        /// <c>return</c> keyword (OWASP A01:2025 access-control P0 bypass) — now
+        /// collapses into a single expression. This test locks in the response
+        /// shape that every call site expects.
+        /// </summary>
+        [Test]
+        public async Task ForbiddenAsync_ReturnsForbiddenBodyWithStatusForbidden()
+        {
+            // Act
+            var response = await ActionResults.ForbiddenAsync(
+                this.request, "Applications cannot use this API.");
+
+            // Assert
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+
+            var testResponse = (TestHttpResponseData)response;
+            var body = testResponse.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(body, Is.Not.Null);
+            Assert.That(body!.Status, Is.EqualTo("forbidden"));
+            Assert.That(body.Error, Is.EqualTo("Applications cannot use this API."));
+            Assert.That(body.SubStatus, Is.EqualTo(string.Empty));
+        }
+
+        [Test]
+        public async Task ForbiddenAsync_WithSubStatus_PropagatesSubStatus()
+        {
+            // Act
+            var response = await ActionResults.ForbiddenAsync(
+                this.request, "Consent required.", "consent_required");
+
+            // Assert
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+            var body = ((TestHttpResponseData)response).ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(body!.SubStatus, Is.EqualTo("consent_required"));
+            Assert.That(body.Error, Is.EqualTo("Consent required."));
+        }
+
         [Test]
         public async Task TryCatchAsync_DifferentFailures_ProduceDistinctCorrelationIds()
         {

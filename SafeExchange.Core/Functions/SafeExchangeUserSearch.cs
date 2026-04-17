@@ -10,6 +10,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -49,9 +50,7 @@ namespace SafeExchange.Core.Functions
             (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
             if (SubjectType.Application.Equals(subjectType))
             {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    new BaseResponseObject<object> { Status = "forbidden", Error = "Applications cannot use this API." });
+                return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
             log.LogInformation($"{nameof(SafeExchangeUserSearch)} triggered by {subjectType} {subjectId}, [{request.Method}].");
@@ -89,6 +88,14 @@ namespace SafeExchange.Core.Functions
                     return await ActionResults.CreateResponseAsync(
                         request, HttpStatusCode.BadRequest,
                         new BaseResponseObject<object> { Status = "error", Error = "Search data is not provided." });
+                }
+
+                if (!SearchStringValidator.TryValidate(searchInput.SearchString, out var validationError))
+                {
+                    log.LogWarning("Rejected user-search input: {Reason}", validationError);
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = validationError });
                 }
 
                 var accountIdAndToken = this.tokenHelper.GetAccountIdAndToken(request, principal);

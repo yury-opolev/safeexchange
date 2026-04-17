@@ -134,6 +134,16 @@ namespace SafeExchange.Core.Graph
 
         public async Task<UsersListResult> TryFindUsersAsync(AccountIdAndToken accountIdAndToken, string searchString)
         {
+            // Defense-in-depth: handlers already validate at the HTTP boundary
+            // (see SafeExchangeUserSearch), but reject quote / control / overlong
+            // inputs here too so any future caller cannot re-introduce the
+            // $search injection described in OWASP A05:2025 / CWE-943.
+            if (!SearchStringValidator.TryValidate(searchString, out var validationError))
+            {
+                this.log.LogWarning("Refusing Graph user search with invalid input: {Reason}", validationError);
+                return new UsersListResult();
+            }
+
             var totalUsers = new List<GraphUserInfo>(100);
 
             try
@@ -196,6 +206,13 @@ namespace SafeExchange.Core.Graph
 
         public async Task<GroupsListResult> TryFindGroupsAsync(AccountIdAndToken accountIdAndToken, string searchString)
         {
+            // Defense-in-depth: see TryFindUsersAsync.
+            if (!SearchStringValidator.TryValidate(searchString, out var validationError))
+            {
+                this.log.LogWarning("Refusing Graph group search with invalid input: {Reason}", validationError);
+                return new GroupsListResult();
+            }
+
             var totalGroups = new List<GraphGroupInfo>(100);
 
             try

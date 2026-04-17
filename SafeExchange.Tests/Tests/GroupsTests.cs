@@ -327,6 +327,52 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItems.Count, Is.EqualTo(2));
         }
 
+        /// <summary>
+        /// Locks in the OWASP A05:2025 / CWE-943 hardening: a searchString containing
+        /// the canonical quote-breakout payload from the security review must be
+        /// rejected at the HTTP boundary with 400, before the handler ever hits
+        /// <see cref="TestGraphDataProvider.TryFindGroupsAsync"/>. If this test starts
+        /// returning 200 / "ok", a future caller has re-introduced the Graph
+        /// <c>$search</c> injection.
+        /// </summary>
+        [Test]
+        public async Task SearchForGroup_RejectsQuoteBreakoutPayload()
+        {
+            // [GIVEN] The test Graph provider has groups registered; if the handler
+            // forwards the injection payload to Graph, the test would otherwise pass
+            // by accident because the provider returns an empty result.
+            this.graphDataProvider.FoundGroups.Add(
+                "00000000-0000-0000-0000-000000000001.00000000-0000-0000-0000-000000000001",
+                new List<GraphGroupInfo>
+                {
+                    new GraphGroupInfo
+                    {
+                        Id = "00000001-0000-0000-0000-000000000001",
+                        DisplayName = "Any Group",
+                        Mail = "any@test.test"
+                    }
+                });
+
+            // [WHEN] The attacker-controlled payload from the OWASP review is submitted.
+            var searchRequest = TestFactory.CreateHttpRequestData("post");
+            searchRequest.SetBodyAsJson(new SearchInput
+            {
+                SearchString = "foo\" OR \"accountEnabled:true"
+            });
+
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var searchResponse = await this.groupSearch.RunSearch(searchRequest, claimsPrincipal, this.logger);
+
+            // [THEN] The handler refuses with 400 and never calls Graph.
+            var testResponse = searchResponse as TestHttpResponseData;
+            Assert.That(testResponse, Is.Not.Null);
+            Assert.That(testResponse!.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+
+            var body = testResponse.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(body!.Status, Is.EqualTo("error"));
+            Assert.That(body.Error, Does.Contain("invalid characters"));
+        }
+
         [Test]
         public async Task RegisterOneGroup_Sunshine()
         {
