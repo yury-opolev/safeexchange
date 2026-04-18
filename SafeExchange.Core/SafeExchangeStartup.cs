@@ -101,6 +101,7 @@ namespace SafeExchange.Core
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));
+            services.Configure<WebClientTelemetryConfiguration>(configuration.GetSection("WebClientTelemetry"));
         }
     }
 }
