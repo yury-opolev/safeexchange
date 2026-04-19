@@ -2,7 +2,7 @@ namespace SafeExchange.Tests.Tests
 {
     using NUnit.Framework;
     using SafeExchange.Core.Model;
-    using SafeExchange.Core.Stream;
+    using SafeExchange.Core.Streams;
 
     [TestFixture]
     public class UploadModeResolverTests
