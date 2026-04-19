@@ -26,6 +26,8 @@ namespace SafeExchange.Functions
 
         private SafeExchangeSecretStream contentHandler;
 
+        private SafeExchangeContentCommit contentCommitHandler;
+
         private readonly ILogger log;
 
         public SafeSecret(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IBlobHelper blobHelper, ILogger<SafeSecret> log)
@@ -34,6 +36,7 @@ namespace SafeExchange.Functions
             this.metaHandler = new SafeExchangeSecretMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
             this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
             this.contentHandler = new SafeExchangeSecretStream(configuration, dbContext, tokenHelper, globalFilters, purger, blobHelper, permissionsManager);
+            this.contentCommitHandler = new SafeExchangeContentCommit(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
         }
 
         [Function("SafeExchange-SecretMeta")]
@@ -93,6 +96,16 @@ namespace SafeExchange.Functions
         {
             var principal = request.FunctionContext.GetPrincipal();
             return await this.contentHandler.Run(request, secretId, contentId, string.Empty, principal, this.log);
+        }
+
+        [Function("SafeExchange-SecretContentCommit")]
+        public async Task<HttpResponseData> RunCommitContent(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/secret/{{secretId}}/content/{{contentId}}/commit")]
+            HttpRequestData request,
+            string secretId, string contentId)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.contentCommitHandler.Run(request, secretId, contentId, principal, this.log);
         }
         
         [Function("SafeExchange-SecretStreamDownload")]
