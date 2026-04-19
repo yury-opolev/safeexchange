@@ -228,11 +228,15 @@ namespace SafeExchange.Core.Functions
                     ? hvals.FirstOrDefault()
                     : null;
 
+                // Main HTML content always flows through the sanitising legacy path —
+                // a hash header on main content is ignored (would otherwise bypass sanitisation).
+                var hashHeaderPresent = !existingContent.IsMain && !string.IsNullOrEmpty(hashHeader);
+
                 var mode = UploadModeResolver.Resolve(
                     existingContent,
-                    hashHeaderPresent: !string.IsNullOrEmpty(hashHeader),
+                    hashHeaderPresent: hashHeaderPresent,
                     allowLegacy: this.features.AllowLegacyAttachmentUploads,
-                    ignoreHeader: this.features.IgnoreChunkHashHeader);
+                    ignoreHeader: this.features.IgnoreChunkHashHeader || existingContent.IsMain);
 
                 switch (mode)
                 {

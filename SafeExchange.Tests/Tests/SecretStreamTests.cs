@@ -1196,6 +1196,46 @@ namespace SafeExchange.Tests
             Assert.That(responseResult?.Error, Is.Not.Null);
         }
 
+        [Test]
+        public async Task HashedMode_IsMainContent_WithHeader_RoutedThroughLegacySanitiser()
+        {
+            // [GIVEN] A secret with main content.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var objectMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var mainContent = objectMetadata?.Content.FirstOrDefault(c => c.IsMain);
+            if (mainContent == null)
+            {
+                throw new AssertionException($"Main content for secret is null.");
+            }
+
+            var body = this.mainContent;
+
+            // [WHEN] A chunk is POSTed with a chunk-hash header on main-HTML content.
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.Headers.Add(SafeExchangeSecretStream.ChunkHashHeaderName, ComputeSha256Hex(body));
+            request.Headers.Add("Content-Length", body.Length.ToString());
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await this.secretStream.Run(request, DefaultSecretName, mainContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var okResult = response as TestHttpResponseData;
+
+            // [THEN] 200 OK — legacy/sanitising path engaged. The hash header was ignored,
+            // the chunk is recorded with empty hash, and no running hash state is populated.
+            Assert.That(okResult, Is.Not.Null);
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            this.dbContext.ChangeTracker.Clear();
+            var reloaded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var reloadedContent = reloaded?.Content.FirstOrDefault(c => c.ContentName.Equals(mainContent.ContentName));
+
+            Assert.That(reloadedContent, Is.Not.Null);
+            Assert.That(reloadedContent!.Chunks.Count, Is.EqualTo(1));
+            Assert.That(reloadedContent.Chunks[0].Hash, Is.EqualTo(string.Empty));
+            Assert.That(reloadedContent.RunningHashState, Is.Null);
+            Assert.That(reloadedContent.Status, Is.EqualTo(ContentStatus.Ready));
+        }
+
         private async Task<ContentMetadata> CreateAttachmentAsync(ClaimsPrincipal claimsPrincipal)
         {
             var request = TestFactory.CreateHttpRequestData("post");
