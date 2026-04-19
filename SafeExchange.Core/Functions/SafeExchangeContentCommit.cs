@@ -159,6 +159,10 @@ namespace SafeExchange.Core.Functions
                 existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
                 await this.dbContext.SaveChangesAsync();
 
+                log.LogInformation(
+                    "Content commit verified for '{ContentId}' across {ChunkCount} chunk(s) (hash {Hash})",
+                    contentId, existingContent.Chunks.Count, serverHash);
+
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<ContentCommitOutput>
                     {

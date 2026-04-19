@@ -386,6 +386,10 @@ namespace SafeExchange.Core.Functions
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync().ConfigureAwait(false);
 
+            log.LogInformation(
+                "Chunk hash verified for '{ContentId}' chunk {ChunkIndex} ({Hash}, {Length} bytes)",
+                existingContent.ContentName, existingContent.Chunks.Count - 1, serverHash, dataLength);
+
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ChunkCreationOutput>
