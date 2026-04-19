@@ -93,6 +93,7 @@ namespace SafeExchange.Core.Model
             ContentType = this.ContentType,
             FileName = this.FileName,
             IsReady = this.Status == ContentStatus.Ready,
+            Hash = this.Hash,
             Chunks = this.Chunks?.Select(x => x.ToDto()).ToList() ?? Array.Empty<ChunkOutput>().ToList()
         };
     }

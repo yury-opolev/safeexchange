@@ -18,6 +18,8 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         public bool IsReady { get; set; }
 
+        public string? Hash { get; set; }
+
         public List<ChunkOutput> Chunks { get; set; }
     }
 }
