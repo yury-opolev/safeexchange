@@ -4,52 +4,53 @@
 
 namespace SafeExchange.Core.Middleware
 {
+    using Microsoft.ApplicationInsights.Channel;
+    using Microsoft.ApplicationInsights.DataContracts;
+    using Microsoft.ApplicationInsights.Extensibility;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Azure.Functions.Worker.Middleware;
     using Microsoft.Extensions.Logging;
     using System;
-    using System.Collections.Generic;
     using System.Linq;
     using System.Text.RegularExpressions;
+    using System.Threading;
     using System.Threading.Tasks;
 
     /// <summary>
     /// Reads the browser's session correlation id from the
-    /// <c>x-saex-session-id</c> HTTP header and pushes it into an
-    /// <see cref="ILogger"/> scope for the duration of the function
-    /// invocation. Every <c>LogInformation</c> / <c>LogError</c> made
-    /// by downstream code picks the value up automatically and emits
-    /// it under <c>customDimensions["saex.sessionId"]</c> in
-    /// Application Insights, which lets a single Kusto query stitch
-    /// a browser session across the client PWA and the backend.
+    /// <c>x-saex-session-id</c> HTTP header and attaches it as the
+    /// <c>saex.sessionId</c> custom dimension on every telemetry item
+    /// (trace, exception, dependency, request) emitted during the
+    /// function invocation.
+    ///
+    /// Uses an <see cref="AsyncLocal{T}"/> plus a registered
+    /// <see cref="ITelemetryInitializer"/> rather than
+    /// <see cref="ILogger.BeginScope(object)"/> because the Azure
+    /// Functions isolated-worker host's Application Insights logger
+    /// integration does not reliably copy external ILogger scopes
+    /// into telemetry customDimensions. The AsyncLocal is populated
+    /// for the duration of <c>next(context)</c>, so every downstream
+    /// log in the same async call chain picks up the value.
     ///
     /// Degrades silently:
-    ///   - Header missing — skips the scope; request proceeds
-    ///     normally without the dimension.
-    ///   - Header present but not a 32-char hex GUID — skips the
-    ///     scope and logs a debug line. We only accept the client's
-    ///     own format (TelemetryService uses Guid.NewGuid().ToString("n"))
-    ///     so a malformed header never lands verbatim in telemetry.
-    ///   - No HTTP trigger on this invocation — skips; some
-    ///     functions (queue triggers, timers) have no headers.
+    ///   - Header missing — skips; request proceeds without the dim.
+    ///   - Header present but not a 32-char hex GUID — skips + debug
+    ///     log. Only the client's own Guid.ToString("n") shape is
+    ///     accepted, so a malformed header never lands in telemetry.
+    ///   - No HTTP trigger on this invocation — skips.
     ///
-    /// Runs AFTER DefaultAuthenticationMiddleware so that failed
-    /// auth requests get correlated too (useful for diagnosing
-    /// auth-token issues per session).
+    /// Runs AFTER DefaultAuthenticationMiddleware so failed-auth
+    /// requests still get the dimension (useful when diagnosing
+    /// token issues per session).
     /// </summary>
     public class SessionCorrelationMiddleware : IFunctionsWorkerMiddleware
     {
         public const string HeaderName = "x-saex-session-id";
 
-        public const string LoggerPropertyName = "saex.sessionId";
+        public const string PropertyName = "saex.sessionId";
 
-        /// <summary>
-        /// Accept only the exact format the client emits —
-        /// <see cref="Guid.ToString"/> with the "n" specifier
-        /// (32 lowercase hex chars, no dashes). Anything else is
-        /// rejected to bound the risk of an attacker sneaking
-        /// arbitrary strings into our telemetry dimension.
-        /// </summary>
+        private static readonly AsyncLocal<string?> currentSessionId = new();
+
         private static readonly Regex SessionIdPattern = new("^[0-9a-f]{32}$", RegexOptions.Compiled);
 
         private readonly ILogger<SessionCorrelationMiddleware> log;
@@ -58,6 +59,8 @@ namespace SafeExchange.Core.Middleware
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
+
+        internal static string? Current => currentSessionId.Value;
 
         public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
         {
@@ -68,12 +71,15 @@ namespace SafeExchange.Core.Middleware
                 return;
             }
 
-            using (this.log.BeginScope(new Dictionary<string, object>
-            {
-                [LoggerPropertyName] = sessionId
-            }))
+            var previous = currentSessionId.Value;
+            currentSessionId.Value = sessionId;
+            try
             {
                 await next(context).ConfigureAwait(false);
+            }
+            finally
+            {
+                currentSessionId.Value = previous;
             }
         }
 
@@ -103,6 +109,31 @@ namespace SafeExchange.Core.Middleware
             }
 
             return raw;
+        }
+    }
+
+    /// <summary>
+    /// Stamps the current request's saex.sessionId onto every
+    /// emitted telemetry item. Reads the AsyncLocal maintained by
+    /// <see cref="SessionCorrelationMiddleware"/>; no-ops when the
+    /// AsyncLocal is empty (non-HTTP invocations, missing header,
+    /// etc.).
+    /// </summary>
+    public class SessionCorrelationTelemetryInitializer : ITelemetryInitializer
+    {
+        public void Initialize(ITelemetry telemetry)
+        {
+            var sessionId = SessionCorrelationMiddleware.Current;
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                return;
+            }
+
+            if (telemetry is ISupportProperties supportsProperties
+                && !supportsProperties.Properties.ContainsKey(SessionCorrelationMiddleware.PropertyName))
+            {
+                supportsProperties.Properties[SessionCorrelationMiddleware.PropertyName] = sessionId;
+            }
         }
     }
 }

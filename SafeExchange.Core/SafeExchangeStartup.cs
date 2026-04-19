@@ -29,6 +29,7 @@ namespace SafeExchange.Core
     using Microsoft.Extensions.Options;
     using System.Configuration;
     using SafeExchange.Core.Groups;
+    using Microsoft.ApplicationInsights.Extensibility;
 
     public class SafeExchangeStartup
     {
@@ -107,6 +108,12 @@ namespace SafeExchange.Core
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));
             services.Configure<WebClientTelemetryConfiguration>(configuration.GetSection("WebClientTelemetry"));
+
+            // Stamps customDimensions.saex.sessionId on every telemetry
+            // item emitted within a request that carried the header. Works
+            // in tandem with SessionCorrelationMiddleware (which sets the
+            // AsyncLocal for the duration of the request handler).
+            services.AddSingleton<ITelemetryInitializer, SessionCorrelationTelemetryInitializer>();
         }
     }
 }
