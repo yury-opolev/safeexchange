@@ -8,13 +8,16 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
     using System;
+    using System.Security.Cryptography;
     using Microsoft.Extensions.Configuration;
+    using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Streams;
     using System.Net.Mime;
     using System.Text;
     using Microsoft.Azure.Functions.Worker.Http;
@@ -219,58 +222,179 @@ namespace SafeExchange.Core.Functions
                     await this.dbContext.SaveChangesAsync();
                 }
 
-                var dataStream = request.Body;
                 var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
 
-                var dataLength = 0L;
-                if (existingContent.IsMain)
-                {
-                    dataLength = await this.UploadMainContentAsync(newChunkName, dataStream, log);
-                }
-                else
-                {
-                    await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, dataStream);
+                var hashHeader = request.Headers.TryGetValues(ChunkHashHeaderName, out var hvals)
+                    ? hvals.FirstOrDefault()
+                    : null;
 
-                    try
-                    {
-                        dataLength = dataStream.Length;
-                    }
-                    catch (NotSupportedException exception)
-                    {
-                        log.LogWarning(exception, $"Cannot get content length for '{secretId}': '{newChunkName}'.");
-                    }
-                }
+                var mode = UploadModeResolver.Resolve(
+                    existingContent,
+                    hashHeaderPresent: !string.IsNullOrEmpty(hashHeader),
+                    allowLegacy: this.features.AllowLegacyAttachmentUploads,
+                    ignoreHeader: this.features.IgnoreChunkHashHeader);
 
-                var newChunk = new ChunkMetadata()
+                switch (mode)
                 {
-                    ChunkName = newChunkName,
-                    Hash = string.Empty,
-                    Length = dataLength
-                };
+                    case UploadMode.Reject:
+                        return await ActionResults.CreateResponseAsync(
+                            request, HttpStatusCode.BadRequest,
+                            new BaseResponseObject<object>
+                            {
+                                Status = "inconsistent_upload_mode",
+                                Error = "Chunk-hash header usage is inconsistent with the content's upload mode.",
+                            });
 
-                existingContent.Chunks.Add(newChunk);
+                    case UploadMode.Hashed:
+                        return await this.HandleHashedChunkUpload(
+                            request, existingContent, newChunkName, existingMetadata,
+                            hashHeader!, operationStatus, accessTicket, log);
 
-                if (InterimOperationType.Equals(operationStatus, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
-                }
-                else
-                {
-                    log.LogInformation($"Clearing access ticket from '{existingContent.ContentName}'.");
-                    accessTicket = string.Empty;
-                    existingContent.Status = ContentStatus.Ready;
-                    existingContent.AccessTicket = string.Empty;
-                    existingContent.AccessTicketSetAt = DateTime.MinValue;
+                    case UploadMode.Legacy:
+                        return await this.HandleLegacyChunkUpload(
+                            request, existingContent, newChunkName, existingMetadata,
+                            operationStatus, accessTicket, log);
                 }
 
-                existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-                await this.dbContext.SaveChangesAsync();
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.OK,
-                    new BaseResponseObject<ChunkCreationOutput> { Status = "ok", Result = newChunk.ToCreationDto(accessTicket) });
+                throw new InvalidOperationException("Unreachable.");
 
             }, nameof(HandleSecretStreamUpload), log);
+        }
+
+        private async Task<HttpResponseData> HandleLegacyChunkUpload(
+            HttpRequestData request,
+            ContentMetadata existingContent,
+            string newChunkName,
+            ObjectMetadata existingMetadata,
+            string operationStatus,
+            string accessTicket,
+            ILogger log)
+        {
+            var dataStream = request.Body;
+
+            var dataLength = 0L;
+            if (existingContent.IsMain)
+            {
+                dataLength = await this.UploadMainContentAsync(newChunkName, dataStream, log);
+            }
+            else
+            {
+                await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, dataStream);
+
+                try
+                {
+                    dataLength = dataStream.Length;
+                }
+                catch (NotSupportedException exception)
+                {
+                    log.LogWarning(exception, $"Cannot get content length for '{existingContent.ContentName}': '{newChunkName}'.");
+                }
+            }
+
+            var newChunk = new ChunkMetadata()
+            {
+                ChunkName = newChunkName,
+                Hash = string.Empty,
+                Length = dataLength,
+            };
+
+            existingContent.Chunks.Add(newChunk);
+
+            if (InterimOperationType.Equals(operationStatus, StringComparison.InvariantCultureIgnoreCase))
+            {
+                existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
+            }
+            else
+            {
+                log.LogInformation($"Clearing access ticket from '{existingContent.ContentName}'.");
+                accessTicket = string.Empty;
+                existingContent.Status = ContentStatus.Ready;
+                existingContent.AccessTicket = string.Empty;
+                existingContent.AccessTicketSetAt = DateTime.MinValue;
+            }
+
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+            await this.dbContext.SaveChangesAsync();
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ChunkCreationOutput> { Status = "ok", Result = newChunk.ToCreationDto(accessTicket) });
+        }
+
+        private async Task<HttpResponseData> HandleHashedChunkUpload(
+            HttpRequestData request,
+            ContentMetadata existingContent,
+            string newChunkName,
+            ObjectMetadata existingMetadata,
+            string headerHash,
+            string operationStatus,
+            string accessTicket,
+            ILogger log)
+        {
+            var running = existingContent.RunningHashState is { Length: > 0 }
+                ? SerializableSha256.Restore(existingContent.RunningHashState)
+                : new SerializableSha256();
+
+            using var chunkHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            long dataLength;
+
+            using (var tee = new HashingReadStream(request.Body, chunkHasher, running))
+            {
+                await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, tee);
+
+                dataLength = 0;
+                if (request.Headers.TryGetValues("Content-Length", out var lengthHeaders) &&
+                    long.TryParse(lengthHeaders.FirstOrDefault(), out var clen))
+                {
+                    dataLength = clen;
+                }
+            }
+
+            var serverHash = Convert.ToHexString(chunkHasher.GetHashAndReset()).ToLowerInvariant();
+            if (!serverHash.Equals(headerHash, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogWarning(
+                    "Chunk hash mismatch on {ChunkName}: client claimed {Claimed}, server computed {Computed}",
+                    newChunkName, headerHash, serverHash);
+                await this.blobHelper.DeleteBlobIfExistsAsync(newChunkName);
+
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.UnprocessableEntity,
+                    new BaseResponseObject<ChunkHashMismatch>
+                    {
+                        Status = "chunk_hash_mismatch",
+                        Error = "Received chunk bytes do not match the client-asserted hash.",
+                        Result = new ChunkHashMismatch { Expected = headerHash, Actual = serverHash },
+                    });
+            }
+
+            existingContent.Chunks.Add(new ChunkMetadata
+            {
+                ChunkName = newChunkName,
+                Hash = serverHash,
+                Length = dataLength,
+            });
+            existingContent.RunningHashState = running.SaveState();
+
+            // Hashed mode: ContentStatus.Ready is flipped only at commit - NOT here.
+            // Keep access-ticket alive. Update LastAccessedAt as existing code does.
+            existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
+            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+            await this.dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<ChunkCreationOutput>
+                {
+                    Status = "ok",
+                    Result = new ChunkCreationOutput
+                    {
+                        ChunkName = newChunkName,
+                        Hash = serverHash,
+                        Length = dataLength,
+                        AccessTicket = accessTicket,
+                    },
+                });
         }
 
         private async Task<HttpResponseData> HandleSecretStreamDownload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
