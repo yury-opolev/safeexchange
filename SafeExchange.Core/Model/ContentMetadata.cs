@@ -54,6 +54,19 @@ namespace SafeExchange.Core.Model
 
         public List<ChunkMetadata> Chunks { get; set; }
 
+        /// <summary>
+        /// Lowercase hex SHA-256 of the full attachment content, set at commit.
+        /// Null / empty for legacy (pre-integrity-feature) content and for IsMain==true content.
+        /// </summary>
+        public string? Hash { get; set; }
+
+        /// <summary>
+        /// Serialised SerializableSha256 state persisted across chunk-upload HTTP requests.
+        /// Non-null only during an active hashed-mode upload; cleared on commit, on purge,
+        /// or on access-ticket expiry.
+        /// </summary>
+        public byte[]? RunningHashState { get; set; }
+
         public void SetChunkProperties(int index, string hash, long length)
         {
             if (index < 0 || index >= this.Chunks.Count)
