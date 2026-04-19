@@ -40,6 +40,11 @@ namespace SafeExchange.Core
         {
             builder.UseWhen<DefaultAuthenticationMiddleware>(IsHttpTrigger);
             builder.UseWhen<TokenFilterMiddleware>(IsHttpTrigger);
+
+            // After auth so failed-auth requests still get the dimension,
+            // but before any handler logs so downstream ILogger scopes
+            // inherit the x-saex-session-id correlation.
+            builder.UseWhen<SessionCorrelationMiddleware>(IsHttpTrigger);
         }
 
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
