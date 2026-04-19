@@ -15,6 +15,8 @@ namespace SafeExchange.Tests
     {
         public readonly Dictionary<string, byte[]> Blobs = new();
 
+        public readonly List<string> DeletedBlobs = new();
+
         public async Task<bool> BlobExistsAsync(string blobName)
         {
             return await Task.FromResult(this.Blobs.ContainsKey(blobName));
@@ -22,6 +24,8 @@ namespace SafeExchange.Tests
 
         public async Task<bool> DeleteBlobIfExistsAsync(string blobName)
         {
+            this.DeletedBlobs.Add(blobName);
+
             if (!this.Blobs.ContainsKey(blobName))
             {
                 return false;
@@ -44,9 +48,19 @@ namespace SafeExchange.Tests
 
         public async Task EncryptAndUploadBlobAsync(string blobName, Stream data)
         {
-            var dataBytes = new byte[data.Length];
-            await data.ReadAsync(dataBytes, 0, (int)data.Length);
-            this.Blobs[blobName] = dataBytes;
+            if (data.CanSeek)
+            {
+                var dataBytes = new byte[data.Length];
+                await data.ReadAsync(dataBytes, 0, (int)data.Length);
+                this.Blobs[blobName] = dataBytes;
+                return;
+            }
+
+            using (var buffer = new MemoryStream())
+            {
+                await data.CopyToAsync(buffer);
+                this.Blobs[blobName] = buffer.ToArray();
+            }
         }
     }
 }

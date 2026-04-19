@@ -18,6 +18,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
@@ -30,6 +31,7 @@ namespace SafeExchange.Tests
     using System.Net;
     using System.Net.Http;
     using System.Security.Claims;
+    using System.Security.Cryptography;
     using System.Threading.Tasks;
 
     [TestFixture]
@@ -959,6 +961,272 @@ namespace SafeExchange.Tests
 
             var chunks = responseResult2?.Result?.Chunks;
             Assert.That(chunks?.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task HashedMode_HappyPath_Returns200_AndPopulatesMetadata()
+        {
+            // [GIVEN] A secret with an attachment content seeded.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            var body = this.imageContent_part_1;
+            var expectedHash = ComputeSha256Hex(body);
+
+            // [WHEN] An interim chunk is POSTed with a matching chunk-hash header.
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.Headers.Add(SafeExchangeSecretStream.ChunkHashHeaderName, expectedHash);
+            request.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request.Headers.Add("Content-Length", body.Length.ToString());
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await this.secretStream.Run(request, DefaultSecretName, attachmentContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var okResult = response as TestHttpResponseData;
+
+            // [THEN] 200 OK, the chunk metadata is populated with the hash, and RunningHashState is set.
+            Assert.That(okResult, Is.Not.Null);
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<ChunkCreationOutput>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+            Assert.That(responseResult?.Result?.Hash, Is.EqualTo(expectedHash));
+
+            this.dbContext.ChangeTracker.Clear();
+            var reloaded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var reloadedContent = reloaded?.Content.FirstOrDefault(c => c.ContentName.Equals(attachmentContent.ContentName));
+
+            Assert.That(reloadedContent, Is.Not.Null);
+            Assert.That(reloadedContent!.Chunks.Count, Is.EqualTo(1));
+            Assert.That(reloadedContent.Chunks[0].Hash, Is.EqualTo(expectedHash));
+            Assert.That(reloadedContent.RunningHashState, Is.Not.Null);
+            Assert.That(reloadedContent.RunningHashState!.Length, Is.GreaterThan(0));
+            Assert.That(reloadedContent.Status, Is.EqualTo(ContentStatus.Updating));
+        }
+
+        [Test]
+        public async Task HashedMode_WrongChunkHash_Returns422_AndLeavesStateUnchanged()
+        {
+            // [GIVEN] A secret with an attachment content seeded and a TestBlobHelper spy.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            var body = this.imageContent_part_1;
+            var bogusHeader = new string('0', 64);
+
+            var spy = this.blobHelper as TestBlobHelper;
+            Assert.That(spy, Is.Not.Null);
+            spy!.DeletedBlobs.Clear();
+
+            // [WHEN] A chunk is POSTed with a header that does not match the body's SHA-256.
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.Headers.Add(SafeExchangeSecretStream.ChunkHashHeaderName, bogusHeader);
+            request.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request.Headers.Add("Content-Length", body.Length.ToString());
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await this.secretStream.Run(request, DefaultSecretName, attachmentContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var errorResult = response as TestHttpResponseData;
+
+            // [THEN] 422 with chunk_hash_mismatch, expected/actual set, chunk not recorded, blob deleted.
+            Assert.That(errorResult, Is.Not.Null);
+            Assert.That(errorResult?.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
+
+            var responseResult = errorResult?.ReadBodyAsJson<BaseResponseObject<ChunkHashMismatch>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("chunk_hash_mismatch"));
+            Assert.That(responseResult?.Result, Is.Not.Null);
+            Assert.That(responseResult!.Result!.Expected, Is.EqualTo(bogusHeader));
+            Assert.That(responseResult.Result.Actual, Is.EqualTo(ComputeSha256Hex(body)));
+
+            this.dbContext.ChangeTracker.Clear();
+            var reloaded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var reloadedContent = reloaded?.Content.FirstOrDefault(c => c.ContentName.Equals(attachmentContent.ContentName));
+
+            Assert.That(reloadedContent, Is.Not.Null);
+            Assert.That(reloadedContent!.Chunks.Count, Is.EqualTo(0));
+            Assert.That(reloadedContent.RunningHashState, Is.Null);
+
+            var expectedBlobName = $"{attachmentContent.ContentName}-{0:00000000}";
+            Assert.That(spy.DeletedBlobs, Does.Contain(expectedBlobName));
+            Assert.That(spy.Blobs.ContainsKey(expectedBlobName), Is.False);
+        }
+
+        [Test]
+        public async Task LegacyMode_NoHashHeader_FlagOn_PreservesExistingBehaviour()
+        {
+            // [GIVEN] A secret with an attachment content seeded; flag defaults to AllowLegacyAttachmentUploads=true.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            var body = this.imageContent;
+
+            // [WHEN] A chunk is POSTed without the hash header (not interim - final chunk).
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await this.secretStream.Run(request, DefaultSecretName, attachmentContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var okResult = response as TestHttpResponseData;
+
+            // [THEN] 200 OK, legacy chunk (empty hash) recorded, no running state, status flips to Ready.
+            Assert.That(okResult, Is.Not.Null);
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            this.dbContext.ChangeTracker.Clear();
+            var reloaded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var reloadedContent = reloaded?.Content.FirstOrDefault(c => c.ContentName.Equals(attachmentContent.ContentName));
+
+            Assert.That(reloadedContent, Is.Not.Null);
+            Assert.That(reloadedContent!.Chunks.Count, Is.EqualTo(1));
+            Assert.That(reloadedContent.Chunks[0].Hash, Is.EqualTo(string.Empty));
+            Assert.That(reloadedContent.RunningHashState, Is.Null);
+            Assert.That(reloadedContent.Status, Is.EqualTo(ContentStatus.Ready));
+        }
+
+        [Test]
+        public async Task InconsistentMode_HeaderPresent_LegacyLocked_Returns400()
+        {
+            // [GIVEN] A secret with an attachment content seeded, with one pre-existing legacy chunk.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            this.dbContext.ChangeTracker.Clear();
+            var seeded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var seededContent = seeded!.Content.First(c => c.ContentName.Equals(attachmentContent.ContentName));
+            seededContent.Chunks.Add(new ChunkMetadata { ChunkName = $"{seededContent.ContentName}-{0:00000000}", Hash = string.Empty, Length = 10 });
+            seededContent.RunningHashState = null;
+            seededContent.Status = ContentStatus.Updating;
+            seededContent.AccessTicket = string.Empty;
+            seededContent.AccessTicketSetAt = DateTime.MinValue;
+            await this.dbContext.SaveChangesAsync();
+
+            var body = this.imageContent_part_2;
+
+            // [WHEN] A chunk is POSTed with the hash header.
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.Headers.Add(SafeExchangeSecretStream.ChunkHashHeaderName, ComputeSha256Hex(body));
+            request.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request.Headers.Add("Content-Length", body.Length.ToString());
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await this.secretStream.Run(request, DefaultSecretName, attachmentContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var badRequestResult = response as TestHttpResponseData;
+
+            // [THEN] 400 inconsistent_upload_mode.
+            Assert.That(badRequestResult, Is.Not.Null);
+            Assert.That(badRequestResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+
+            var responseResult = badRequestResult?.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("inconsistent_upload_mode"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+        }
+
+        [Test]
+        public async Task InconsistentMode_HeaderAbsent_HashedLocked_Returns400()
+        {
+            // [GIVEN] A secret with an attachment content seeded, in hashed-locked state (RunningHashState non-empty).
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            this.dbContext.ChangeTracker.Clear();
+            var seeded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var seededContent = seeded!.Content.First(c => c.ContentName.Equals(attachmentContent.ContentName));
+            seededContent.Chunks.Add(new ChunkMetadata { ChunkName = $"{seededContent.ContentName}-{0:00000000}", Hash = ComputeSha256Hex(this.imageContent_part_1), Length = 10 });
+            seededContent.RunningHashState = new byte[] { 1 };
+            seededContent.Status = ContentStatus.Updating;
+            seededContent.AccessTicket = string.Empty;
+            seededContent.AccessTicketSetAt = DateTime.MinValue;
+            await this.dbContext.SaveChangesAsync();
+
+            var body = this.imageContent_part_2;
+
+            // [WHEN] A chunk is POSTed WITHOUT the hash header.
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.Headers.Add(SafeExchangeSecretStream.OperationTypeHeaderName, SafeExchangeSecretStream.InterimOperationType);
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await this.secretStream.Run(request, DefaultSecretName, attachmentContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var badRequestResult = response as TestHttpResponseData;
+
+            // [THEN] 400 inconsistent_upload_mode.
+            Assert.That(badRequestResult, Is.Not.Null);
+            Assert.That(badRequestResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+
+            var responseResult = badRequestResult?.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("inconsistent_upload_mode"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+        }
+
+        [Test]
+        public async Task HashHeaderRequired_FlagOff_Returns400()
+        {
+            // [GIVEN] A dedicated handler instance with AllowLegacyAttachmentUploads=false.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            var configurationValues = new Dictionary<string, string>
+            {
+                {"Features:UseNotifications", "False"},
+                {"Features:UseGroupsAuthorization", "True"},
+                {"Features:AllowLegacyAttachmentUploads", "False"},
+                {"AccessTickets:AccessTicketTimeout", "00:10:00.000"}
+            };
+
+            var strictConfig = new ConfigurationBuilder()
+                .AddInMemoryCollection(configurationValues)
+                .Build();
+
+            var strictStream = new SafeExchangeSecretStream(
+                strictConfig, this.dbContext, this.tokenHelper,
+                this.globalFilters, this.purger, this.blobHelper, this.permissionsManager);
+
+            var body = this.imageContent_part_1;
+
+            // [WHEN] A chunk is POSTed without the hash header.
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsStream(new ByteArrayContent(body).ReadAsStream());
+
+            var response = await strictStream.Run(request, DefaultSecretName, attachmentContent.ContentName, string.Empty, claimsPrincipal, this.logger);
+            var badRequestResult = response as TestHttpResponseData;
+
+            // [THEN] 400 inconsistent_upload_mode.
+            Assert.That(badRequestResult, Is.Not.Null);
+            Assert.That(badRequestResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+
+            var responseResult = badRequestResult?.ReadBodyAsJson<BaseResponseObject<object>>();
+            Assert.That(responseResult?.Status, Is.EqualTo("inconsistent_upload_mode"));
+            Assert.That(responseResult?.Error, Is.Not.Null);
+        }
+
+        private async Task<ContentMetadata> CreateAttachmentAsync(ClaimsPrincipal claimsPrincipal)
+        {
+            var request = TestFactory.CreateHttpRequestData("post");
+            var creationInput = new ContentMetadataCreationInput()
+            {
+                ContentType = "image/jpeg",
+                FileName = this.imageContentFileName
+            };
+
+            request.SetBodyAsJson(creationInput);
+
+            var response = await this.secretContentMeta.Run(request, DefaultSecretName, string.Empty, claimsPrincipal, this.logger);
+            var okResult = response as TestHttpResponseData;
+            Assert.That(okResult, Is.Not.Null);
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            this.dbContext.ChangeTracker.Clear();
+            var reloaded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var attachment = reloaded?.Content.FirstOrDefault(c => !c.IsMain);
+            if (attachment == null)
+            {
+                throw new AssertionException("Attachment content was not created.");
+            }
+
+            return attachment;
+        }
+
+        private static string ComputeSha256Hex(byte[] data)
+        {
+            var hash = SHA256.HashData(data);
+            return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
         private async Task CreateSecret(string secretName)

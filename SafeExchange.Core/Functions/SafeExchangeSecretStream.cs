@@ -25,6 +25,7 @@ namespace SafeExchange.Core.Functions
     {
         public static readonly string AccessTicketHeaderName = "X-SafeExchange-Ticket";
         public static readonly string OperationTypeHeaderName = "X-SafeExchange-OpType";
+        public static readonly string ChunkHashHeaderName = "X-SafeExchange-Chunk-Hash";
 
         public static readonly string InterimOperationType = "interim";
 
