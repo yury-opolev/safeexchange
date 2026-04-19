@@ -75,6 +75,15 @@ namespace SafeExchange.Core.Middleware
             currentSessionId.Value = sessionId;
             try
             {
+                // Belt and braces: emit one structured log per request
+                // that carries the session id as a named parameter
+                // (prop__SaexSessionId in AI customDimensions). This
+                // guarantees at least one trace per invocation can be
+                // joined on the client session id even if the
+                // ITelemetryInitializer path above doesn't propagate
+                // to every emitted telemetry item.
+                this.log.LogInformation("saex request {SaexSessionId}", sessionId);
+
                 await next(context).ConfigureAwait(false);
             }
             finally
