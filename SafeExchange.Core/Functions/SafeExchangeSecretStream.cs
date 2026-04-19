@@ -583,6 +583,7 @@ namespace SafeExchange.Core.Functions
 
                 content.Chunks.Clear();
                 content.Status = ContentStatus.Blank;
+                content.RunningHashState = null;
 
                 content.AccessTicket = String.Empty;
                 content.AccessTicketSetAt = DateTime.MinValue;

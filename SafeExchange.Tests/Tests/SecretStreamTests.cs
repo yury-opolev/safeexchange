@@ -541,6 +541,54 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task AccessTicketExpiry_ClearsRunningHashState()
+        {
+            // [GIVEN] An attachment in hashed mode with a running-hash state, status Updating
+            //         and an access ticket whose AccessTicketSetAt is older than the
+            //         configured AccessTicketTimeout.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var attachmentContent = await this.CreateAttachmentAsync(claimsPrincipal);
+
+            this.dbContext.ChangeTracker.Clear();
+            var seeded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var seededContent = seeded!.Content.First(c => c.ContentName.Equals(attachmentContent.ContentName));
+
+            seededContent.Chunks.Add(new ChunkMetadata
+            {
+                ChunkName = $"{seededContent.ContentName}-{0:00000000}",
+                Hash = ComputeSha256Hex(this.imageContent_part_1),
+                Length = this.imageContent_part_1.Length,
+            });
+            seededContent.RunningHashState = new byte[] { 1, 2, 3, 4 };
+            seededContent.Status = ContentStatus.Updating;
+            seededContent.AccessTicket = $"{Guid.NewGuid()}-{Random.Shared.NextInt64():00000000}";
+            seededContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
+            await this.dbContext.SaveChangesAsync();
+
+            // Advance virtual clock past the AccessTicketTimeout (configured at 00:10:00).
+            DateTimeProvider.SpecifiedDateTime += TimeSpan.FromMinutes(15);
+
+            // [WHEN] A download request is issued — this funnels through TryGetAccessTicketAsync,
+            // which on expiry must clear chunks AND running hash state.
+            var getRequest = TestFactory.CreateHttpRequestData("get");
+            var getResponse = await this.secretStream.Run(
+                getRequest, DefaultSecretName, attachmentContent.ContentName, $"{0:00000000}", claimsPrincipal, this.logger);
+            Assert.That(getResponse, Is.Not.Null);
+
+            // [THEN] RunningHashState on the reloaded content is null, chunks are cleared,
+            // and status is Blank.
+            this.dbContext.ChangeTracker.Clear();
+            var reloaded = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(DefaultSecretName));
+            var reloadedContent = reloaded?.Content.FirstOrDefault(c => c.ContentName.Equals(attachmentContent.ContentName));
+
+            Assert.That(reloadedContent, Is.Not.Null);
+            Assert.That(reloadedContent!.RunningHashState, Is.Null);
+            Assert.That(reloadedContent.Chunks.Count, Is.EqualTo(0));
+            Assert.That(reloadedContent.Status, Is.EqualTo(ContentStatus.Blank));
+            Assert.That(reloadedContent.AccessTicket, Is.EqualTo(string.Empty));
+        }
+
+        [Test]
         public async Task AddChunkAndDropAfterwards()
         {
             // [GIVEN] A secret with name 'x' and uploaded main content.
