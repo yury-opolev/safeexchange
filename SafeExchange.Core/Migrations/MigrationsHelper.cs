@@ -81,6 +81,12 @@ namespace SafeExchange.Core.Migrations
                     return;
                 }
 
+                if ("00008".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00008Async();
+                    return;
+                }
+
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
@@ -315,6 +321,27 @@ namespace SafeExchange.Core.Migrations
                     {
                         await MigrateItem00007_Async(targetContainer, user.id, item);
                     }
+                }
+            }
+        }
+
+        private async Task RunMigration00008Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer(nameof(ObjectMetadata));
+
+            var query = new QueryDefinition("SELECT * FROM c");
+
+            using FeedIterator<MigrationItem00008> feed =
+                container.GetItemQueryIterator<MigrationItem00008>(queryDefinition: query);
+
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00008> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00008 item in response)
+                {
+                    this.log.LogInformation($"Processing {nameof(MigrationItem00008)} '{item.id}'. {nameof(Model.ContentMetadata.Hash)} and {nameof(Model.ContentMetadata.RunningHashState)} default to null for existing embedded content entries.");
                 }
             }
         }
