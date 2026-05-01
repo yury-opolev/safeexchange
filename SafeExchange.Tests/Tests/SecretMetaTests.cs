@@ -720,5 +720,90 @@ namespace SafeExchange.Tests
             var deletedSecret = await this.dbContext.Objects.FindAsync("sunshine4");
             Assert.That(deletedSecret, Is.Null);
         }
+
+        [Test]
+        public async Task CreateSecret_WithValidTags_PersistsLowercase()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var secretId = "tagsec-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = new List<string> { "Audiobook", "Genre:SciFi" }
+            };
+
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(creationInput);
+
+            var response = await this.secretMeta.Run(request, secretId, claimsPrincipal, this.logger);
+            var okResult = response as TestHttpResponseData;
+
+            Assert.That(okResult, Is.Not.Null);
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var stored = await this.dbContext.Objects.FindAsync(secretId);
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(stored?.Tags, Is.EqualTo(new[] { "audiobook", "genre:scifi" }));
+        }
+
+        [Test]
+        public async Task CreateSecret_WithNoTags_PersistsEmptyList()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var secretId = "tagsec-empty-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings()
+            };
+
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(creationInput);
+
+            var response = await this.secretMeta.Run(request, secretId, claimsPrincipal, this.logger);
+            var okResult = response as TestHttpResponseData;
+
+            Assert.That(okResult, Is.Not.Null);
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var stored = await this.dbContext.Objects.FindAsync(secretId);
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(stored?.Tags, Is.Not.Null);
+            Assert.That(stored?.Tags, Is.Empty);
+        }
+
+        [Test]
+        public async Task CreateSecret_WithInvalidTag_RejectsWith400()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var secretId = "tagsec-bad-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = new List<string> { "has space" }
+            };
+
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(creationInput);
+
+            var response = await this.secretMeta.Run(request, secretId, claimsPrincipal, this.logger);
+            var badResult = response as TestHttpResponseData;
+
+            Assert.That(badResult, Is.Not.Null);
+            Assert.That(badResult?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+
+            var stored = await this.dbContext.Objects.FindAsync(secretId);
+            Assert.That(stored, Is.Null);
+        }
+
+        private static ExpirationSettingsInput DefaultExpirationSettings() => new ExpirationSettingsInput()
+        {
+            ScheduleExpiration = false,
+            ExpireAt = DateTimeProvider.UtcNow + TimeSpan.FromDays(180),
+            ExpireOnIdleTime = false,
+            IdleTimeToExpire = TimeSpan.FromDays(180)
+        };
     }
 }

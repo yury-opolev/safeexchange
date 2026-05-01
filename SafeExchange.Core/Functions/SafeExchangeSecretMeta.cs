@@ -18,6 +18,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Net;
@@ -181,6 +182,16 @@ namespace SafeExchange.Core.Functions
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
             }
+
+            var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);
+            if (!tagsOk)
+            {
+                log.LogInformation($"Invalid tags for secret '{secretId}': {tagsError}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
+            }
+            metadataInput.Tags = normalisedTags.ToList();
 
             var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
             log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '{subjectId}' are set.");
