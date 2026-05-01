@@ -21,6 +21,7 @@ namespace SafeExchange.Core.Model
 
             this.ExpirationMetadata = new ExpirationMetadata(input.ExpirationSettings);
             this.Content = CreateContent(true);
+            this.Tags = input.Tags is null ? new List<string>() : input.Tags.ToList();
 
             this.KeepInStorage = true;
             this.CreatedBy = createdBy;
@@ -90,6 +91,8 @@ namespace SafeExchange.Core.Model
         }
 
         public DateTime ExpireIfUnusedAt { get; set; }
+
+        public List<string> Tags { get; set; } = new();
 
         internal ObjectMetadataOutput ToDto() => new ()
         {
