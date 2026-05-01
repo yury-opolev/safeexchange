@@ -4,8 +4,6 @@
 
 namespace SafeExchange.Core.Migrations
 {
-    using System;
-
     /// <summary>
     /// Marker migration for addition of <see cref="SafeExchange.Core.Model.ObjectMetadata.Tags"/>
     /// to the ObjectMetadata container.

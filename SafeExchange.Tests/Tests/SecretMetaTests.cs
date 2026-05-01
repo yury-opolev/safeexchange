@@ -951,6 +951,39 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task ListSecrets_FilterByTag_ExcludesUntaggedSecrets()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var tagged = "abf-x-tagged-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var untagged = "abf-x-untagged-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            await CreateSecretAsync(tagged, new List<string> { "audiobook" }, claimsPrincipal);
+
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings()
+            };
+            var createRequest = TestFactory.CreateHttpRequestData("post");
+            createRequest.SetBodyAsJson(creationInput);
+            var createResponse = await this.secretMeta.Run(createRequest, untagged, claimsPrincipal, this.logger);
+            Assert.That((createResponse as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var listRequest = TestFactory.CreateHttpRequestData("get");
+            listRequest.SetQueryString("?tag=audiobook");
+            var listResponse = await this.secretMeta.RunList(listRequest, claimsPrincipal, this.logger);
+            var okResult = listResponse as TestHttpResponseData;
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult?.Result, Is.Not.Null);
+
+            var names = responseResult!.Result!.Select(p => p.ObjectName).ToList();
+            Assert.That(names, Contains.Item(tagged));
+            Assert.That(names, Does.Not.Contain(untagged));
+        }
+
+        [Test]
         public async Task ListSecrets_FilterByTag_CaseInsensitiveOnQuery()
         {
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
