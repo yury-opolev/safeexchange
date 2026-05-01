@@ -127,6 +127,22 @@ namespace SafeExchange.Core.Functions
         private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
+            var rawTags = Array.Empty<string>();
+            var query = request.Url?.Query;
+            if (!string.IsNullOrEmpty(query))
+            {
+                rawTags = System.Web.HttpUtility.ParseQueryString(query).GetValues("tag") ?? Array.Empty<string>();
+            }
+
+            var (tagsOk, requiredTags, tagsError) = TagValidator.TryNormalizeList(rawTags);
+            if (!tagsOk)
+            {
+                log.LogInformation($"Invalid tag filter: {tagsError}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
+            }
+
             var permissions = await this.dbContext.Permissions
                 .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
                 .ToListAsync();
@@ -143,6 +159,14 @@ namespace SafeExchange.Core.Functions
                 {
                     tagMap[o.ObjectName] = o.Tags?.ToList() ?? new List<string>();
                 }
+            }
+
+            if (requiredTags.Count > 0)
+            {
+                permissions = permissions
+                    .Where(p => tagMap.TryGetValue(p.SecretName, out var t)
+                                && requiredTags.All(rt => t.Contains(rt)))
+                    .ToList();
             }
 
             var dtos = permissions.Select(p =>

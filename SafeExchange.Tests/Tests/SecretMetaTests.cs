@@ -925,6 +925,100 @@ namespace SafeExchange.Tests
             Assert.That(byName[sec2].Tags, Is.EqualTo(new[] { "photo" }));
         }
 
+        [Test]
+        public async Task ListSecrets_FilterByTag_ReturnsOnlyMatching()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var ab = "abf-1-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var ph = "abf-2-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            await CreateSecretAsync(ab, new List<string> { "audiobook" }, claimsPrincipal);
+            await CreateSecretAsync(ph, new List<string> { "photo" }, claimsPrincipal);
+
+            var listRequest = TestFactory.CreateHttpRequestData("get");
+            listRequest.SetQueryString("?tag=audiobook");
+            var listResponse = await this.secretMeta.RunList(listRequest, claimsPrincipal, this.logger);
+            var okResult = listResponse as TestHttpResponseData;
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult?.Result, Is.Not.Null);
+
+            var names = responseResult!.Result!.Select(p => p.ObjectName).ToList();
+            Assert.That(names, Contains.Item(ab));
+            Assert.That(names, Does.Not.Contain(ph));
+        }
+
+        [Test]
+        public async Task ListSecrets_FilterByTag_CaseInsensitiveOnQuery()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var ab = "abf-ci-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            await CreateSecretAsync(ab, new List<string> { "audiobook" }, claimsPrincipal);
+
+            var listRequest = TestFactory.CreateHttpRequestData("get");
+            listRequest.SetQueryString("?tag=AudioBook");
+            var listResponse = await this.secretMeta.RunList(listRequest, claimsPrincipal, this.logger);
+            var okResult = listResponse as TestHttpResponseData;
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult?.Result, Is.Not.Null);
+            Assert.That(responseResult!.Result!.Any(p => p.ObjectName == ab), Is.True);
+        }
+
+        [Test]
+        public async Task ListSecrets_FilterByMultipleTags_AndSemantics()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var both = "abf-and-1-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var oneOnly = "abf-and-2-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            await CreateSecretAsync(both, new List<string> { "audiobook", "genre:scifi" }, claimsPrincipal);
+            await CreateSecretAsync(oneOnly, new List<string> { "audiobook" }, claimsPrincipal);
+
+            var listRequest = TestFactory.CreateHttpRequestData("get");
+            listRequest.SetQueryString("?tag=audiobook&tag=genre:scifi");
+            var listResponse = await this.secretMeta.RunList(listRequest, claimsPrincipal, this.logger);
+            var okResult = listResponse as TestHttpResponseData;
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult?.Result, Is.Not.Null);
+
+            var names = responseResult!.Result!.Select(p => p.ObjectName).ToList();
+            Assert.That(names, Contains.Item(both));
+            Assert.That(names, Does.Not.Contain(oneOnly));
+        }
+
+        [Test]
+        public async Task ListSecrets_NoTagFilter_ReturnsAllAccessible()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var any = "abf-no-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings()
+            };
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(creationInput);
+            var response = await this.secretMeta.Run(request, any, claimsPrincipal, this.logger);
+            Assert.That((response as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var listRequest = TestFactory.CreateHttpRequestData("get");
+            var listResponse = await this.secretMeta.RunList(listRequest, claimsPrincipal, this.logger);
+            var okResult = listResponse as TestHttpResponseData;
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult?.Result, Is.Not.Null);
+            Assert.That(responseResult!.Result!.Any(p => p.ObjectName == any), Is.True);
+        }
+
         private async Task CreateSecretAsync(string secretId, List<string> tags, ClaimsPrincipal claimsPrincipal)
         {
             var creationInput = new MetadataCreationInput()
