@@ -863,6 +863,38 @@ namespace SafeExchange.Tests
             Assert.That(stored?.Tags, Is.EqualTo(new[] { "audiobook" }));
         }
 
+        [Test]
+        public async Task GetSecret_ReturnsTags()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var secretId = "tagsec-get-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = new List<string> { "audiobook", "genre:scifi" }
+            };
+
+            var postRequest = TestFactory.CreateHttpRequestData("post");
+            postRequest.SetBodyAsJson(creationInput);
+            var postResponse = await this.secretMeta.Run(postRequest, secretId, claimsPrincipal, this.logger);
+            Assert.That((postResponse as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var getRequest = TestFactory.CreateHttpRequestData("get");
+            var getResponse = await this.secretMeta.Run(getRequest, secretId, claimsPrincipal, this.logger);
+            var okResult = getResponse as TestHttpResponseData;
+
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+
+            var dto = responseResult?.Result;
+            Assert.That(dto, Is.Not.Null);
+            Assert.That(dto?.Tags, Is.EqualTo(new[] { "audiobook", "genre:scifi" }));
+        }
+
         private static ExpirationSettingsInput DefaultExpirationSettings() => new ExpirationSettingsInput()
         {
             ScheduleExpiration = false,

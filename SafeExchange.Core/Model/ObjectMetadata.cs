@@ -98,7 +98,8 @@ namespace SafeExchange.Core.Model
         {
             ObjectName = this.ObjectName,
             Content = this.Content?.Select(x => x.ToDto()).ToList() ?? Array.Empty<ContentMetadataOutput>().ToList(),
-            ExpirationSettings = this.ExpirationMetadata.ToDto()
+            ExpirationSettings = this.ExpirationMetadata.ToDto(),
+            Tags = this.Tags?.ToList() ?? new List<string>()
         };
 
         private string GetPartitionKey()
