@@ -93,6 +93,12 @@ namespace SafeExchange.Core.Migrations
                     return;
                 }
 
+                if ("00010".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00010Async();
+                    return;
+                }
+
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
@@ -371,6 +377,52 @@ namespace SafeExchange.Core.Migrations
                     this.log.LogInformation($"Processing {nameof(MigrationItem00009)} '{item.id}'. {nameof(Model.ObjectMetadata.Tags)} defaults to an empty list for existing documents.");
                 }
             }
+        }
+
+        private async Task RunMigration00010Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer(nameof(ObjectMetadata));
+
+            var query = new QueryDefinition("SELECT * FROM c");
+
+            using FeedIterator<MigrationItem00010> feed =
+                container.GetItemQueryIterator<MigrationItem00010>(queryDefinition: query);
+
+            var processed = 0;
+            var backfilled = 0;
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00010> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00010 item in response)
+                {
+                    processed++;
+                    var streamResp = await container.ReadItemStreamAsync(
+                        item.id, new PartitionKey(item.PartitionKey));
+
+                    string original;
+                    using (var reader = new StreamReader(streamResp.Content))
+                    {
+                        original = await reader.ReadToEndAsync();
+                    }
+
+                    var rewritten = TagsBackfill.BackfillIfMissing(original);
+                    if (rewritten is null)
+                    {
+                        continue;
+                    }
+
+                    using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rewritten));
+                    await container.ReplaceItemStreamAsync(
+                        ms, item.id, new PartitionKey(item.PartitionKey));
+                    backfilled++;
+                    this.log.LogInformation(
+                        $"Backfilled Tags=[] on {nameof(ObjectMetadata)} '{item.id}'.");
+                }
+            }
+            this.log.LogInformation(
+                $"Migration 00010 complete. Processed {processed}, backfilled {backfilled}.");
         }
 
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)
