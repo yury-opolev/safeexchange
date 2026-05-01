@@ -293,6 +293,19 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
             }
 
+            if (metadataInput.Tags is not null)
+            {
+                var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);
+                if (!tagsOk)
+                {
+                    log.LogInformation($"Invalid tags for secret '{secretId}': {tagsError}.");
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
+                }
+                metadataInput.Tags = normalisedTags.ToList();
+            }
+
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
             log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
 
@@ -354,6 +367,11 @@ namespace SafeExchange.Core.Functions
             var updatedExpirationMetadata = new ExpirationMetadata(metadataInput.ExpirationSettings);
             existingMetadata.ExpirationMetadata = updatedExpirationMetadata;
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+
+            if (metadataInput.Tags is not null)
+            {
+                existingMetadata.Tags = metadataInput.Tags.ToList();
+            }
 
             await this.dbContext.SaveChangesAsync();
 

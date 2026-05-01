@@ -798,6 +798,71 @@ namespace SafeExchange.Tests
             Assert.That(stored, Is.Null);
         }
 
+        [Test]
+        public async Task UpdateSecret_TagsReplacedOnPatch()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var secretId = "tagsec-update-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = new List<string> { "audiobook" }
+            };
+
+            var postRequest = TestFactory.CreateHttpRequestData("post");
+            postRequest.SetBodyAsJson(creationInput);
+            var postResponse = await this.secretMeta.Run(postRequest, secretId, claimsPrincipal, this.logger);
+            Assert.That((postResponse as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var updateInput = new MetadataUpdateInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = new List<string> { "Photo", "audiobook" }
+            };
+
+            var patchRequest = TestFactory.CreateHttpRequestData("patch");
+            patchRequest.SetBodyAsJson(updateInput);
+            var patchResponse = await this.secretMeta.Run(patchRequest, secretId, claimsPrincipal, this.logger);
+            Assert.That((patchResponse as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var stored = await this.dbContext.Objects.FindAsync(secretId);
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(stored?.Tags, Is.EqualTo(new[] { "photo", "audiobook" }));
+        }
+
+        [Test]
+        public async Task UpdateSecret_OmittingTagsLeavesUnchanged()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var secretId = "tagsec-omit-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = new List<string> { "audiobook" }
+            };
+
+            var postRequest = TestFactory.CreateHttpRequestData("post");
+            postRequest.SetBodyAsJson(creationInput);
+            var postResponse = await this.secretMeta.Run(postRequest, secretId, claimsPrincipal, this.logger);
+            Assert.That((postResponse as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var updateInput = new MetadataUpdateInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings()
+            };
+
+            var patchRequest = TestFactory.CreateHttpRequestData("patch");
+            patchRequest.SetBodyAsJson(updateInput);
+            var patchResponse = await this.secretMeta.Run(patchRequest, secretId, claimsPrincipal, this.logger);
+            Assert.That((patchResponse as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var stored = await this.dbContext.Objects.FindAsync(secretId);
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(stored?.Tags, Is.EqualTo(new[] { "audiobook" }));
+        }
+
         private static ExpirationSettingsInput DefaultExpirationSettings() => new ExpirationSettingsInput()
         {
             ScheduleExpiration = false,
