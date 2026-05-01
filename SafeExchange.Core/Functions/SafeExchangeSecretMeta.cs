@@ -151,8 +151,16 @@ namespace SafeExchange.Core.Functions
             var tagMap = new Dictionary<string, List<string>>();
             if (names.Count > 0)
             {
-                var tagPairs = await this.dbContext.Objects
-                    .Where(o => names.Contains(o.ObjectName))
+                IQueryable<ObjectMetadata> tagQuery = this.dbContext.Objects
+                    .Where(o => names.Contains(o.ObjectName));
+
+                foreach (var rt in requiredTags)
+                {
+                    var tag = rt; // local capture so closure binds correctly
+                    tagQuery = tagQuery.Where(o => o.Tags.Contains(tag));
+                }
+
+                var tagPairs = await tagQuery
                     .Select(o => new { o.ObjectName, o.Tags })
                     .ToListAsync();
 
@@ -164,10 +172,8 @@ namespace SafeExchange.Core.Functions
 
             if (requiredTags.Count > 0)
             {
-                permissions = permissions
-                    .Where(p => tagMap.TryGetValue(p.SecretName, out var t)
-                                && requiredTags.All(rt => t.Contains(rt)))
-                    .ToList();
+                var matched = new HashSet<string>(tagMap.Keys);
+                permissions = permissions.Where(p => matched.Contains(p.SecretName)).ToList();
             }
 
             var dtos = permissions.Select(p =>
