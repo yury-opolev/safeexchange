@@ -17,6 +17,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
@@ -1050,6 +1051,31 @@ namespace SafeExchange.Tests
             var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.That(responseResult?.Result, Is.Not.Null);
             Assert.That(responseResult!.Result!.Any(p => p.ObjectName == any), Is.True);
+        }
+
+        [Test]
+        public void ListSecrets_TagPredicate_TranslatesToArrayContains()
+        {
+            // Arrange: build the same shape of query the handler builds.
+            var names = new[] { "secret-1", "secret-2" }.ToList();
+            var requiredTags = new[] { "audiobook" };
+
+            IQueryable<ObjectMetadata> q = this.dbContext.Objects
+                .Where(o => names.Contains(o.ObjectName));
+
+            foreach (var rt in requiredTags)
+            {
+                var tag = rt;
+                q = q.Where(o => o.Tags.Contains(tag));
+            }
+
+            // Act: capture the generated SQL via ToQueryString().
+            var sql = q.Select(o => new { o.ObjectName, o.Tags }).ToQueryString();
+            TestContext.WriteLine(sql);
+
+            // Assert: SQL contains ARRAY_CONTAINS on the Tags property.
+            Assert.That(sql, Does.Contain("ARRAY_CONTAINS").IgnoreCase);
+            Assert.That(sql, Does.Contain("Tags"));
         }
 
         private async Task CreateSecretAsync(string secretId, List<string> tags, ClaimsPrincipal claimsPrincipal)
