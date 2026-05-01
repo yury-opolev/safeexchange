@@ -151,13 +151,14 @@ namespace SafeExchange.Core.Functions
             var tagMap = new Dictionary<string, List<string>>();
             if (names.Count > 0)
             {
-                var objects = await this.dbContext.Objects
+                var tagPairs = await this.dbContext.Objects
                     .Where(o => names.Contains(o.ObjectName))
+                    .Select(o => new { o.ObjectName, o.Tags })
                     .ToListAsync();
 
-                foreach (var o in objects)
+                foreach (var pair in tagPairs)
                 {
-                    tagMap[o.ObjectName] = o.Tags?.ToList() ?? new List<string>();
+                    tagMap[pair.ObjectName] = pair.Tags?.ToList() ?? new List<string>();
                 }
             }
 
