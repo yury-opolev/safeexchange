@@ -5,12 +5,10 @@
 namespace SafeExchange.Core.Migrations
 {
     /// <summary>
-    /// Marker migration for addition of <see cref="SafeExchange.Core.Model.ObjectMetadata.Tags"/>
-    /// to the ObjectMetadata container.
-    ///
-    /// The new field is a list that defaults to empty on existing documents, so the Cosmos DB
-    /// provider handles the schema change lazily; this migration enumerates ObjectMetadata
-    /// documents and logs their ids so that the addition is recorded in the operations log.
+    /// Marker class used by the Tags-backfill migration. Pre-feature ObjectMetadata
+    /// documents in Cosmos have no <c>Tags</c> field; this migration writes
+    /// <c>Tags = []</c> onto every such document so the field is uniformly present
+    /// in storage.
     /// </summary>
     public class MigrationItem00009
     {
