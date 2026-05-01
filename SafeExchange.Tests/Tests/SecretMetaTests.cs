@@ -895,6 +895,50 @@ namespace SafeExchange.Tests
             Assert.That(dto?.Tags, Is.EqualTo(new[] { "audiobook", "genre:scifi" }));
         }
 
+        [Test]
+        public async Task ListSecrets_IncludesTagsForEachAccessibleSecret()
+        {
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+
+            var sec1 = "ls-tags-1-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var sec2 = "ls-tags-2-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            await CreateSecretAsync(sec1, new List<string> { "audiobook" }, claimsPrincipal);
+            await CreateSecretAsync(sec2, new List<string> { "photo" }, claimsPrincipal);
+
+            var listRequest = TestFactory.CreateHttpRequestData("get");
+            var listResponse = await this.secretMeta.RunList(listRequest, claimsPrincipal, this.logger);
+            var okResult = listResponse as TestHttpResponseData;
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(responseResult, Is.Not.Null);
+            Assert.That(responseResult?.Status, Is.EqualTo("ok"));
+
+            var list = responseResult?.Result;
+            Assert.That(list, Is.Not.Null);
+
+            var byName = list!.ToDictionary(p => p.ObjectName);
+            Assert.That(byName.ContainsKey(sec1), Is.True);
+            Assert.That(byName.ContainsKey(sec2), Is.True);
+            Assert.That(byName[sec1].Tags, Is.EqualTo(new[] { "audiobook" }));
+            Assert.That(byName[sec2].Tags, Is.EqualTo(new[] { "photo" }));
+        }
+
+        private async Task CreateSecretAsync(string secretId, List<string> tags, ClaimsPrincipal claimsPrincipal)
+        {
+            var creationInput = new MetadataCreationInput()
+            {
+                ExpirationSettings = DefaultExpirationSettings(),
+                Tags = tags
+            };
+
+            var request = TestFactory.CreateHttpRequestData("post");
+            request.SetBodyAsJson(creationInput);
+            var response = await this.secretMeta.Run(request, secretId, claimsPrincipal, this.logger);
+            Assert.That((response as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"Failed to create secret '{secretId}'");
+        }
+
         private static ExpirationSettingsInput DefaultExpirationSettings() => new ExpirationSettingsInput()
         {
             ScheduleExpiration = false,

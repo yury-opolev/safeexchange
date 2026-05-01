@@ -127,16 +127,37 @@ namespace SafeExchange.Core.Functions
         private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
-            var existingPermissions = await this.dbContext.Permissions
+            var permissions = await this.dbContext.Permissions
                 .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
                 .ToListAsync();
+
+            var names = permissions.Select(p => p.SecretName).Distinct().ToList();
+            var tagMap = new Dictionary<string, List<string>>();
+            if (names.Count > 0)
+            {
+                var objects = await this.dbContext.Objects
+                    .Where(o => names.Contains(o.ObjectName))
+                    .ToListAsync();
+
+                foreach (var o in objects)
+                {
+                    tagMap[o.ObjectName] = o.Tags?.ToList() ?? new List<string>();
+                }
+            }
+
+            var dtos = permissions.Select(p =>
+            {
+                var dto = p.ToDto();
+                dto.Tags = tagMap.TryGetValue(p.SecretName, out var t) ? t.ToList() : new List<string>();
+                return dto;
+            }).ToList();
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<List<SubjectPermissionsOutput>>
                 {
                     Status = "ok",
-                    Result = existingPermissions.Select(p => p.ToDto()).ToList()
+                    Result = dtos
                 });
 
         }, nameof(HandleListSecretMeta), log);

@@ -5,6 +5,7 @@
 namespace SafeExchange.Core.Model.Dto.Output
 {
     using System;
+    using System.Collections.Generic;
 
     public class SubjectPermissionsOutput
     {
@@ -23,5 +24,7 @@ namespace SafeExchange.Core.Model.Dto.Output
         public bool CanGrantAccess { get; set; }
 
         public bool CanRevokeAccess { get; set; }
+
+        public List<string> Tags { get; set; } = new();
     }
 }
