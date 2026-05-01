@@ -92,7 +92,12 @@ namespace SafeExchange.Core.Model
 
         public DateTime ExpireIfUnusedAt { get; set; }
 
-        public List<string> Tags { get; set; } = new();
+        /// <summary>
+        /// Tags applied to this secret. Nullable because pre-tags-feature documents in Cosmos
+        /// have no `tags` field, and EF materialises that as null. All read paths coerce
+        /// null → empty list at the DTO boundary; PATCH never persists null.
+        /// </summary>
+        public List<string>? Tags { get; set; }
 
         internal ObjectMetadataOutput ToDto() => new ()
         {

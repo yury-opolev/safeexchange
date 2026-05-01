@@ -1054,6 +1054,38 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task GetSecret_OnPreFeatureDocument_TolerationOfNullTags()
+        {
+            // Regression: documents created BEFORE the Tags feature have no `tags` field
+            // in Cosmos. EF materialises that as null on a List<string>? property. The
+            // GET handler updates LastAccessedAt and calls SaveChangesAsync; this must
+            // succeed (not throw "required collection is null"), and the DTO must surface
+            // an empty list rather than null.
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var secretId = "preexist-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+            // Seed: create the secret normally, then forcibly set Tags=null on the
+            // tracked entity and save — simulating an old Cosmos document.
+            await CreateSecretAsync(secretId, null, claimsPrincipal);
+            var stored = await this.dbContext.Objects.FindAsync(secretId);
+            Assert.That(stored, Is.Not.Null);
+            stored!.Tags = null;
+            await this.dbContext.SaveChangesAsync();
+
+            // Act: GET via the public handler — it WILL call SaveChangesAsync internally.
+            var getRequest = TestFactory.CreateHttpRequestData("get");
+            var getResponse = await this.secretMeta.Run(getRequest, secretId, claimsPrincipal, this.logger);
+            var okResult = getResponse as TestHttpResponseData;
+
+            // Assert: 200 OK (no throw), DTO has Tags = empty list (never null).
+            Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<ObjectMetadataOutput>>();
+            Assert.That(responseResult?.Result, Is.Not.Null);
+            Assert.That(responseResult!.Result!.Tags, Is.Not.Null);
+            Assert.That(responseResult.Result.Tags, Is.Empty);
+        }
+
+        [Test]
         public void ListSecrets_TagPredicate_TranslatesToArrayContains()
         {
             // Arrange: build the same shape of query the handler builds.
