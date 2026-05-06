@@ -106,14 +106,51 @@ namespace SafeExchange.Core.Permissions
         {
             var allowGroup = this.config.CurrentValue.Ownership == OrphanOwnershipMode.UserOrAppOrGroup;
 
-            return await dbContext.Permissions.AnyAsync(p =>
-                p.SecretName.Equals(secretId)
-                && p.CanGrantAccess
-                && (
-                    p.SubjectType == SubjectType.User
-                    || p.SubjectType == SubjectType.Application
-                    || (allowGroup && p.SubjectType == SubjectType.Group)
-                ));
+            bool IsAllowedType(SubjectType t) =>
+                t == SubjectType.User
+                || t == SubjectType.Application
+                || (allowGroup && t == SubjectType.Group);
+
+            // Reconcile with the change tracker so that callers staging a Remove or
+            // a flag flip see the post-save state of custodianship — not the still-uncommitted DB state.
+            // Without this, a give-up call that staged a Remove on the last custodian's row would be
+            // missed by AnyAsync (which goes to the database, where the row still exists) and the
+            // orphan rule would fail to schedule the grace-period purge.
+
+            // Newly-Added rows that would be custodians count immediately.
+            var addedCustodian = dbContext.ChangeTracker.Entries<SubjectPermissions>()
+                .Any(e => e.State == EntityState.Added
+                    && e.Entity.SecretName.Equals(secretId)
+                    && e.Entity.CanGrantAccess
+                    && IsAllowedType(e.Entity.SubjectType));
+            if (addedCustodian)
+            {
+                return true;
+            }
+
+            // Candidate custodians from the DB — apply CanGrantAccess + allowed-type predicate at the source.
+            var dbCandidates = await dbContext.Permissions
+                .Where(p => p.SecretName.Equals(secretId) && p.CanGrantAccess
+                    && (p.SubjectType == SubjectType.User
+                        || p.SubjectType == SubjectType.Application
+                        || (allowGroup && p.SubjectType == SubjectType.Group)))
+                .ToListAsync();
+
+            foreach (var candidate in dbCandidates)
+            {
+                var entry = dbContext.Entry(candidate);
+                if (entry.State == EntityState.Deleted)
+                {
+                    continue;
+                }
+                if (entry.State == EntityState.Modified && !candidate.CanGrantAccess)
+                {
+                    continue;
+                }
+                return true;
+            }
+
+            return false;
         }
     }
 }

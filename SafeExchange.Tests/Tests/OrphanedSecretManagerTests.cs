@@ -213,6 +213,73 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task ApplyOrphanRuleAsync_PendingRemoveOfLastCustodian_Orphans()
+        {
+            // Reproduces the scenario where a caller stages a Remove on the last custodian row
+            // and then invokes ApplyOrphanRuleAsync in the same transaction (before SaveChangesAsync).
+            await SeedSecret("secret-1");
+            await SeedPermission("secret-1", SubjectType.User, "alice@test", canGrantAccess: true);
+
+            var lastCustodian = await this.dbContext.Permissions
+                .FirstAsync(p => p.SecretName == "secret-1" && p.SubjectId == "alice@test");
+            this.dbContext.Permissions.Remove(lastCustodian);
+
+            var result = await this.manager.ApplyOrphanRuleAsync("secret-1", this.dbContext);
+            await this.dbContext.SaveChangesAsync();
+
+            Assert.That(result.WasOrphaned, Is.True);
+            var metadata = await this.dbContext.Objects.FindAsync("secret-1");
+            Assert.That(metadata.ExpirationMetadata.ScheduleExpiration, Is.True);
+            Assert.That(metadata.ExpirationMetadata.ExpireAt, Is.EqualTo(DateTimeProvider.UtcNow.AddDays(7)));
+        }
+
+        [Test]
+        public async Task ApplyOrphanRuleAsync_PendingFlagFlipOffOnLastCustodian_Orphans()
+        {
+            // Reproduces the scenario where UnsetPermissionAsync flips CanGrantAccess to false on
+            // the last custodian row but leaves the row in place (Modified, not Deleted).
+            await SeedSecret("secret-1");
+            await SeedPermission("secret-1", SubjectType.User, "alice@test", canGrantAccess: true);
+
+            var lastCustodian = await this.dbContext.Permissions
+                .FirstAsync(p => p.SecretName == "secret-1" && p.SubjectId == "alice@test");
+            lastCustodian.CanGrantAccess = false;
+
+            var result = await this.manager.ApplyOrphanRuleAsync("secret-1", this.dbContext);
+            await this.dbContext.SaveChangesAsync();
+
+            Assert.That(result.WasOrphaned, Is.True);
+        }
+
+        [Test]
+        public async Task ApplyOrphanRuleAsync_PendingAddOfNewCustodian_NoOrphan()
+        {
+            // Reproduces the swap-custodian scenario in PATCH: the caller stages both a
+            // Remove of the existing custodian and an Add of a new custodian in the same transaction.
+            // Post-state has a custodian, so no orphan should fire.
+            await SeedSecret("secret-1");
+            await SeedPermission("secret-1", SubjectType.User, "alice@test", canGrantAccess: true);
+
+            var existing = await this.dbContext.Permissions
+                .FirstAsync(p => p.SecretName == "secret-1" && p.SubjectId == "alice@test");
+            this.dbContext.Permissions.Remove(existing);
+
+            var newCustodian = new SubjectPermissions("secret-1", SubjectType.User, "bob@test", "bob@test")
+            {
+                CanRead = true,
+                CanWrite = true,
+                CanGrantAccess = true,
+                CanRevokeAccess = true
+            };
+            this.dbContext.Permissions.Add(newCustodian);
+
+            var result = await this.manager.ApplyOrphanRuleAsync("secret-1", this.dbContext);
+            await this.dbContext.SaveChangesAsync();
+
+            Assert.That(result.WasOrphaned, Is.False);
+        }
+
+        [Test]
         public async Task ApplyOrphanRuleAsync_PreExistingEarlierExpireAt_NeverExtends()
         {
             var earlierExpire = DateTimeProvider.UtcNow.AddDays(2);
