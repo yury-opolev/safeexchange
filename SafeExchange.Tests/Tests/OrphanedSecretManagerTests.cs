@@ -172,6 +172,21 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task ApplyOrphanRuleAsync_OnlyReadOnlyPermissions_Orphans()
+        {
+            await SeedSecret("secret-1");
+            await SeedPermission("secret-1", SubjectType.User, "alice@test", canGrantAccess: false);
+            await SeedPermission("secret-1", SubjectType.User, "bob@test", canGrantAccess: false);
+
+            var result = await this.manager.ApplyOrphanRuleAsync("secret-1", this.dbContext);
+            await this.dbContext.SaveChangesAsync();
+
+            Assert.That(result.WasOrphaned, Is.True);
+            var metadata = await this.dbContext.Objects.FindAsync("secret-1");
+            Assert.That(metadata.ExpirationMetadata.ScheduleExpiration, Is.True);
+        }
+
+        [Test]
         public async Task ApplyOrphanRuleAsync_GroupCustodianUserOrApp_Orphans()
         {
             this.orphanConfig.Ownership = OrphanOwnershipMode.UserOrApp;
