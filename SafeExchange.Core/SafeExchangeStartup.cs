@@ -85,6 +85,7 @@ namespace SafeExchange.Core
             services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
+            services.AddScoped<IOrphanedSecretManager, OrphanedSecretManager>();
             services.AddScoped<IGroupsManager, GroupsManager>();
 
             services.AddScoped<IQueueHelper, QueueHelper>();

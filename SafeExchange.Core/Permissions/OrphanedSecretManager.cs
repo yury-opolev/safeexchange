@@ -1,0 +1,119 @@
+/// <summary>
+/// OrphanedSecretManager
+/// </summary>
+
+namespace SafeExchange.Core.Permissions
+{
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Model;
+    using System;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    public class OrphanedSecretManager : IOrphanedSecretManager
+    {
+        private readonly IOptionsMonitor<Features> features;
+        private readonly IOptionsMonitor<OrphanedSecretConfiguration> config;
+        private readonly ILogger<OrphanedSecretManager> logger;
+
+        public OrphanedSecretManager(
+            IOptionsMonitor<Features> features,
+            IOptionsMonitor<OrphanedSecretConfiguration> config,
+            ILogger<OrphanedSecretManager> logger)
+        {
+            this.features = features ?? throw new ArgumentNullException(nameof(features));
+            this.config = config ?? throw new ArgumentNullException(nameof(config));
+            this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        public async Task<OrphanRulePreview> PreviewAsync(string secretId, SafeExchangeDbContext dbContext)
+        {
+            var hasCustodian = await this.HasCustodianAsync(secretId, dbContext);
+            var metadata = await dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
+
+            DateTime? currentExpireAt = (metadata?.ExpirationMetadata?.ScheduleExpiration ?? false)
+                ? metadata.ExpirationMetadata.ExpireAt
+                : null;
+
+            if (hasCustodian || metadata == null)
+            {
+                return new OrphanRulePreview
+                {
+                    WouldOrphan = false,
+                    CurrentExpireAt = currentExpireAt,
+                    ProspectiveExpireAt = null
+                };
+            }
+
+            var prospective = ComputeProspective(metadata.ExpirationMetadata);
+            return new OrphanRulePreview
+            {
+                WouldOrphan = true,
+                CurrentExpireAt = currentExpireAt,
+                ProspectiveExpireAt = prospective
+            };
+        }
+
+        public async Task<OrphanRuleResult> ApplyOrphanRuleAsync(string secretId, SafeExchangeDbContext dbContext)
+        {
+            if (!this.features.CurrentValue.UseAccessGiveUp)
+            {
+                return new OrphanRuleResult { WasOrphaned = false, ExpireAt = null };
+            }
+
+            var hasCustodian = await this.HasCustodianAsync(secretId, dbContext);
+            if (hasCustodian)
+            {
+                this.logger.LogInformation("Secret '{SecretId}' orphan check: still has custodian (no schedule applied).", secretId);
+                return new OrphanRuleResult { WasOrphaned = false, ExpireAt = null };
+            }
+
+            var metadata = await dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
+            if (metadata == null)
+            {
+                return new OrphanRuleResult { WasOrphaned = false, ExpireAt = null };
+            }
+
+            var prospective = ComputeProspective(metadata.ExpirationMetadata);
+
+            metadata.ExpirationMetadata.ScheduleExpiration = true;
+            metadata.ExpirationMetadata.ExpireAt = prospective;
+
+            this.logger.LogInformation(
+                "Secret '{SecretId}' has no custodian after permission change. Scheduled for purge at {ExpireAt}.",
+                secretId, prospective);
+
+            return new OrphanRuleResult { WasOrphaned = true, ExpireAt = prospective };
+        }
+
+        private DateTime ComputeProspective(ExpirationMetadata metadata)
+        {
+            var now = DateTimeProvider.UtcNow;
+            var grace = now + this.config.CurrentValue.GracePeriod;
+
+            if (metadata.ScheduleExpiration && metadata.ExpireAt <= grace)
+            {
+                return metadata.ExpireAt;
+            }
+
+            return grace;
+        }
+
+        private async Task<bool> HasCustodianAsync(string secretId, SafeExchangeDbContext dbContext)
+        {
+            var allowGroup = this.config.CurrentValue.Ownership == OrphanOwnershipMode.UserOrAppOrGroup;
+
+            return await dbContext.Permissions.AnyAsync(p =>
+                p.SecretName.Equals(secretId)
+                && p.CanGrantAccess
+                && (
+                    p.SubjectType == SubjectType.User
+                    || p.SubjectType == SubjectType.Application
+                    || (allowGroup && p.SubjectType == SubjectType.Group)
+                ));
+        }
+    }
+}
