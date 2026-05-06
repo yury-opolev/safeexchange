@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// SafeExchangeAccess
 /// </summary>
 
@@ -7,6 +7,8 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Groups;
@@ -33,7 +35,19 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IOrphanedSecretManager orphanedSecretManager;
+
+        private readonly IOptionsMonitor<Features> features;
+
+        public SafeExchangeAccess(
+            SafeExchangeDbContext dbContext,
+            IGroupsManager groupsManager,
+            ITokenHelper tokenHelper,
+            GlobalFilters globalFilters,
+            IPurger purger,
+            IPermissionsManager permissionsManager,
+            IOrphanedSecretManager orphanedSecretManager,
+            IOptionsMonitor<Features> features)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.groupsManager = groupsManager ?? throw new ArgumentNullException(nameof(groupsManager));
@@ -41,6 +55,8 @@ namespace SafeExchange.Core.Functions
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.orphanedSecretManager = orphanedSecretManager ?? throw new ArgumentNullException(nameof(orphanedSecretManager));
+            this.features = features ?? throw new ArgumentNullException(nameof(features));
         }
 
         public async Task<HttpResponseData> Run(
@@ -112,6 +128,11 @@ namespace SafeExchange.Core.Functions
                         return await this.RevokeAccessAsync(existingMetadata.ObjectName, request, log);
                     }
 
+                case "patch":
+                    {
+                        return await this.PatchAccessAsync(existingMetadata.ObjectName, request, subjectType, subjectId, log);
+                    }
+
                 default:
                     return await ActionResults.CreateResponseAsync(
                         request, HttpStatusCode.BadRequest,
@@ -133,23 +154,7 @@ namespace SafeExchange.Core.Functions
 
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
             {
-                var permission = permissionInput.GetPermissionType();
-                if (!userCanRevokeAccess)
-                {
-                    permission &= ~PermissionType.RevokeAccess;
-                }
-
-                var subjectType = permissionInput.SubjectType.ToModel();
-                if (subjectType.Equals(SubjectType.Group))
-                {
-                    await this.GrantAccessToGroupAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
-                }
-                else
-                {
-                    var permissionsSubjectId = permissionInput.SubjectName;
-                    log.LogInformation($"Setting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
-                    await this.permissionsManager.SetPermissionAsync(subjectType, permissionsSubjectId, permissionInput.SubjectName, secretId, permission);
-                }
+                await this.ApplyGrantAsync(secretId, permissionInput, userCanRevokeAccess, subjectType, subjectId, log);
             }
 
             await this.dbContext.SaveChangesAsync();
@@ -158,6 +163,26 @@ namespace SafeExchange.Core.Functions
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(GrantAccessAsync), log);
+
+        private async Task ApplyGrantAsync(string secretId, SubjectPermissionsInput permissionInput, bool userCanRevokeAccess, SubjectType callerType, string callerId, ILogger log)
+        {
+            var permission = permissionInput.GetPermissionType();
+            if (!userCanRevokeAccess)
+            {
+                permission &= ~PermissionType.RevokeAccess;
+            }
+
+            var inputSubjectType = permissionInput.SubjectType.ToModel();
+            if (inputSubjectType.Equals(SubjectType.Group))
+            {
+                await this.GrantAccessToGroupAsync(secretId, permissionInput, permission, callerType, callerId, log);
+            }
+            else
+            {
+                log.LogInformation($"Setting permissions for '{secretId}': '{inputSubjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                await this.permissionsManager.SetPermissionAsync(inputSubjectType, permissionInput.SubjectName, permissionInput.SubjectName, secretId, permission);
+            }
+        }
 
         private async Task GrantAccessToGroupAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
         {
@@ -219,9 +244,14 @@ namespace SafeExchange.Core.Functions
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
             {
                 var permission = permissionInput.GetPermissionType();
-                var subjectType = permissionInput.SubjectType.ToModel();
-                log.LogInformation($"Unsetting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
-                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permission);
+                var inputSubjectType = permissionInput.SubjectType.ToModel();
+                log.LogInformation($"Unsetting permissions for '{secretId}': '{inputSubjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                await this.permissionsManager.UnsetPermissionAsync(inputSubjectType, permissionInput.SubjectName, secretId, permission);
+            }
+
+            if (this.features.CurrentValue.UseAccessGiveUp)
+            {
+                await this.orphanedSecretManager.ApplyOrphanRuleAsync(secretId, this.dbContext);
             }
 
             await this.dbContext.SaveChangesAsync();
@@ -230,6 +260,75 @@ namespace SafeExchange.Core.Functions
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(RevokeAccessAsync), log);
+
+        private async Task<HttpResponseData> PatchAccessAsync(string secretId, HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+            => await ActionResults.TryCatchAsync(request, async () =>
+        {
+            var input = await this.TryGetAccessUpdateInputAsync(request, log);
+            var addCount = input?.Add?.Count ?? 0;
+            var removeCount = input?.Remove?.Count ?? 0;
+
+            if (addCount == 0 && removeCount == 0)
+            {
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Access update body must include at least one of 'add' or 'remove'." });
+            }
+
+            if (addCount > 0)
+            {
+                if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.GrantAccess))
+                {
+                    var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.Forbidden,
+                        ActionResults.InsufficientPermissions(PermissionType.GrantAccess, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
+                }
+            }
+
+            if (removeCount > 0)
+            {
+                if (!await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess))
+                {
+                    var consentRequired = await this.permissionsManager.IsConsentRequiredAsync(subjectId);
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.Forbidden,
+                        ActionResults.InsufficientPermissions(PermissionType.RevokeAccess, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
+                }
+            }
+
+            // Adds inherit the same RevokeAccess masking behaviour as POST: a caller without RevokeAccess
+            // cannot grant the RevokeAccess flag to others. (If they have RevokeAccess and removeCount > 0
+            // we already verified that above; otherwise check it explicitly.)
+            var userCanRevokeAccess = removeCount > 0
+                || await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess);
+
+            foreach (var rem in input.Remove ?? new List<SubjectPermissionsInput>())
+            {
+                var permission = rem.GetPermissionType();
+                var inputSubjectType = rem.SubjectType.ToModel();
+                log.LogInformation($"PATCH unsetting permissions for '{secretId}': '{inputSubjectType} {rem.SubjectName}' -> '{permission}'");
+                await this.permissionsManager.UnsetPermissionAsync(inputSubjectType, rem.SubjectName, secretId, permission);
+            }
+
+            foreach (var add in input.Add ?? new List<SubjectPermissionsInput>())
+            {
+                await this.ApplyGrantAsync(secretId, add, userCanRevokeAccess, subjectType, subjectId, log);
+            }
+
+            log.LogInformation($"Subject {subjectType} '{subjectId}' applied {addCount} adds and {removeCount} removes to '{secretId}'.");
+
+            if (this.features.CurrentValue.UseAccessGiveUp)
+            {
+                await this.orphanedSecretManager.ApplyOrphanRuleAsync(secretId, this.dbContext);
+            }
+
+            await this.dbContext.SaveChangesAsync();
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
+        }, nameof(PatchAccessAsync), log);
 
         private async Task<List<SubjectPermissionsInput>?> TryGetPermissionsInputAsync(HttpRequestData request, ILogger log)
         {
@@ -241,6 +340,20 @@ namespace SafeExchange.Core.Functions
             catch (Exception exception)
             {
                 log.LogWarning(exception, "Could not parse input data for permissions input.");
+                return null;
+            }
+        }
+
+        private async Task<AccessUpdateInput?> TryGetAccessUpdateInputAsync(HttpRequestData request, ILogger log)
+        {
+            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
+            try
+            {
+                return DefaultJsonSerializer.Deserialize<AccessUpdateInput>(requestBody);
+            }
+            catch (Exception exception)
+            {
+                log.LogWarning(exception, "Could not parse input data for access update input.");
                 return null;
             }
         }
