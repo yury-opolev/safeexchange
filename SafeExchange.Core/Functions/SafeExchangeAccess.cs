@@ -249,10 +249,8 @@ namespace SafeExchange.Core.Functions
                 await this.permissionsManager.UnsetPermissionAsync(inputSubjectType, permissionInput.SubjectName, secretId, permission);
             }
 
-            if (this.features.CurrentValue.UseAccessGiveUp)
-            {
-                await this.orphanedSecretManager.ApplyOrphanRuleAsync(secretId, this.dbContext);
-            }
+            // ApplyOrphanRuleAsync self-gates on Features.UseAccessGiveUp and no-ops when off.
+            await this.orphanedSecretManager.ApplyOrphanRuleAsync(secretId, this.dbContext);
 
             await this.dbContext.SaveChangesAsync();
 
@@ -318,10 +316,8 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"Subject {subjectType} '{subjectId}' applied {addCount} adds and {removeCount} removes to '{secretId}'.");
 
-            if (this.features.CurrentValue.UseAccessGiveUp)
-            {
-                await this.orphanedSecretManager.ApplyOrphanRuleAsync(secretId, this.dbContext);
-            }
+            // ApplyOrphanRuleAsync self-gates on Features.UseAccessGiveUp and no-ops when off.
+            await this.orphanedSecretManager.ApplyOrphanRuleAsync(secretId, this.dbContext);
 
             await this.dbContext.SaveChangesAsync();
 
