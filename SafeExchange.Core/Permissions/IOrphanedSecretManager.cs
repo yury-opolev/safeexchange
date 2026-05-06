@@ -4,8 +4,8 @@
 
 namespace SafeExchange.Core.Permissions
 {
-    using SafeExchange.Core.Model;
     using System.Threading.Tasks;
+    using SafeExchange.Core.Model;
 
     public interface IOrphanedSecretManager
     {
