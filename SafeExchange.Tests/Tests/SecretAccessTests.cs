@@ -164,8 +164,7 @@ namespace SafeExchange.Tests
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager,
-                Mock.Of<IOrphanedSecretManager>(),
-                Mock.Of<IOptionsMonitor<Features>>(x => x.CurrentValue == new Features()));
+                Mock.Of<IOrphanedSecretManager>());
 
             var groupOneId = "01010101-0101-0101-0101-010101010101";
             var groupOneInput = new GroupInput()

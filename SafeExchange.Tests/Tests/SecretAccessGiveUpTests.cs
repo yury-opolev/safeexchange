@@ -110,7 +110,7 @@ namespace SafeExchange.Tests
 
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper, this.globalFilters,
-                this.purger, this.permissionsManager, this.orphanedSecretManager, featuresOptions);
+                this.purger, this.permissionsManager, this.orphanedSecretManager);
 
             this.giveUpHandler = new SafeExchangeAccessGiveUp(
                 this.dbContext, this.tokenHelper, this.globalFilters,

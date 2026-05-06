@@ -7,9 +7,7 @@ namespace SafeExchange.Functions
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Options;
     using SafeExchange.Core;
-    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Groups;
@@ -34,12 +32,11 @@ namespace SafeExchange.Functions
             IPurger purger,
             IPermissionsManager permissionsManager,
             IOrphanedSecretManager orphanedSecretManager,
-            IOptionsMonitor<Features> features,
             ILogger<SafeAccess> log)
         {
             this.accessHandler = new SafeExchangeAccess(
                 dbContext, groupsManager, tokenHelper, globalFilters,
-                purger, permissionsManager, orphanedSecretManager, features);
+                purger, permissionsManager, orphanedSecretManager);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

@@ -7,8 +7,6 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Options;
-    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Groups;
@@ -37,8 +35,6 @@ namespace SafeExchange.Core.Functions
 
         private readonly IOrphanedSecretManager orphanedSecretManager;
 
-        private readonly IOptionsMonitor<Features> features;
-
         public SafeExchangeAccess(
             SafeExchangeDbContext dbContext,
             IGroupsManager groupsManager,
@@ -46,8 +42,7 @@ namespace SafeExchange.Core.Functions
             GlobalFilters globalFilters,
             IPurger purger,
             IPermissionsManager permissionsManager,
-            IOrphanedSecretManager orphanedSecretManager,
-            IOptionsMonitor<Features> features)
+            IOrphanedSecretManager orphanedSecretManager)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.groupsManager = groupsManager ?? throw new ArgumentNullException(nameof(groupsManager));
@@ -56,7 +51,6 @@ namespace SafeExchange.Core.Functions
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
             this.orphanedSecretManager = orphanedSecretManager ?? throw new ArgumentNullException(nameof(orphanedSecretManager));
-            this.features = features ?? throw new ArgumentNullException(nameof(features));
         }
 
         public async Task<HttpResponseData> Run(

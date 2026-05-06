@@ -168,8 +168,7 @@ namespace SafeExchange.Tests
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager,
-                Mock.Of<IOrphanedSecretManager>(),
-                Mock.Of<IOptionsMonitor<Features>>(x => x.CurrentValue == new Features()));
+                Mock.Of<IOrphanedSecretManager>());
 
             this.secretAccessRequest = new SafeExchangeAccessRequest(
                 this.testConfiguration, this.dbContext, this.globalFilters,
