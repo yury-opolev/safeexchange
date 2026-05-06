@@ -198,20 +198,36 @@ Key invariants:
 
 ### `PATCH /v2/access/{secretId}` — atomic update
 
-**Body:**
+**Body:** uses the existing `SubjectPermissionsInput` DTO (per-flag booleans, not a "permission" string), so PATCH body shape is symmetric with what `POST` and `DELETE` accept today:
 
 ```json
 {
   "add": [
-    { "subjectType": "User", "subjectName": "alice@contoso.com", "permission": "Full" }
+    {
+      "subjectType": "User",
+      "subjectName": "alice@contoso.com",
+      "subjectId": "alice@contoso.com",
+      "canRead": true,
+      "canWrite": true,
+      "canGrantAccess": true,
+      "canRevokeAccess": true
+    }
   ],
   "remove": [
-    { "subjectType": "User", "subjectName": "bob@contoso.com", "permission": "Full" }
+    {
+      "subjectType": "User",
+      "subjectName": "bob@contoso.com",
+      "subjectId": "bob@contoso.com",
+      "canRead": true,
+      "canWrite": true,
+      "canGrantAccess": true,
+      "canRevokeAccess": true
+    }
   ]
 }
 ```
 
-Both lists optional but at least one must be non-empty. Otherwise `400 Bad Request`. Reuses existing `SubjectPermissionsInput` DTO.
+Both lists optional but at least one must be non-empty. Otherwise `400 Bad Request`.
 
 **Auth flow:**
 1. Standard prelude (filters, subject resolution, secret existence).
