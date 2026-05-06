@@ -35,7 +35,19 @@ This document lists the SafeExchange REST API endpoints. All endpoints require a
 |--------|------|-------------|
 | POST | `/v2/access/{secretId}` | Grant permissions to users/groups |
 | GET | `/v2/access/{secretId}` | List current permissions for a secret |
+| PATCH | `/v2/access/{secretId}` | Atomically add and/or remove permissions in one transaction |
 | DELETE | `/v2/access/{secretId}` | Revoke permissions |
+
+## Self-revocation (Access Give-Up)
+
+> Available only when `Features.UseAccessGiveUp` is enabled. When the flag is off, both endpoints respond `204 No Content`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v2/access-giveup/{secretId}` | Preview: would the caller's give-up orphan the secret, and at what scheduled expiry |
+| DELETE | `/v2/access-giveup/{secretId}` | Remove the caller's direct permission row; secret is scheduled for purge if no `CanGrantAccess` holder remains |
+
+When `Features.UseAccessGiveUp` is enabled, the existing `DELETE /v2/access/{secretId}` and `PATCH /v2/access/{secretId}` endpoints also evaluate the orphan rule after their permission changes. A secret that ends up with no remaining `CanGrantAccess` custodian is scheduled for grace-period purge (`OrphanedSecret.GracePeriod` in configuration, default 7 days).
 
 ## Access Requests
 
