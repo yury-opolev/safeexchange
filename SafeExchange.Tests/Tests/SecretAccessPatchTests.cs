@@ -481,25 +481,5 @@ namespace SafeExchange.Tests
             var response = await this.secretMeta.Run(request, secretName, claimsPrincipal, this.logger);
             Assert.That((response as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         }
-
-        private async Task GrantAccess(CaseSensitiveClaimsIdentity identity, string secretName, string subjectName, bool read, bool write, bool grantAccess, bool revokeAccess)
-        {
-            var accessRequest = TestFactory.CreateHttpRequestData("post");
-            accessRequest.SetBodyAsJson(new List<SubjectPermissionsInput>
-            {
-                new SubjectPermissionsInput
-                {
-                    SubjectType = SubjectTypeInput.User,
-                    SubjectName = subjectName,
-                    SubjectId = subjectName,
-                    CanRead = read, CanWrite = write,
-                    CanGrantAccess = grantAccess, CanRevokeAccess = revokeAccess
-                }
-            });
-
-            var response = await this.secretAccess.Run(accessRequest, secretName,
-                new ClaimsPrincipal(identity), this.logger);
-            Assert.That((response as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        }
     }
 }
