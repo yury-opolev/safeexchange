@@ -14,6 +14,8 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Audit;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
@@ -25,6 +27,8 @@ namespace SafeExchange.Core.Functions
     {
         private static readonly Regex HexRegex = new("^[0-9a-f]{64}$", RegexOptions.Compiled);
 
+        private readonly Features features;
+
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -35,19 +39,25 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
+        private readonly IAuditWriter auditWriter;
+
         public SafeExchangeContentCommit(IConfiguration configuration, SafeExchangeDbContext dbContext,
-            ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+            ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
         {
             if (configuration is null)
             {
                 throw new ArgumentNullException(nameof(configuration));
             }
 
+            this.features = new Features();
+            configuration.GetSection("Features").Bind(this.features);
+
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
         public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, string contentId,
@@ -66,7 +76,7 @@ namespace SafeExchange.Core.Functions
             }
 
             log.LogInformation($"{nameof(SafeExchangeContentCommit)} triggered for '{secretId}' ({contentId}) by {subjectType} {subjectId}.");
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
@@ -162,6 +172,13 @@ namespace SafeExchange.Core.Functions
                 log.LogInformation(
                     "Content commit verified for '{ContentId}' across {ChunkCount} chunk(s) (hash {Hash})",
                     contentId, existingContent.Chunks.Count, serverHash);
+
+                // Audit payload intentionally omits serverHash (plaintext-derived integrity hash).
+                // Only opaque identifiers — fileName/contentType — are surfaced.
+                await this.auditWriter.AppendAsync(
+                    existingMetadata, SecretAuditEventType.ContentCommitted,
+                    subjectType, subjectId, subjectId,
+                    new { contentId, fileName = existingContent.FileName, contentType = existingContent.ContentType }, log);
 
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<ContentCommitOutput>

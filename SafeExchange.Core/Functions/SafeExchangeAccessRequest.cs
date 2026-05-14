@@ -8,6 +8,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
@@ -36,7 +37,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IDelayedTaskScheduler delayedTaskScheduler;
 
-        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler)
+        private readonly IAuditWriter auditWriter;
+
+        public SafeExchangeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsManager, IDelayedTaskScheduler delayedTaskScheduler, IAuditWriter auditWriter)
         {
             if (configuration == null)
             {
@@ -52,6 +55,7 @@ namespace SafeExchange.Core.Functions
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
             this.delayedTaskScheduler = delayedTaskScheduler ?? throw new ArgumentNullException(nameof(delayedTaskScheduler));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
         public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, ClaimsPrincipal principal, ILogger log)
@@ -70,7 +74,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
             if (existingMetadata == null)
@@ -84,10 +88,10 @@ namespace SafeExchange.Core.Functions
             switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleAccessRequestCreation(request, secretId, subjectType, subjectId, log);
+                    return await this.HandleAccessRequestCreation(request, existingMetadata, subjectType, subjectId, log);
 
                 case "patch":
-                    return await this.HandleAccessRequestUpdate(request, secretId, subjectType, subjectId, log);
+                    return await this.HandleAccessRequestUpdate(request, existingMetadata, subjectType, subjectId, log);
 
                 case "delete":
                     return await this.HandleAccessRequestDeletion(request, secretId, subjectType, subjectId, log);
@@ -127,9 +131,10 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> HandleAccessRequestCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleAccessRequestCreation(HttpRequestData request, ObjectMetadata secret, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
+            var secretId = secret.ObjectName;
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             SubjectPermissionsInput? accessRequestInput;
             try
@@ -184,6 +189,16 @@ namespace SafeExchange.Core.Functions
             log.LogInformation($"Created access request {accessRequest.Id} from {subjectType} {subjectId} for secret '{secretId}'.");
 
             await this.TryNotifyAsync(accessRequest);
+
+            await this.auditWriter.AppendAsync(
+                secret, SecretAuditEventType.AccessRequested,
+                subjectType, subjectId, subjectId,
+                new
+                {
+                    accessRequestId = accessRequest.Id,
+                    requestedPermissions = AuditPayloads.PermissionFlags(requestedPermission),
+                    requestor = new { subjectType = subjectType.ToString(), subjectId, subjectName = subjectId },
+                }, log);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -241,9 +256,10 @@ namespace SafeExchange.Core.Functions
 
         }, nameof(HandleAccessRequestList), log);
 
-        private async Task<HttpResponseData> HandleAccessRequestUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> HandleAccessRequestUpdate(HttpRequestData request, ObjectMetadata secret, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
+            var secretId = secret.ObjectName;
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
             AccessRequestUpdateInput? accessRequestInput;
             try
@@ -309,6 +325,24 @@ namespace SafeExchange.Core.Functions
             await this.dbContext.SaveChangesAsync();
 
             await this.TryNotifyAsync(existingRequest);
+
+            var resolutionType = accessRequestInput.Approve
+                ? SecretAuditEventType.AccessRequestApproved
+                : SecretAuditEventType.AccessRequestDenied;
+            await this.auditWriter.AppendAsync(
+                secret, resolutionType,
+                subjectType, subjectId, subjectId,
+                new
+                {
+                    accessRequestId = existingRequest.Id,
+                    requestedPermissions = AuditPayloads.PermissionFlags(existingRequest.Permission),
+                    requestor = new
+                    {
+                        subjectType = existingRequest.SubjectType.ToString(),
+                        subjectId = existingRequest.SubjectId,
+                        subjectName = existingRequest.SubjectName,
+                    },
+                }, log);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,

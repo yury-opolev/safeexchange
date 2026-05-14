@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// TestHttpRequestData
 /// </summary>
 
@@ -17,8 +17,13 @@ namespace SafeExchange.Tests.Utilities
 
     public class TestHttpRequestData : HttpRequestData
     {
+        private static readonly Uri DefaultUrl = new("http://localhost/");
+
         public TestHttpRequestData(FunctionContext functionContext)
-            : base(functionContext) { }
+            : base(functionContext)
+        {
+            this.url = DefaultUrl;
+        }
 
         public override Stream Body { get => this.body; }
 
@@ -28,7 +33,9 @@ namespace SafeExchange.Tests.Utilities
 
         public override IReadOnlyCollection<IHttpCookie> Cookies { get; }
 
-        public override Uri Url { get; }
+        public override Uri Url { get => this.url; }
+
+        private Uri url;
 
         public override IEnumerable<CaseSensitiveClaimsIdentity> Identities { get => this.identities; }
 
@@ -51,6 +58,23 @@ namespace SafeExchange.Tests.Utilities
         public void SetMethod(string methodToSet)
         {
             this.method = methodToSet;
+        }
+
+        public void SetUrl(Uri urlToSet)
+        {
+            this.url = urlToSet ?? DefaultUrl;
+        }
+
+        public void SetQueryString(string queryString)
+        {
+            if (string.IsNullOrEmpty(queryString))
+            {
+                this.url = DefaultUrl;
+                return;
+            }
+
+            var prefixed = queryString.StartsWith('?') ? queryString : "?" + queryString;
+            this.url = new Uri(DefaultUrl, prefixed);
         }
 
         public void SetBodyAsJson<T>(T content)

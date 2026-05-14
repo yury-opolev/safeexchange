@@ -7,6 +7,7 @@ namespace SafeExchange.Functions
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
@@ -18,7 +19,7 @@ namespace SafeExchange.Functions
 
     public class SafeSecret
     {
-        private const string Version = "v2"; 
+        private const string Version = "v2";
 
         private SafeExchangeSecretMeta metaHandler;
 
@@ -28,15 +29,28 @@ namespace SafeExchange.Functions
 
         private SafeExchangeContentCommit contentCommitHandler;
 
+        private SafeExchangeSecretAudit auditHandler;
+
         private readonly ILogger log;
 
-        public SafeSecret(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IBlobHelper blobHelper, ILogger<SafeSecret> log)
+        public SafeSecret(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IBlobHelper blobHelper, IAuditWriter auditWriter, ILogger<SafeSecret> log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
-            this.metaHandler = new SafeExchangeSecretMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
-            this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
-            this.contentHandler = new SafeExchangeSecretStream(configuration, dbContext, tokenHelper, globalFilters, purger, blobHelper, permissionsManager);
-            this.contentCommitHandler = new SafeExchangeContentCommit(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
+            this.metaHandler = new SafeExchangeSecretMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
+            this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
+            this.contentHandler = new SafeExchangeSecretStream(configuration, dbContext, tokenHelper, globalFilters, purger, blobHelper, permissionsManager, auditWriter);
+            this.contentCommitHandler = new SafeExchangeContentCommit(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
+            this.auditHandler = new SafeExchangeSecretAudit(dbContext, tokenHelper, globalFilters, permissionsManager);
+        }
+
+        [Function("SafeExchange-SecretAudit")]
+        public async Task<HttpResponseData> RunAudit(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/secret/{{secretId}}/audit")]
+            HttpRequestData request,
+            string secretId)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.auditHandler.Run(request, secretId, principal, this.log);
         }
 
         [Function("SafeExchange-SecretMeta")]

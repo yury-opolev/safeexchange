@@ -87,6 +87,18 @@ namespace SafeExchange.Core.Migrations
                     return;
                 }
 
+                if ("00009".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00009Async();
+                    return;
+                }
+
+                if ("00010".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00010Async();
+                    return;
+                }
+
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
@@ -344,6 +356,108 @@ namespace SafeExchange.Core.Migrations
                     this.log.LogInformation($"Processing {nameof(MigrationItem00008)} '{item.id}'. {nameof(Model.ContentMetadata.Hash)} and {nameof(Model.ContentMetadata.RunningHashState)} default to null for existing embedded content entries.");
                 }
             }
+        }
+
+        private async Task RunMigration00009Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer(nameof(ObjectMetadata));
+
+            // Cosmos-side filter: only docs missing Tags or with Tags == null.
+            // Already-backfilled docs (Tags = [] or populated) are skipped here, so re-runs
+            // don't burn RUs reading the whole container.
+            var query = new QueryDefinition(
+                "SELECT * FROM c WHERE NOT IS_DEFINED(c.Tags) OR IS_NULL(c.Tags)");
+
+            using FeedIterator<MigrationItem00009> feed =
+                container.GetItemQueryIterator<MigrationItem00009>(queryDefinition: query);
+
+            var backfilled = 0;
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00009> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00009 item in response)
+                {
+                    var streamResp = await container.ReadItemStreamAsync(
+                        item.id, new PartitionKey(item.PartitionKey));
+
+                    string original;
+                    using (var reader = new StreamReader(streamResp.Content))
+                    {
+                        original = await reader.ReadToEndAsync();
+                    }
+
+                    var rewritten = TagsBackfill.BackfillIfMissing(original);
+                    if (rewritten is null)
+                    {
+                        // Defensive: the server-side filter should have already excluded
+                        // this doc, but if a writer added Tags between query and read we
+                        // skip without further work.
+                        continue;
+                    }
+
+                    using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rewritten));
+                    await container.ReplaceItemStreamAsync(
+                        ms, item.id, new PartitionKey(item.PartitionKey));
+                    backfilled++;
+                    this.log.LogInformation(
+                        $"Backfilled Tags=[] on {nameof(ObjectMetadata)} '{item.id}'.");
+                }
+            }
+            this.log.LogInformation(
+                $"Migration 00009 complete. Backfilled {backfilled} document(s).");
+        }
+
+        private async Task RunMigration00010Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer(nameof(ObjectMetadata));
+
+            // Cosmos-side filter: only docs missing AuditEnabled or with AuditEnabled == null.
+            // Already-backfilled docs (AuditEnabled in { true, false }) are skipped here, so
+            // re-runs don't burn RUs reading the whole container.
+            var query = new QueryDefinition(
+                "SELECT * FROM c WHERE NOT IS_DEFINED(c.AuditEnabled) OR IS_NULL(c.AuditEnabled)");
+
+            using FeedIterator<MigrationItem00010> feed =
+                container.GetItemQueryIterator<MigrationItem00010>(queryDefinition: query);
+
+            var backfilled = 0;
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00010> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00010 item in response)
+                {
+                    var streamResp = await container.ReadItemStreamAsync(
+                        item.id, new PartitionKey(item.PartitionKey));
+
+                    string original;
+                    using (var reader = new StreamReader(streamResp.Content))
+                    {
+                        original = await reader.ReadToEndAsync();
+                    }
+
+                    var rewritten = AuditFieldsBackfill.BackfillIfMissing(original);
+                    if (rewritten is null)
+                    {
+                        // Defensive: the server-side filter should have already excluded
+                        // this doc, but if a writer added AuditEnabled between query and
+                        // read we skip without further work.
+                        continue;
+                    }
+
+                    using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rewritten));
+                    await container.ReplaceItemStreamAsync(
+                        ms, item.id, new PartitionKey(item.PartitionKey));
+                    backfilled++;
+                    this.log.LogInformation(
+                        $"Backfilled AuditEnabled=false on {nameof(ObjectMetadata)} '{item.id}'.");
+                }
+            }
+            this.log.LogInformation(
+                $"Migration 00010 complete. Backfilled {backfilled} document(s).");
         }
 
         private async Task MigrateItem00001Async(Container container, MigrationItem00001 item)

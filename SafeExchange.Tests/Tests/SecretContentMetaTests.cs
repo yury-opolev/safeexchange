@@ -148,11 +148,11 @@ namespace SafeExchange.Tests
 
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             this.secretContentMeta = new SafeExchangeSecretContentMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
         }
 
         [TearDown]

@@ -9,6 +9,7 @@ namespace SafeExchange.Functions.Functions
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.DelayedTasks;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
@@ -24,9 +25,9 @@ namespace SafeExchange.Functions.Functions
 
         private readonly ILogger log;
 
-        public SafeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsMaanger, IDelayedTaskScheduler delayedTaskScheduler, ILogger<SafeAccessRequest> log)
+        public SafeAccessRequest(IConfiguration configuration, SafeExchangeDbContext dbContext, GlobalFilters globalFilters, ITokenHelper tokenHelper, IPurger purger, IPermissionsManager permissionsMaanger, IDelayedTaskScheduler delayedTaskScheduler, IAuditWriter auditWriter, ILogger<SafeAccessRequest> log)
         {
-            this.accessRequestHandler = new SafeExchangeAccessRequest(configuration, dbContext, globalFilters, tokenHelper, purger, permissionsMaanger, delayedTaskScheduler);
+            this.accessRequestHandler = new SafeExchangeAccessRequest(configuration, dbContext, globalFilters, tokenHelper, purger, permissionsMaanger, delayedTaskScheduler, auditWriter);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

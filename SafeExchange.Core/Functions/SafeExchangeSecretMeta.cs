@@ -11,6 +11,7 @@ namespace SafeExchange.Core.Functions
     using System.IO;
 
     using Microsoft.Extensions.Configuration;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
@@ -18,8 +19,10 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
+    using System.Collections.Generic;
     using System.Net;
 
     public class SafeExchangeSecretMeta
@@ -36,7 +39,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeSecretMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IAuditWriter auditWriter;
+
+        public SafeExchangeSecretMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
         {
             if (configuration == null)
             {
@@ -51,6 +56,7 @@ namespace SafeExchange.Core.Functions
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
         public async Task<HttpResponseData> Run(
@@ -71,7 +77,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
             
             switch (request.Method.ToLower())
             {
@@ -126,16 +132,68 @@ namespace SafeExchange.Core.Functions
         private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
-            var existingPermissions = await this.dbContext.Permissions
+            var rawTags = Array.Empty<string>();
+            var query = request.Url?.Query;
+            if (!string.IsNullOrEmpty(query))
+            {
+                rawTags = System.Web.HttpUtility.ParseQueryString(query).GetValues("tag") ?? Array.Empty<string>();
+            }
+
+            var (tagsOk, requiredTags, tagsError) = TagValidator.TryNormalizeList(rawTags);
+            if (!tagsOk)
+            {
+                log.LogInformation($"Invalid tag filter: {tagsError}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
+            }
+
+            var permissions = await this.dbContext.Permissions
                 .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
                 .ToListAsync();
+
+            var names = permissions.Select(p => p.SecretName).Distinct().ToList();
+            var tagMap = new Dictionary<string, List<string>>();
+            if (names.Count > 0)
+            {
+                IQueryable<ObjectMetadata> tagQuery = this.dbContext.Objects
+                    .Where(o => names.Contains(o.ObjectName));
+
+                foreach (var rt in requiredTags)
+                {
+                    var tag = rt; // local capture so closure binds correctly
+                    tagQuery = tagQuery.Where(o => o.Tags.Contains(tag));
+                }
+
+                var tagPairs = await tagQuery
+                    .Select(o => new { o.ObjectName, o.Tags })
+                    .ToListAsync();
+
+                foreach (var pair in tagPairs)
+                {
+                    tagMap[pair.ObjectName] = pair.Tags?.ToList() ?? new List<string>();
+                }
+            }
+
+            if (requiredTags.Count > 0)
+            {
+                var matched = new HashSet<string>(tagMap.Keys);
+                permissions = permissions.Where(p => matched.Contains(p.SecretName)).ToList();
+            }
+
+            var dtos = permissions.Select(p =>
+            {
+                var dto = p.ToDto();
+                dto.Tags = tagMap.TryGetValue(p.SecretName, out var t) ? t.ToList() : new List<string>();
+                return dto;
+            }).ToList();
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<List<SubjectPermissionsOutput>>
                 {
                     Status = "ok",
-                    Result = existingPermissions.Select(p => p.ToDto()).ToList()
+                    Result = dtos
                 });
 
         }, nameof(HandleListSecretMeta), log);
@@ -182,8 +240,32 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
             }
 
+            var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);
+            if (!tagsOk)
+            {
+                log.LogInformation($"Invalid tags for secret '{secretId}': {tagsError}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
+            }
+            metadataInput.Tags = normalisedTags.ToList();
+
             var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
             log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '{subjectId}' are set.");
+
+            if (createdMetadata.AuditEnabled)
+            {
+                await this.auditWriter.EnsureAnchorAsync(createdMetadata, subjectId);
+                var creationPayload = new
+                {
+                    tags = createdMetadata.Tags ?? new List<string>(),
+                    expirationSettings = createdMetadata.ExpirationMetadata.ToDto(),
+                    auditEnabled = true,
+                };
+                await this.auditWriter.AppendAsync(
+                    createdMetadata, SecretAuditEventType.SecretCreated,
+                    subjectType, subjectId, subjectId, creationPayload, log);
+            }
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -282,8 +364,38 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
             }
 
+            if (metadataInput.Tags is not null)
+            {
+                var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);
+                if (!tagsOk)
+                {
+                    log.LogInformation($"Invalid tags for secret '{secretId}': {tagsError}.");
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
+                }
+                metadataInput.Tags = normalisedTags.ToList();
+            }
+
+            // Build the audit diff against the live entity BEFORE UpdateMetadataAsync mutates
+            // it in place. MetadataDiffBuilder is the single canonical implementation; do not
+            // re-inline diff logic here.
+            string? diffJson = null;
+            if (existingMetadata.AuditEnabled)
+            {
+                diffJson = MetadataDiffBuilder.BuildDiff(existingMetadata, metadataInput);
+            }
+
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
             log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
+
+            if (diffJson is not null)
+            {
+                var diffObj = System.Text.Json.JsonSerializer.Deserialize<object>(diffJson);
+                await this.auditWriter.AppendAsync(
+                    updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
+                    subjectType, subjectId, subjectId, diffObj, log);
+            }
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -317,7 +429,7 @@ namespace SafeExchange.Core.Functions
                     ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
-            await this.purger.PurgeAsync(secretId, this.dbContext);
+            await this.purger.PurgeAsync(secretId, this.dbContext, this.auditWriter, subjectType, subjectId, this.features.AuditRetentionDays);
             log.LogInformation($"{subjectType} '{subjectId}' deleted secret '{secretId}'");
 
             return await ActionResults.CreateResponseAsync(
@@ -343,6 +455,11 @@ namespace SafeExchange.Core.Functions
             var updatedExpirationMetadata = new ExpirationMetadata(metadataInput.ExpirationSettings);
             existingMetadata.ExpirationMetadata = updatedExpirationMetadata;
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
+
+            if (metadataInput.Tags is not null)
+            {
+                existingMetadata.Tags = metadataInput.Tags.ToList();
+            }
 
             await this.dbContext.SaveChangesAsync();
 

@@ -20,6 +20,8 @@ namespace SafeExchange.Core.Configuration
 
         public bool IgnoreChunkHashHeader { get; set; } = false;
 
+        public int AuditRetentionDays { get; set; } = 365;
+
         public Features Clone() => new Features()
             {
                 UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
@@ -28,6 +30,7 @@ namespace SafeExchange.Core.Configuration
                 UseGraphGroupSearch = this.UseGraphGroupSearch,
                 AllowLegacyAttachmentUploads = this.AllowLegacyAttachmentUploads,
                 IgnoreChunkHashHeader = this.IgnoreChunkHashHeader,
+                AuditRetentionDays = this.AuditRetentionDays,
         };
 
         public override bool Equals(object obj)
@@ -43,12 +46,14 @@ namespace SafeExchange.Core.Configuration
                 this.UseGraphUserSearch.Equals(other.UseGraphUserSearch) &&
                 this.UseGraphGroupSearch.Equals(other.UseGraphGroupSearch) &&
                 this.AllowLegacyAttachmentUploads.Equals(other.AllowLegacyAttachmentUploads) &&
-                this.IgnoreChunkHashHeader.Equals(other.IgnoreChunkHashHeader);
+                this.IgnoreChunkHashHeader.Equals(other.IgnoreChunkHashHeader) &&
+                this.AuditRetentionDays.Equals(other.AuditRetentionDays);
         }
 
         public override int GetHashCode() => HashCode.Combine(
             this.UseExternalWebHookNotifications, this.UseGroupsAuthorization,
             this.UseGraphUserSearch, this.UseGraphGroupSearch,
-            this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader);
+            this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader,
+            this.AuditRetentionDays);
     }
 }

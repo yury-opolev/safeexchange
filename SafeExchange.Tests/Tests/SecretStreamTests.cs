@@ -186,15 +186,15 @@ namespace SafeExchange.Tests
 
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             this.secretContentMeta = new SafeExchangeSecretContentMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             this.secretStream = new SafeExchangeSecretStream(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.blobHelper, this.permissionsManager);
+                this.globalFilters, this.purger, this.blobHelper, this.permissionsManager, new NoOpAuditWriter());
 
             this.CreateSecret(DefaultSecretName).GetAwaiter().GetResult();
         }
@@ -1224,7 +1224,7 @@ namespace SafeExchange.Tests
 
             var strictStream = new SafeExchangeSecretStream(
                 strictConfig, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.blobHelper, this.permissionsManager);
+                this.globalFilters, this.purger, this.blobHelper, this.permissionsManager, new NoOpAuditWriter());
 
             var body = this.imageContent_part_1;
 
