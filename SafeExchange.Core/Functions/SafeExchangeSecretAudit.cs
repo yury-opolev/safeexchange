@@ -93,13 +93,16 @@ namespace SafeExchange.Core.Functions
                 var raw = bool.TryParse(qs["raw"], out var r) && r;
                 var pageSize = int.TryParse(qs["pageSize"], out var p) ? Math.Clamp(p, 1, MaxPageSize) : DefaultPageSize;
                 var after = TryDecodeContinuation(qs["continuation"]);
+                var descending = string.Equals(qs["direction"], "desc", StringComparison.OrdinalIgnoreCase);
 
                 var instanceId = metadata.AuditInstanceId!;
                 var query = this.dbContext.SecretAuditEvents.Where(e => e.AuditInstanceId == instanceId);
                 if (after.HasValue)
                 {
                     var afterVal = after.Value;
-                    query = query.Where(e => e.SequenceNumber > afterVal);
+                    query = descending
+                        ? query.Where(e => e.SequenceNumber < afterVal)
+                        : query.Where(e => e.SequenceNumber > afterVal);
                 }
                 if (from.HasValue)
                 {
@@ -112,7 +115,10 @@ namespace SafeExchange.Core.Functions
                     query = query.Where(e => e.OccurredAt < toVal);
                 }
 
-                var events = await query.OrderBy(e => e.SequenceNumber).Take(pageSize + 1).ToListAsync();
+                var ordered = descending
+                    ? query.OrderByDescending(e => e.SequenceNumber)
+                    : query.OrderBy(e => e.SequenceNumber);
+                var events = await ordered.Take(pageSize + 1).ToListAsync();
                 string? nextToken = null;
                 if (events.Count > pageSize)
                 {
@@ -121,7 +127,21 @@ namespace SafeExchange.Core.Functions
                     events = events.GetRange(0, pageSize);
                 }
 
-                var dtoEvents = raw ? ContentReadMerger.Raw(events) : ContentReadMerger.Merge(events);
+                // ContentReadMerger expects ascending input. When paging desc, reverse the
+                // page in/out so the merger sees ascending and the response preserves desc.
+                List<SecretAuditEventOutput> dtoEvents;
+                if (descending)
+                {
+                    var ascForMerge = new List<SecretAuditEvent>(events);
+                    ascForMerge.Reverse();
+                    var merged = raw ? ContentReadMerger.Raw(ascForMerge) : ContentReadMerger.Merge(ascForMerge);
+                    merged.Reverse();
+                    dtoEvents = merged;
+                }
+                else
+                {
+                    dtoEvents = raw ? ContentReadMerger.Raw(events) : ContentReadMerger.Merge(events);
+                }
 
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
