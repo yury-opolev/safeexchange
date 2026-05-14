@@ -12,6 +12,7 @@ namespace SafeExchange.Core
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.AzureAd;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
@@ -86,6 +87,9 @@ namespace SafeExchange.Core
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
             services.AddScoped<IGroupsManager, GroupsManager>();
+
+            services.AddScoped<IAuditWriter, AuditWriter>();
+            services.AddScoped<IAuditPurger, AuditPurger>();
 
             services.AddScoped<IQueueHelper, QueueHelper>();
             services.AddScoped<IDelayedTaskScheduler, DelayedTaskScheduler>();
