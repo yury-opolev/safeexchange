@@ -164,7 +164,7 @@ namespace SafeExchange.Core.Functions
                     var afterPerm = beforePerm | permission;
                     await this.auditWriter.AppendAsync(
                         secret, SecretAuditEventType.PermissionGranted,
-                        subjectType, subjectId, subjectId,
+                        subjectType, subjectId,
                         new
                         {
                             target = new
@@ -284,7 +284,7 @@ namespace SafeExchange.Core.Functions
                     var afterPerm = beforePerm & ~permission;
                     await this.auditWriter.AppendAsync(
                         secret, SecretAuditEventType.PermissionRevoked,
-                        actorType, actorId, actorId,
+                        actorType, actorId,
                         new
                         {
                             target = new

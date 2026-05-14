@@ -177,7 +177,7 @@ namespace SafeExchange.Core.Functions
                 // Only opaque identifiers — fileName/contentType — are surfaced.
                 await this.auditWriter.AppendAsync(
                     existingMetadata, SecretAuditEventType.ContentCommitted,
-                    subjectType, subjectId, subjectId,
+                    subjectType, subjectId,
                     new { contentId, fileName = existingContent.FileName, contentType = existingContent.ContentType }, log);
 
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,

@@ -19,7 +19,6 @@ namespace SafeExchange.Tests.Utilities
             SecretAuditEventType eventType,
             SubjectType actorType,
             string actorId,
-            string actorDisplayName,
             object? payload,
             ILogger log,
             CancellationToken ct = default) => ValueTask.CompletedTask;

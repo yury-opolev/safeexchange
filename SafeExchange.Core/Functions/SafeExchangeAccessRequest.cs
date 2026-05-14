@@ -192,7 +192,7 @@ namespace SafeExchange.Core.Functions
 
             await this.auditWriter.AppendAsync(
                 secret, SecretAuditEventType.AccessRequested,
-                subjectType, subjectId, subjectId,
+                subjectType, subjectId,
                 new
                 {
                     accessRequestId = accessRequest.Id,
@@ -331,7 +331,7 @@ namespace SafeExchange.Core.Functions
                 : SecretAuditEventType.AccessRequestDenied;
             await this.auditWriter.AppendAsync(
                 secret, resolutionType,
-                subjectType, subjectId, subjectId,
+                subjectType, subjectId,
                 new
                 {
                     accessRequestId = existingRequest.Id,

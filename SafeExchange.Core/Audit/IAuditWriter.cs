@@ -13,12 +13,16 @@ namespace SafeExchange.Core.Audit
 
     public interface IAuditWriter
     {
+        /// <summary>
+        /// Append an event. The actor's display name is resolved from server-stored
+        /// records (User.DisplayName / Application.DisplayName) rather than trusted
+        /// directly from a token claim — see OWASP review finding F1.
+        /// </summary>
         ValueTask AppendAsync(
             ObjectMetadata secret,
             SecretAuditEventType eventType,
             SubjectType actorType,
             string actorId,
-            string actorDisplayName,
             object? payload,
             ILogger log,
             CancellationToken ct = default);
