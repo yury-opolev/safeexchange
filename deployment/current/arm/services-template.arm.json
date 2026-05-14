@@ -2596,6 +2596,15 @@
                         "kind": "Hash",
                         "version": 2
                     },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/SequenceNumber"
+                                ]
+                            }
+                        ]
+                    },
                     "conflictResolutionPolicy": {
                         "mode": "LastWriterWins",
                         "conflictResolutionPath": "/_ts"

@@ -51,7 +51,7 @@ namespace SafeExchange.Tests
             var writer = new AuditWriter(new ThrowingDbContextFactory(), NullLogger<AuditWriter>.Instance);
 
             // Must not throw — the no-op fast-path returns before touching the factory.
-            await writer.AppendAsync(secret, SecretAuditEventType.SecretCreated, SubjectType.User, "u@x", "U", payload: new { }, NullLogger.Instance);
+            await writer.AppendAsync(secret, SecretAuditEventType.SecretCreated, SubjectType.User, "u@x", payload: new { }, NullLogger.Instance);
         }
 
         [Test]
@@ -74,7 +74,7 @@ namespace SafeExchange.Tests
         public async Task AppendAsync_NullSecret_DoesNotTouchDbContext()
         {
             var writer = new AuditWriter(new ThrowingDbContextFactory(), NullLogger<AuditWriter>.Instance);
-            await writer.AppendAsync(null!, SecretAuditEventType.SecretCreated, SubjectType.User, "u@x", "U", payload: null, NullLogger.Instance);
+            await writer.AppendAsync(null!, SecretAuditEventType.SecretCreated, SubjectType.User, "u@x", payload: null, NullLogger.Instance);
         }
 
         [Test]

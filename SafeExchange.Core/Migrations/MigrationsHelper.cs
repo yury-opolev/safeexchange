@@ -433,6 +433,13 @@ namespace SafeExchange.Core.Migrations
                     var streamResp = await container.ReadItemStreamAsync(
                         item.id, new PartitionKey(item.PartitionKey));
 
+                    // Capture the etag from the read response so the replace fails with
+                    // 412 PreconditionFailed if a concurrent writer mutated the doc
+                    // between read and replace (e.g., a user creating an audit-enabled
+                    // secret with this name). Without this, the migration could
+                    // silently disable audit on a freshly-tampered secret.
+                    var etag = streamResp.Headers.ETag;
+
                     string original;
                     using (var reader = new StreamReader(streamResp.Content))
                     {
@@ -449,8 +456,15 @@ namespace SafeExchange.Core.Migrations
                     }
 
                     using var ms = new MemoryStream(Encoding.UTF8.GetBytes(rewritten));
-                    await container.ReplaceItemStreamAsync(
-                        ms, item.id, new PartitionKey(item.PartitionKey));
+                    using var replaceResp = await container.ReplaceItemStreamAsync(
+                        ms, item.id, new PartitionKey(item.PartitionKey),
+                        new ItemRequestOptions { IfMatchEtag = etag });
+                    if (replaceResp.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+                    {
+                        this.log.LogInformation(
+                            $"Skipping {nameof(ObjectMetadata)} '{item.id}': concurrent write detected (etag mismatch).");
+                        continue;
+                    }
                     backfilled++;
                     this.log.LogInformation(
                         $"Backfilled AuditEnabled=false on {nameof(ObjectMetadata)} '{item.id}'.");

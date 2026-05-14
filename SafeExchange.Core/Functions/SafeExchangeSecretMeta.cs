@@ -264,7 +264,7 @@ namespace SafeExchange.Core.Functions
                 };
                 await this.auditWriter.AppendAsync(
                     createdMetadata, SecretAuditEventType.SecretCreated,
-                    subjectType, subjectId, subjectId, creationPayload, log);
+                    subjectType, subjectId, creationPayload, log);
             }
 
             return await ActionResults.CreateResponseAsync(
@@ -394,7 +394,7 @@ namespace SafeExchange.Core.Functions
                 var diffObj = System.Text.Json.JsonSerializer.Deserialize<object>(diffJson);
                 await this.auditWriter.AppendAsync(
                     updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
-                    subjectType, subjectId, subjectId, diffObj, log);
+                    subjectType, subjectId, diffObj, log);
             }
 
             return await ActionResults.CreateResponseAsync(

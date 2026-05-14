@@ -45,7 +45,7 @@ namespace SafeExchange.Core.Purger
             {
                 await auditWriter.AppendAsync(
                     metadataToDelete, SecretAuditEventType.SecretDeleted,
-                    actorType, actorId, actorId, payload: new { }, this.log);
+                    actorType, actorId, payload: new { }, this.log);
                 await auditWriter.StampDeletionAsync(metadataToDelete, actorId, auditRetentionDays);
             }
 
