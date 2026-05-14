@@ -23,6 +23,9 @@ namespace SafeExchange.Core.Model
             this.Content = CreateContent(true);
             this.Tags = input.Tags is null ? new List<string>() : input.Tags.ToList();
 
+            this.AuditEnabled = input.AuditEnabled ?? false;
+            this.AuditInstanceId = this.AuditEnabled ? Guid.NewGuid().ToString("D").ToLowerInvariant() : null;
+
             this.KeepInStorage = true;
             this.CreatedBy = createdBy;
             this.CreatedAt = DateTimeProvider.UtcNow;
@@ -94,12 +97,17 @@ namespace SafeExchange.Core.Model
 
         public List<string> Tags { get; set; } = new();
 
+        public bool AuditEnabled { get; set; }
+
+        public string? AuditInstanceId { get; set; }
+
         internal ObjectMetadataOutput ToDto() => new ()
         {
             ObjectName = this.ObjectName,
             Content = this.Content?.Select(x => x.ToDto()).ToList() ?? Array.Empty<ContentMetadataOutput>().ToList(),
             ExpirationSettings = this.ExpirationMetadata.ToDto(),
-            Tags = this.Tags?.ToList() ?? new List<string>()
+            Tags = this.Tags?.ToList() ?? new List<string>(),
+            AuditEnabled = this.AuditEnabled
         };
 
         private string GetPartitionKey()

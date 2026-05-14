@@ -12,5 +12,7 @@ namespace SafeExchange.Core.Model.Dto.Input
         public ExpirationSettingsInput ExpirationSettings { get; set; }
 
         public List<string>? Tags { get; set; }
+
+        public bool? AuditEnabled { get; set; }
     }
 }

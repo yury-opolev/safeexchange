@@ -16,5 +16,7 @@ namespace SafeExchange.Core.Model.Dto.Output
         public ExpirationSettingsOutput ExpirationSettings { get; set; }
 
         public List<string> Tags { get; set; } = new();
+
+        public bool AuditEnabled { get; set; }
     }
 }
