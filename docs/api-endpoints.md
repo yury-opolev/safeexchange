@@ -6,11 +6,12 @@ This document lists the SafeExchange REST API endpoints. All endpoints require a
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v2/secret/{secretId}` | Create a new secret |
+| POST | `/v2/secret/{secretId}` | Create a new secret (accepts optional `auditEnabled: true` in the body to opt the secret into audit logging at creation time) |
 | GET | `/v2/secret/{secretId}` | Get secret metadata |
 | PATCH | `/v2/secret/{secretId}` | Update secret metadata |
 | DELETE | `/v2/secret/{secretId}` | Delete a secret |
 | GET | `/v2/secret` | List secrets accessible to the caller |
+| GET | `/v2/secret/{secretId}/audit` | Read the audit log for the live instance of a secret. Requires `Read`. Returns `{ auditEnabled: false, events: [] }` when audit was not enabled. Query params: `from`, `to` (ISO-8601 UTC), `pageSize` (max 500), `continuation`, `raw` (return un-merged `ContentRead` events). |
 
 ## Content
 

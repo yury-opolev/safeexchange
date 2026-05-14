@@ -27,6 +27,9 @@ The top-level entity representing a secret. Each secret has a unique name chosen
 | CreatedBy | UPN of the creator |
 | CreatedAt | Creation timestamp |
 | ExpirationMetadata | Embedded expiration policy |
+| Tags | Optional list of string labels for filtering |
+| AuditEnabled | Whether audit logging is on for this secret. Set at creation, immutable. |
+| AuditInstanceId | GUID partition key for this secret's audit anchor and events. Allocated only when `AuditEnabled = true`. Immutable. |
 
 ### ContentMetadata
 
@@ -86,6 +89,33 @@ Defines when a secret should be automatically purged.
 | ScheduleExpiration | Fixed date/time expiration |
 | IdleExpiration | Delete after N hours/days of no access |
 | ExpireAt | Computed next-expiration timestamp |
+
+### SecretAuditAnchor
+
+One row per audit-enabled secret. Outlives `ObjectMetadata` so events of deleted secrets remain reachable until retention expires.
+
+| Field | Description |
+|-------|-------------|
+| AuditInstanceId | Partition key. Same GUID as `ObjectMetadata.AuditInstanceId`. |
+| SecretObjectName | The secret name at the time of anchor creation. Snapshot; not kept in sync with later renames. |
+| CreatedAt / CreatedBy | When and by whom the audit instance was opened. |
+| DeletedAt / DeletedBy | Stamped on secret delete. |
+| RetentionExpiresAt | `DeletedAt + Features.AuditRetentionDays`. Daily `SafeExchange-AuditPurge` sweeps anchors past this point. |
+
+### SecretAuditEvent
+
+One row per recorded action. Append-only; never updated or deleted by application code. Partition key = `AuditInstanceId`.
+
+| Field | Description |
+|-------|-------------|
+| id | `{AuditInstanceId}|{SequenceNumber:D12}` |
+| AuditInstanceId | Partition key. |
+| SequenceNumber | Per-anchor monotonic counter, starts at 1. |
+| EventType | `SecretCreated`, `SecretMetadataUpdated`, `SecretDeleted`, `PermissionGranted`, `PermissionRevoked`, `ContentRead`, `ContentWritten`, `ContentCommitted`, `AccessRequested`, `AccessRequestApproved`, `AccessRequestDenied`. |
+| OccurredAt | UTC timestamp. |
+| ActorSubjectType / ActorSubjectId / ActorDisplayName | Who triggered the event. `system:purger` for passive expiration. |
+| Payload | Event-specific JSON. Never contains content bytes or plaintext-derived hashes. |
+| PrevHash / Hash | SHA-256 hash chain for tamper-evidence. |
 
 ### WebhookSubscription
 
