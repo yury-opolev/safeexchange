@@ -163,15 +163,15 @@ namespace SafeExchange.Tests
 
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             this.secretAccessRequest = new SafeExchangeAccessRequest(
                 this.testConfiguration, this.dbContext, this.globalFilters,
-                this.tokenHelper, this.purger, this.permissionsManager, this.delayedTaskScheduler);
+                this.tokenHelper, this.purger, this.permissionsManager, this.delayedTaskScheduler, new NoOpAuditWriter());
         }
 
         [TearDown]

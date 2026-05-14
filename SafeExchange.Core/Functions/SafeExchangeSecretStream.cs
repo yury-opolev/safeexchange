@@ -93,7 +93,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeSecretStream)} triggered for '{secretId}' ({contentId}, {chunkId}) by {subjectType} {subjectId}, [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             switch (request.Method.ToLower())
             {
@@ -135,7 +135,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeSecretStream)}-ContentDownload triggered for '{secretId}' ({contentId}) by {subjectType} {subjectId}, [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             switch (request.Method.ToLower())
             {

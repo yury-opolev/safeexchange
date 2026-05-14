@@ -138,7 +138,7 @@ namespace SafeExchange.Tests
 
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
         }
 
         [TearDown]
@@ -300,7 +300,7 @@ namespace SafeExchange.Tests
             var localGlobalFilters = new GlobalFilters(groupsConfiguration, adminConfiguration, this.tokenHelper, TestFactory.CreateLogger<GlobalFilters>());
             var localSecretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                localGlobalFilters, this.purger, this.permissionsManager);
+                localGlobalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             var localTokenMiddleware = new TokenMiddlewareCore(
                 localConfiguration, this.dbContext, this.tokenHelper,

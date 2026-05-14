@@ -159,11 +159,11 @@ namespace SafeExchange.Tests
 
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager);
+                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
 
             var groupOneId = "01010101-0101-0101-0101-010101010101";
             var groupOneInput = new GroupInput()

@@ -15,6 +15,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Audit;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
@@ -25,6 +26,8 @@ namespace SafeExchange.Core.Functions
     public class SafeExchangeContentCommit
     {
         private static readonly Regex HexRegex = new("^[0-9a-f]{64}$", RegexOptions.Compiled);
+
+        private readonly Features features;
 
         private readonly SafeExchangeDbContext dbContext;
 
@@ -45,6 +48,9 @@ namespace SafeExchange.Core.Functions
             {
                 throw new ArgumentNullException(nameof(configuration));
             }
+
+            this.features = new Features();
+            configuration.GetSection("Features").Bind(this.features);
 
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
@@ -70,7 +76,7 @@ namespace SafeExchange.Core.Functions
             }
 
             log.LogInformation($"{nameof(SafeExchangeContentCommit)} triggered for '{secretId}' ({contentId}) by {subjectType} {subjectId}.");
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {

@@ -37,7 +37,7 @@ namespace SafeExchange.Functions
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
             this.metaHandler = new SafeExchangeSecretMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager);
+            this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
             this.contentHandler = new SafeExchangeSecretStream(configuration, dbContext, tokenHelper, globalFilters, purger, blobHelper, permissionsManager, auditWriter);
             this.contentCommitHandler = new SafeExchangeContentCommit(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
             this.auditHandler = new SafeExchangeSecretAudit(dbContext, tokenHelper, globalFilters, permissionsManager);

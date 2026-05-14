@@ -5,8 +5,10 @@
 namespace SafeExchange.Functions
 {
     using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Purger;
     using System.Threading.Tasks;
@@ -17,9 +19,9 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafePurge(SafeExchangeDbContext dbContext, IPurger purger, ILogger<SafePurge> log)
+        public SafePurge(IConfiguration configuration, SafeExchangeDbContext dbContext, IPurger purger, IAuditWriter auditWriter, ILogger<SafePurge> log)
         {
-            this.purgeHandler = new SafeExchangePurge(dbContext, purger);
+            this.purgeHandler = new SafeExchangePurge(configuration, dbContext, purger, auditWriter);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

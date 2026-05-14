@@ -71,11 +71,18 @@ namespace SafeExchange.Core
 
             var defaultCredential = DefaultCredentialProvider.CreateDefaultCredential();
             var cosmosDbConfig = configuration.GetSection("CosmosDb").Get<CosmosDbConfiguration>() ?? throw new ConfigurationErrorsException("Cannot get CosmosDb configuration.");
-            services.AddDbContext<SafeExchangeDbContext>(
+
+            // Register a factory so AuditWriter can isolate its DbContext from the
+            // request-scoped context shared by handlers. Sharing a context would let
+            // an audit-write retry's ChangeTracker.Clear() drop pending user-facing
+            // mutations (e.g., permission grants batched before the final SaveChanges).
+            services.AddDbContextFactory<SafeExchangeDbContext>(
                 options => options.UseCosmos(
                     cosmosDbConfig.CosmosDbEndpoint,
                     defaultCredential,
                     cosmosDbConfig.DatabaseName));
+            services.AddScoped<SafeExchangeDbContext>(sp =>
+                sp.GetRequiredService<IDbContextFactory<SafeExchangeDbContext>>().CreateDbContext());
 
             services.AddSingleton<ITokenHelper, TokenHelper>();
             services.AddSingleton<ICryptoHelper, CryptoHelper>();

@@ -47,28 +47,6 @@ namespace SafeExchange.Core.Functions
             this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
-        private static object PermissionFlags(PermissionType p) => new
-        {
-            canRead = (p & PermissionType.Read) != 0,
-            canWrite = (p & PermissionType.Write) != 0,
-            canGrantAccess = (p & PermissionType.GrantAccess) != 0,
-            canRevokeAccess = (p & PermissionType.RevokeAccess) != 0,
-        };
-
-        private static PermissionType ToPermissionType(SubjectPermissions? existing)
-        {
-            if (existing is null)
-            {
-                return PermissionType.None;
-            }
-            var p = PermissionType.None;
-            if (existing.CanRead) p |= PermissionType.Read;
-            if (existing.CanWrite) p |= PermissionType.Write;
-            if (existing.CanGrantAccess) p |= PermissionType.GrantAccess;
-            if (existing.CanRevokeAccess) p |= PermissionType.RevokeAccess;
-            return p;
-        }
-
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
             string secretId, ClaimsPrincipal principal, ILogger log)
@@ -181,6 +159,9 @@ namespace SafeExchange.Core.Functions
 
                 if (secret.AuditEnabled && !string.IsNullOrEmpty(targetSubjectId))
                 {
+                    // SetPermissionAsync OR-merges into existing flags; report the resulting
+                    // effective permission as `to`, not the requested delta.
+                    var afterPerm = beforePerm | permission;
                     await this.auditWriter.AppendAsync(
                         secret, SecretAuditEventType.PermissionGranted,
                         subjectType, subjectId, subjectId,
@@ -194,8 +175,8 @@ namespace SafeExchange.Core.Functions
                             },
                             permissions = new
                             {
-                                from = PermissionFlags(beforePerm),
-                                to = PermissionFlags(permission),
+                                from = AuditPayloads.PermissionFlags(beforePerm),
+                                to = AuditPayloads.PermissionFlags(afterPerm),
                             },
                         }, log);
                 }
@@ -227,7 +208,7 @@ namespace SafeExchange.Core.Functions
 
             var existing = await this.dbContext.Permissions.FirstOrDefaultAsync(p =>
                 p.SecretName == secretId && p.SubjectType == targetSubjectType && p.SubjectId == subjectId);
-            return (subjectId, subjectName, ToPermissionType(existing));
+            return (subjectId, subjectName, AuditPayloads.ToPermissionType(existing));
         }
 
         private async Task GrantAccessToGroupAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
@@ -314,8 +295,8 @@ namespace SafeExchange.Core.Functions
                             },
                             permissions = new
                             {
-                                from = PermissionFlags(beforePerm),
-                                to = PermissionFlags(afterPerm),
+                                from = AuditPayloads.PermissionFlags(beforePerm),
+                                to = AuditPayloads.PermissionFlags(afterPerm),
                             },
                         }, log);
                 }

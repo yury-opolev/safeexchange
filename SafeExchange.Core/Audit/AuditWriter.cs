@@ -18,13 +18,17 @@ namespace SafeExchange.Core.Audit
     {
         private const int MaxRetries = 5;
 
-        private readonly SafeExchangeDbContext dbContext;
+        // Lower bound on retention to defend against KV typos turning a missing/zero
+        // setting into immediate purge of every audited secret's events on delete.
+        private const int MinRetentionDays = 1;
+
+        private readonly IDbContextFactory<SafeExchangeDbContext> dbContextFactory;
 
         private readonly ILogger<AuditWriter> log;
 
-        public AuditWriter(SafeExchangeDbContext dbContext, ILogger<AuditWriter> log)
+        public AuditWriter(IDbContextFactory<SafeExchangeDbContext> dbContextFactory, ILogger<AuditWriter> log)
         {
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            this.dbContextFactory = dbContextFactory ?? throw new ArgumentNullException(nameof(dbContextFactory));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -50,9 +54,13 @@ namespace SafeExchange.Core.Audit
 
             for (var attempt = 1; attempt <= MaxRetries; attempt++)
             {
+                // Use an isolated DbContext per attempt so a retry never clobbers the
+                // request-scoped context's pending changes (issue C1 from review).
                 try
                 {
-                    var tail = await this.dbContext.SecretAuditEvents
+                    await using var auditDb = await this.dbContextFactory.CreateDbContextAsync(ct);
+
+                    var tail = await auditDb.SecretAuditEvents
                         .Where(e => e.AuditInstanceId == secret.AuditInstanceId)
                         .OrderByDescending(e => e.SequenceNumber)
                         .FirstOrDefaultAsync(ct);
@@ -79,25 +87,22 @@ namespace SafeExchange.Core.Audit
                         Hash = hash,
                     };
 
-                    this.dbContext.SecretAuditEvents.Add(entry);
-                    await this.dbContext.SaveChangesAsync(ct);
+                    auditDb.SecretAuditEvents.Add(entry);
+                    await auditDb.SaveChangesAsync(ct);
                     return;
                 }
                 catch (DbUpdateException ex) when (attempt < MaxRetries)
                 {
-                    // Another writer claimed our sequence number. Detach and retry.
-                    this.dbContext.ChangeTracker.Clear();
-                    log.LogWarning(ex, $"AuditWriter conflict on attempt {attempt} for instance {secret.AuditInstanceId}; retrying.");
+                    log.LogWarning(ex, "AuditWriter conflict on attempt {Attempt} for instance {InstanceId}; retrying.", attempt, secret.AuditInstanceId);
                 }
                 catch (Exception ex)
                 {
-                    log.LogError(ex, $"AuditWriteFailed: instance={secret.AuditInstanceId} eventType={eventType} actor={actorId}");
-                    this.dbContext.ChangeTracker.Clear();
+                    log.LogError(ex, "AuditWriteFailed: instance={InstanceId} eventType={EventType} actor={ActorId}", secret.AuditInstanceId, eventType, actorId);
                     return;
                 }
             }
 
-            log.LogError($"AuditWriteFailed (exhausted retries): instance={secret.AuditInstanceId} eventType={eventType}");
+            log.LogError("AuditWriteFailed (exhausted retries): instance={InstanceId} eventType={EventType}", secret.AuditInstanceId, eventType);
         }
 
         public async ValueTask EnsureAnchorAsync(ObjectMetadata secret, string createdBy, CancellationToken ct = default)
@@ -109,19 +114,19 @@ namespace SafeExchange.Core.Audit
 
             try
             {
-                var existing = await this.dbContext.SecretAuditAnchors
+                await using var auditDb = await this.dbContextFactory.CreateDbContextAsync(ct);
+                var existing = await auditDb.SecretAuditAnchors
                     .FirstOrDefaultAsync(a => a.AuditInstanceId == secret.AuditInstanceId, ct);
                 if (existing is not null)
                 {
                     return;
                 }
-                this.dbContext.SecretAuditAnchors.Add(new SecretAuditAnchor(secret.AuditInstanceId, secret.ObjectName, createdBy ?? string.Empty));
-                await this.dbContext.SaveChangesAsync(ct);
+                auditDb.SecretAuditAnchors.Add(new SecretAuditAnchor(secret.AuditInstanceId, secret.ObjectName, createdBy ?? string.Empty));
+                await auditDb.SaveChangesAsync(ct);
             }
             catch (Exception ex)
             {
-                this.log.LogError(ex, $"AuditAnchorWriteFailed: instance={secret.AuditInstanceId}");
-                this.dbContext.ChangeTracker.Clear();
+                this.log.LogError(ex, "AuditAnchorWriteFailed: instance={InstanceId}", secret.AuditInstanceId);
             }
         }
 
@@ -133,7 +138,8 @@ namespace SafeExchange.Core.Audit
             }
             try
             {
-                var anchor = await this.dbContext.SecretAuditAnchors
+                await using var auditDb = await this.dbContextFactory.CreateDbContextAsync(ct);
+                var anchor = await auditDb.SecretAuditAnchors
                     .FirstOrDefaultAsync(a => a.AuditInstanceId == secret.AuditInstanceId, ct);
                 if (anchor is null)
                 {
@@ -142,13 +148,12 @@ namespace SafeExchange.Core.Audit
                 var now = DateTimeProvider.UtcNow;
                 anchor.DeletedAt = now;
                 anchor.DeletedBy = deletedBy ?? string.Empty;
-                anchor.RetentionExpiresAt = now.AddDays(retentionDays);
-                await this.dbContext.SaveChangesAsync(ct);
+                anchor.RetentionExpiresAt = now.AddDays(Math.Max(MinRetentionDays, retentionDays));
+                await auditDb.SaveChangesAsync(ct);
             }
             catch (Exception ex)
             {
-                this.log.LogError(ex, $"AuditAnchorStampFailed: instance={secret.AuditInstanceId}");
-                this.dbContext.ChangeTracker.Clear();
+                this.log.LogError(ex, "AuditAnchorStampFailed: instance={InstanceId}", secret.AuditInstanceId);
             }
         }
     }

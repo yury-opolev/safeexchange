@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions
     using System.Security.Claims;
     using System;
     using Microsoft.Extensions.Configuration;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
@@ -36,7 +37,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeSecretContentMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IAuditWriter auditWriter;
+
+        public SafeExchangeSecretContentMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
         {
             if (configuration == null)
             {
@@ -54,6 +57,7 @@ namespace SafeExchange.Core.Functions
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
         public async Task<HttpResponseData> Run(
@@ -74,7 +78,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             switch (request.Method.ToLower())
             {
@@ -112,7 +116,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [DROP ({request.Method})].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             switch (request.Method.ToLower())
             {

@@ -77,7 +77,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
             
             switch (request.Method.ToLower())
             {
@@ -377,58 +377,30 @@ namespace SafeExchange.Core.Functions
                 metadataInput.Tags = normalisedTags.ToList();
             }
 
-            // Snapshot the audit-relevant before-state on the live entity. UpdateMetadataAsync
-            // mutates `existingMetadata` in place, so we must capture the values now.
-            var auditSnapshot = existingMetadata.AuditEnabled
-                ? new
-                {
-                    Tags = new List<string>(existingMetadata.Tags ?? new List<string>()),
-                    ExpirationDto = existingMetadata.ExpirationMetadata.ToDto(),
-                }
-                : null;
+            // Build the audit diff against the live entity BEFORE UpdateMetadataAsync mutates
+            // it in place. MetadataDiffBuilder is the single canonical implementation; do not
+            // re-inline diff logic here.
+            string? diffJson = null;
+            if (existingMetadata.AuditEnabled)
+            {
+                diffJson = MetadataDiffBuilder.BuildDiff(existingMetadata, metadataInput);
+            }
 
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
             log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
 
-            if (updatedMetadata.AuditEnabled && auditSnapshot is not null)
+            if (diffJson is not null)
             {
-                var changes = new Dictionary<string, object>();
-                if (metadataInput.Tags is not null)
-                {
-                    var before = auditSnapshot.Tags.OrderBy(t => t, System.StringComparer.Ordinal).ToList();
-                    var after = metadataInput.Tags.OrderBy(t => t, System.StringComparer.Ordinal).ToList();
-                    if (!before.SequenceEqual(after))
-                    {
-                        changes["tags"] = new { from = auditSnapshot.Tags, to = metadataInput.Tags };
-                    }
-                }
-                if (metadataInput.ExpirationSettings is not null)
-                {
-                    var afterDto = updatedMetadata.ExpirationMetadata.ToDto();
-                    if (!ExpirationDtoEqual(auditSnapshot.ExpirationDto, afterDto))
-                    {
-                        changes["expirationSettings"] = new { from = auditSnapshot.ExpirationDto, to = afterDto };
-                    }
-                }
-                if (changes.Count > 0)
-                {
-                    await this.auditWriter.AppendAsync(
-                        updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
-                        subjectType, subjectId, subjectId,
-                        new { changes }, log);
-                }
+                var diffObj = System.Text.Json.JsonSerializer.Deserialize<object>(diffJson);
+                await this.auditWriter.AppendAsync(
+                    updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
+                    subjectType, subjectId, subjectId, diffObj, log);
             }
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
         }, nameof(HandleSecretMetaUpdate), log);
-
-        private static bool ExpirationDtoEqual(ExpirationSettingsOutput a, ExpirationSettingsOutput b)
-            => a.ScheduleExpiration == b.ScheduleExpiration
-            && a.ExpireAt == b.ExpireAt
-            && a.ExpireOnIdleTime == b.ExpireOnIdleTime
-            && a.IdleTimeToExpire == b.IdleTimeToExpire;
 
         private async Task<HttpResponseData> HandleSecretMetaDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>

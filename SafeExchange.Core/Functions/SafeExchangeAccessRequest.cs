@@ -58,14 +58,6 @@ namespace SafeExchange.Core.Functions
             this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
-        private static object PermissionFlags(PermissionType p) => new
-        {
-            canRead = (p & PermissionType.Read) != 0,
-            canWrite = (p & PermissionType.Write) != 0,
-            canGrantAccess = (p & PermissionType.GrantAccess) != 0,
-            canRevokeAccess = (p & PermissionType.RevokeAccess) != 0,
-        };
-
         public async Task<HttpResponseData> Run(HttpRequestData request, string secretId, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
@@ -82,7 +74,7 @@ namespace SafeExchange.Core.Functions
 
             log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
 
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext);
+            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
             if (existingMetadata == null)
@@ -204,7 +196,7 @@ namespace SafeExchange.Core.Functions
                 new
                 {
                     accessRequestId = accessRequest.Id,
-                    requestedPermissions = PermissionFlags(requestedPermission),
+                    requestedPermissions = AuditPayloads.PermissionFlags(requestedPermission),
                     requestor = new { subjectType = subjectType.ToString(), subjectId, subjectName = subjectId },
                 }, log);
 
@@ -343,7 +335,7 @@ namespace SafeExchange.Core.Functions
                 new
                 {
                     accessRequestId = existingRequest.Id,
-                    requestedPermissions = PermissionFlags(existingRequest.Permission),
+                    requestedPermissions = AuditPayloads.PermissionFlags(existingRequest.Permission),
                     requestor = new
                     {
                         subjectType = existingRequest.SubjectType.ToString(),
