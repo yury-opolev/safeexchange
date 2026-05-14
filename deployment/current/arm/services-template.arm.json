@@ -168,6 +168,13 @@
                 "False"
             ]
         },
+        "settings-features-auditRetentionDays": {
+            "defaultValue": "365",
+            "type": "string",
+            "metadata": {
+                "description": "Days to retain SecretAuditEvent and SecretAuditAnchor records after the secret is deleted. Daily SafeExchange-AuditPurge sweeps anchors past this window. Default 365."
+            }
+        },
         "settings-adminConfiguration-adminUsers": {
             "defaultValue": "00000000-0000-0000-0000-000000000000",
             "type": "string"
@@ -1838,6 +1845,22 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--AuditRetentionDays')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-auditRetentionDays')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
             "name": "[concat(parameters('safeexchange_kv_name'), '/GeneralConfiguration--WebClientBaseUri')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
@@ -2494,6 +2517,84 @@
                                 ]
                             }
                         ]
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/SecretAuditAnchors')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "SecretAuditAnchors",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/AuditInstanceId"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/SecretAuditEvents')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "SecretAuditEvents",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/AuditInstanceId"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
                     },
                     "conflictResolutionPolicy": {
                         "mode": "LastWriterWins",
