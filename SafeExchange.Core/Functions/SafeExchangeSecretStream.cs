@@ -10,6 +10,7 @@ namespace SafeExchange.Core.Functions
     using System;
     using System.Security.Cryptography;
     using Microsoft.Extensions.Configuration;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
@@ -50,7 +51,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeSecretStream(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IBlobHelper blobHelper, IPermissionsManager permissionsManager)
+        private readonly IAuditWriter auditWriter;
+
+        public SafeExchangeSecretStream(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IBlobHelper blobHelper, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
         {
             if (configuration == null)
             {
@@ -69,6 +72,7 @@ namespace SafeExchange.Core.Functions
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.blobHelper = blobHelper ?? throw new ArgumentNullException(nameof(blobHelper));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
         public async Task<HttpResponseData> Run(
@@ -105,6 +109,14 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
+
+        // Audit-payload guarantee: secretId/contentId/chunkId are opaque identifiers, never
+        // derived from secret plaintext. The writer is a no-op for non-audited secrets.
+        private ValueTask EmitContentReadAsync(ObjectMetadata secret, string contentId, string chunkId, SubjectType actorType, string actorId, ILogger log)
+            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentRead, actorType, actorId, actorId, new { contentId, chunkId }, log);
+
+        private ValueTask EmitContentWrittenAsync(ObjectMetadata secret, string contentId, string chunkId, SubjectType actorType, string actorId, ILogger log)
+            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentWritten, actorType, actorId, actorId, new { contentId, chunkId }, log);
 
         public async Task<HttpResponseData> RunContentDownload(
             HttpRequestData request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
@@ -252,12 +264,12 @@ namespace SafeExchange.Core.Functions
                     case UploadMode.Hashed:
                         return await this.HandleHashedChunkUpload(
                             request, existingContent, newChunkName, existingMetadata,
-                            hashHeader!, operationStatus, accessTicket, log);
+                            hashHeader!, operationStatus, accessTicket, subjectType, subjectId, log);
 
                     case UploadMode.Legacy:
                         return await this.HandleLegacyChunkUpload(
                             request, existingContent, newChunkName, existingMetadata,
-                            operationStatus, accessTicket, log);
+                            operationStatus, accessTicket, subjectType, subjectId, log);
                 }
 
                 throw new InvalidOperationException("Unreachable.");
@@ -272,6 +284,8 @@ namespace SafeExchange.Core.Functions
             ObjectMetadata existingMetadata,
             string operationStatus,
             string accessTicket,
+            SubjectType subjectType,
+            string subjectId,
             ILogger log)
         {
             var dataStream = request.Body;
@@ -320,6 +334,8 @@ namespace SafeExchange.Core.Functions
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
+            await this.EmitContentWrittenAsync(existingMetadata, existingContent.ContentName, newChunkName, subjectType, subjectId, log);
+
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ChunkCreationOutput> { Status = "ok", Result = newChunk.ToCreationDto(accessTicket) });
@@ -333,6 +349,8 @@ namespace SafeExchange.Core.Functions
             string headerHash,
             string operationStatus,
             string accessTicket,
+            SubjectType subjectType,
+            string subjectId,
             ILogger log)
         {
             var running = existingContent.RunningHashState is { Length: > 0 }
@@ -389,6 +407,8 @@ namespace SafeExchange.Core.Functions
             log.LogInformation(
                 "Chunk hash verified for '{ContentId}' chunk {ChunkIndex} ({Hash}, {Length} bytes)",
                 existingContent.ContentName, existingContent.Chunks.Count - 1, serverHash, dataLength);
+
+            await this.EmitContentWrittenAsync(existingMetadata, existingContent.ContentName, newChunkName, subjectType, subjectId, log);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -486,6 +506,8 @@ namespace SafeExchange.Core.Functions
                 existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
                 await this.dbContext.SaveChangesAsync();
 
+                await this.EmitContentReadAsync(existingMetadata, existingContent.ContentName, existingChunk.ChunkName, subjectType, subjectId, log);
+
                 return response;
 
             }, nameof(HandleSecretStreamDownload), log);
@@ -560,6 +582,7 @@ namespace SafeExchange.Core.Functions
                 {
                     var chunkStream = await this.blobHelper.DownloadAndDecryptBlobAsync(chunk.ChunkName);
                     await chunkStream.CopyToAsync(response.Body);
+                    await this.EmitContentReadAsync(existingMetadata, existingContent.ContentName, chunk.ChunkName, subjectType, subjectId, log);
                 }
 
                 existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;

@@ -7,6 +7,7 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Groups;
@@ -33,7 +34,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IAuditWriter auditWriter;
+
+        public SafeExchangeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.groupsManager = groupsManager ?? throw new ArgumentNullException(nameof(groupsManager));
@@ -41,6 +44,29 @@ namespace SafeExchange.Core.Functions
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
+        }
+
+        private static object PermissionFlags(PermissionType p) => new
+        {
+            canRead = (p & PermissionType.Read) != 0,
+            canWrite = (p & PermissionType.Write) != 0,
+            canGrantAccess = (p & PermissionType.GrantAccess) != 0,
+            canRevokeAccess = (p & PermissionType.RevokeAccess) != 0,
+        };
+
+        private static PermissionType ToPermissionType(SubjectPermissions? existing)
+        {
+            if (existing is null)
+            {
+                return PermissionType.None;
+            }
+            var p = PermissionType.None;
+            if (existing.CanRead) p |= PermissionType.Read;
+            if (existing.CanWrite) p |= PermissionType.Write;
+            if (existing.CanGrantAccess) p |= PermissionType.GrantAccess;
+            if (existing.CanRevokeAccess) p |= PermissionType.RevokeAccess;
+            return p;
         }
 
         public async Task<HttpResponseData> Run(
@@ -83,7 +109,7 @@ namespace SafeExchange.Core.Functions
                         }
 
                         var userCanRevokeAccess = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.RevokeAccess);
-                        return await this.GrantAccessAsync(existingMetadata.ObjectName, request, userCanRevokeAccess, subjectType, subjectId, log);
+                        return await this.GrantAccessAsync(existingMetadata, request, userCanRevokeAccess, subjectType, subjectId, log);
                     }
 
                 case "get":
@@ -109,7 +135,7 @@ namespace SafeExchange.Core.Functions
                                 ActionResults.InsufficientPermissions(PermissionType.RevokeAccess, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                         }
 
-                        return await this.RevokeAccessAsync(existingMetadata.ObjectName, request, log);
+                        return await this.RevokeAccessAsync(existingMetadata, request, subjectType, subjectId, log);
                     }
 
                 default:
@@ -119,9 +145,10 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> GrantAccessAsync(string secretId, HttpRequestData request, bool userCanRevokeAccess, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> GrantAccessAsync(ObjectMetadata secret, HttpRequestData request, bool userCanRevokeAccess, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
+            var secretId = secret.ObjectName;
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
             if ((permissionsInput?.Count ?? 0) == 0)
             {
@@ -139,16 +166,38 @@ namespace SafeExchange.Core.Functions
                     permission &= ~PermissionType.RevokeAccess;
                 }
 
-                var subjectType = permissionInput.SubjectType.ToModel();
-                if (subjectType.Equals(SubjectType.Group))
+                var targetSubjectType = permissionInput.SubjectType.ToModel();
+                var (targetSubjectId, targetSubjectName, beforePerm) = await this.ResolveTargetAndBeforeAsync(secretId, targetSubjectType, permissionInput, log);
+
+                if (targetSubjectType.Equals(SubjectType.Group))
                 {
                     await this.GrantAccessToGroupAsync(secretId, permissionInput, permission, subjectType, subjectId, log);
                 }
                 else
                 {
-                    var permissionsSubjectId = permissionInput.SubjectName;
-                    log.LogInformation($"Setting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
-                    await this.permissionsManager.SetPermissionAsync(subjectType, permissionsSubjectId, permissionInput.SubjectName, secretId, permission);
+                    log.LogInformation($"Setting permissions for '{secretId}': '{targetSubjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                    await this.permissionsManager.SetPermissionAsync(targetSubjectType, permissionInput.SubjectName, permissionInput.SubjectName, secretId, permission);
+                }
+
+                if (secret.AuditEnabled && !string.IsNullOrEmpty(targetSubjectId))
+                {
+                    await this.auditWriter.AppendAsync(
+                        secret, SecretAuditEventType.PermissionGranted,
+                        subjectType, subjectId, subjectId,
+                        new
+                        {
+                            target = new
+                            {
+                                subjectType = targetSubjectType.ToString(),
+                                subjectId = targetSubjectId,
+                                subjectName = targetSubjectName,
+                            },
+                            permissions = new
+                            {
+                                from = PermissionFlags(beforePerm),
+                                to = PermissionFlags(permission),
+                            },
+                        }, log);
                 }
             }
 
@@ -158,6 +207,28 @@ namespace SafeExchange.Core.Functions
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<string> { Status = "ok", Result = "ok" });
         }, nameof(GrantAccessAsync), log);
+
+        private async Task<(string subjectId, string subjectName, PermissionType beforePerm)> ResolveTargetAndBeforeAsync(
+            string secretId, SubjectType targetSubjectType, SubjectPermissionsInput input, ILogger log)
+        {
+            // For groups, the target id may come in two flavours (group GUID or mail); for
+            // users / applications the SubjectName is the id. Look up an existing row to
+            // capture the "before" permission flags for the audit payload.
+            string subjectId;
+            string subjectName = input.SubjectName ?? string.Empty;
+            if (targetSubjectType == SubjectType.Group)
+            {
+                subjectId = Guid.TryParse(input.SubjectId, out _) ? input.SubjectId : subjectName;
+            }
+            else
+            {
+                subjectId = subjectName;
+            }
+
+            var existing = await this.dbContext.Permissions.FirstOrDefaultAsync(p =>
+                p.SecretName == secretId && p.SubjectType == targetSubjectType && p.SubjectId == subjectId);
+            return (subjectId, subjectName, ToPermissionType(existing));
+        }
 
         private async Task GrantAccessToGroupAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType subjectType, string subjectId, ILogger log)
         {
@@ -204,9 +275,10 @@ namespace SafeExchange.Core.Functions
                 });
         }, nameof(GetAccessListAsync), log);
 
-        private async Task<HttpResponseData> RevokeAccessAsync(string secretId, HttpRequestData request, ILogger log)
+        private async Task<HttpResponseData> RevokeAccessAsync(ObjectMetadata secret, HttpRequestData request, SubjectType actorType, string actorId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
+            var secretId = secret.ObjectName;
             var permissionsInput = await this.TryGetPermissionsInputAsync(request, log);
             if ((permissionsInput?.Count ?? 0) == 0)
             {
@@ -219,9 +291,34 @@ namespace SafeExchange.Core.Functions
             foreach (var permissionInput in permissionsInput ?? Array.Empty<SubjectPermissionsInput>().ToList())
             {
                 var permission = permissionInput.GetPermissionType();
-                var subjectType = permissionInput.SubjectType.ToModel();
-                log.LogInformation($"Unsetting permissions for '{secretId}': '{subjectType} {permissionInput.SubjectName}' -> '{permission}'");
-                await this.permissionsManager.UnsetPermissionAsync(permissionInput.SubjectType.ToModel(), permissionInput.SubjectName, secretId, permission);
+                var targetSubjectType = permissionInput.SubjectType.ToModel();
+
+                var (targetSubjectId, targetSubjectName, beforePerm) = await this.ResolveTargetAndBeforeAsync(secretId, targetSubjectType, permissionInput, log);
+
+                log.LogInformation($"Unsetting permissions for '{secretId}': '{targetSubjectType} {permissionInput.SubjectName}' -> '{permission}'");
+                await this.permissionsManager.UnsetPermissionAsync(targetSubjectType, permissionInput.SubjectName, secretId, permission);
+
+                if (secret.AuditEnabled && !string.IsNullOrEmpty(targetSubjectId))
+                {
+                    var afterPerm = beforePerm & ~permission;
+                    await this.auditWriter.AppendAsync(
+                        secret, SecretAuditEventType.PermissionRevoked,
+                        actorType, actorId, actorId,
+                        new
+                        {
+                            target = new
+                            {
+                                subjectType = targetSubjectType.ToString(),
+                                subjectId = targetSubjectId,
+                                subjectName = targetSubjectName,
+                            },
+                            permissions = new
+                            {
+                                from = PermissionFlags(beforePerm),
+                                to = PermissionFlags(afterPerm),
+                            },
+                        }, log);
+                }
             }
 
             await this.dbContext.SaveChangesAsync();

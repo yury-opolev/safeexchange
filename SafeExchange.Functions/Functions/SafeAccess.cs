@@ -8,6 +8,7 @@ namespace SafeExchange.Functions
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Groups;
@@ -23,9 +24,9 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, ILogger<SafeAccess> log)
+        public SafeAccess(SafeExchangeDbContext dbContext, IGroupsManager groupsManager, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter, ILogger<SafeAccess> log)
         {
-            this.accessHandler = new SafeExchangeAccess(dbContext, groupsManager, tokenHelper, globalFilters, purger, permissionsManager);
+            this.accessHandler = new SafeExchangeAccess(dbContext, groupsManager, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

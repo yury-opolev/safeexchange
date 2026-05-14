@@ -11,6 +11,7 @@ namespace SafeExchange.Core.Functions
     using System.IO;
 
     using Microsoft.Extensions.Configuration;
+    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
@@ -21,6 +22,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Utilities;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
+    using System.Collections.Generic;
     using System.Net;
 
     public class SafeExchangeSecretMeta
@@ -37,7 +39,9 @@ namespace SafeExchange.Core.Functions
 
         private readonly IPermissionsManager permissionsManager;
 
-        public SafeExchangeSecretMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager)
+        private readonly IAuditWriter auditWriter;
+
+        public SafeExchangeSecretMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
         {
             if (configuration == null)
             {
@@ -52,6 +56,7 @@ namespace SafeExchange.Core.Functions
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
             this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
+            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
         }
 
         public async Task<HttpResponseData> Run(
@@ -248,6 +253,20 @@ namespace SafeExchange.Core.Functions
             var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
             log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '{subjectId}' are set.");
 
+            if (createdMetadata.AuditEnabled)
+            {
+                await this.auditWriter.EnsureAnchorAsync(createdMetadata, subjectId);
+                var creationPayload = new
+                {
+                    tags = createdMetadata.Tags ?? new List<string>(),
+                    expirationSettings = createdMetadata.ExpirationMetadata.ToDto(),
+                    auditEnabled = true,
+                };
+                await this.auditWriter.AppendAsync(
+                    createdMetadata, SecretAuditEventType.SecretCreated,
+                    subjectType, subjectId, subjectId, creationPayload, log);
+            }
+
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = createdMetadata.ToDto() });
@@ -358,13 +377,58 @@ namespace SafeExchange.Core.Functions
                 metadataInput.Tags = normalisedTags.ToList();
             }
 
+            // Snapshot the audit-relevant before-state on the live entity. UpdateMetadataAsync
+            // mutates `existingMetadata` in place, so we must capture the values now.
+            var auditSnapshot = existingMetadata.AuditEnabled
+                ? new
+                {
+                    Tags = new List<string>(existingMetadata.Tags ?? new List<string>()),
+                    ExpirationDto = existingMetadata.ExpirationMetadata.ToDto(),
+                }
+                : null;
+
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
             log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
+
+            if (updatedMetadata.AuditEnabled && auditSnapshot is not null)
+            {
+                var changes = new Dictionary<string, object>();
+                if (metadataInput.Tags is not null)
+                {
+                    var before = auditSnapshot.Tags.OrderBy(t => t, System.StringComparer.Ordinal).ToList();
+                    var after = metadataInput.Tags.OrderBy(t => t, System.StringComparer.Ordinal).ToList();
+                    if (!before.SequenceEqual(after))
+                    {
+                        changes["tags"] = new { from = auditSnapshot.Tags, to = metadataInput.Tags };
+                    }
+                }
+                if (metadataInput.ExpirationSettings is not null)
+                {
+                    var afterDto = updatedMetadata.ExpirationMetadata.ToDto();
+                    if (!ExpirationDtoEqual(auditSnapshot.ExpirationDto, afterDto))
+                    {
+                        changes["expirationSettings"] = new { from = auditSnapshot.ExpirationDto, to = afterDto };
+                    }
+                }
+                if (changes.Count > 0)
+                {
+                    await this.auditWriter.AppendAsync(
+                        updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
+                        subjectType, subjectId, subjectId,
+                        new { changes }, log);
+                }
+            }
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
                 new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
         }, nameof(HandleSecretMetaUpdate), log);
+
+        private static bool ExpirationDtoEqual(ExpirationSettingsOutput a, ExpirationSettingsOutput b)
+            => a.ScheduleExpiration == b.ScheduleExpiration
+            && a.ExpireAt == b.ExpireAt
+            && a.ExpireOnIdleTime == b.ExpireOnIdleTime
+            && a.IdleTimeToExpire == b.IdleTimeToExpire;
 
         private async Task<HttpResponseData> HandleSecretMetaDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
@@ -393,7 +457,7 @@ namespace SafeExchange.Core.Functions
                     ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
             }
 
-            await this.purger.PurgeAsync(secretId, this.dbContext);
+            await this.purger.PurgeAsync(secretId, this.dbContext, this.auditWriter, subjectType, subjectId, this.features.AuditRetentionDays);
             log.LogInformation($"{subjectType} '{subjectId}' deleted secret '{secretId}'");
 
             return await ActionResults.CreateResponseAsync(
