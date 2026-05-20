@@ -20,17 +20,20 @@ namespace SafeExchange.Core.Configuration
 
         public bool IgnoreChunkHashHeader { get; set; } = false;
 
+        public bool UseAccessGiveUp { get; set; } = false;
+
         public int AuditRetentionDays { get; set; } = 365;
 
         public Features Clone() => new Features()
-            {
-                UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
-                UseGroupsAuthorization = this.UseGroupsAuthorization,
-                UseGraphUserSearch = this.UseGraphUserSearch,
-                UseGraphGroupSearch = this.UseGraphGroupSearch,
-                AllowLegacyAttachmentUploads = this.AllowLegacyAttachmentUploads,
-                IgnoreChunkHashHeader = this.IgnoreChunkHashHeader,
-                AuditRetentionDays = this.AuditRetentionDays,
+        {
+            UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
+            UseGroupsAuthorization = this.UseGroupsAuthorization,
+            UseGraphUserSearch = this.UseGraphUserSearch,
+            UseGraphGroupSearch = this.UseGraphGroupSearch,
+            AllowLegacyAttachmentUploads = this.AllowLegacyAttachmentUploads,
+            IgnoreChunkHashHeader = this.IgnoreChunkHashHeader,
+            UseAccessGiveUp = this.UseAccessGiveUp,
+            AuditRetentionDays = this.AuditRetentionDays,
         };
 
         public override bool Equals(object obj)
@@ -47,6 +50,7 @@ namespace SafeExchange.Core.Configuration
                 this.UseGraphGroupSearch.Equals(other.UseGraphGroupSearch) &&
                 this.AllowLegacyAttachmentUploads.Equals(other.AllowLegacyAttachmentUploads) &&
                 this.IgnoreChunkHashHeader.Equals(other.IgnoreChunkHashHeader) &&
+                this.UseAccessGiveUp.Equals(other.UseAccessGiveUp) &&
                 this.AuditRetentionDays.Equals(other.AuditRetentionDays);
         }
 
@@ -54,6 +58,6 @@ namespace SafeExchange.Core.Configuration
             this.UseExternalWebHookNotifications, this.UseGroupsAuthorization,
             this.UseGraphUserSearch, this.UseGraphGroupSearch,
             this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader,
-            this.AuditRetentionDays);
+            this.UseAccessGiveUp, this.AuditRetentionDays);
     }
 }

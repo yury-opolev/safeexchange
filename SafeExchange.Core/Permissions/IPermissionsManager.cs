@@ -57,5 +57,26 @@ namespace SafeExchange.Core.Permissions
         /// <param name="permission">Specified permisiion.</param>
         /// <returns>Task, representing asynchronous operation.</returns>
         public Task UnsetPermissionAsync(SubjectType subjectType, string subjectId, string secretId, PermissionType permission);
+
+        /// <summary>
+        /// Returns true if the specified subject has at least one permission flag
+        /// (Read, Write, GrantAccess, or RevokeAccess) on the specified secret,
+        /// either directly or via group membership.
+        /// </summary>
+        /// <param name="subjectType">Specified subject type.</param>
+        /// <param name="subjectId">Specified subject id.</param>
+        /// <param name="secretId">Specified secret id.</param>
+        /// <returns>Task, representing asynchronous operation.</returns>
+        public Task<bool> HasAnyAccessAsync(SubjectType subjectType, string subjectId, string secretId);
+
+        /// <summary>
+        /// Returns the direct permission row for the specified subject on the specified secret,
+        /// or null if no direct row exists.
+        /// </summary>
+        /// <param name="secretName">Specified secret name.</param>
+        /// <param name="subjectType">Specified subject type.</param>
+        /// <param name="subjectId">Specified subject id.</param>
+        /// <returns>Task, representing asynchronous operation.</returns>
+        public Task<SubjectPermissions?> GetSubjectPermissionsAsync(string secretName, SubjectType subjectType, string subjectId);
     }
 }

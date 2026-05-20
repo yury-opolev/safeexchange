@@ -236,5 +236,47 @@ namespace SafeExchange.Core.Permissions
         {
             return await this.dbContext.Permissions.FindAsync(secretName, subjectType, subjectId);
         }
+
+        public async Task<bool> HasAnyAccessAsync(SubjectType subjectType, string subjectId, string secretId)
+        {
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
+
+            var directRow = await this.dbContext.Permissions
+                .FirstOrDefaultAsync(p => p.SecretName.Equals(secretId)
+                    && p.SubjectType.Equals(subjectType)
+                    && p.SubjectId.Equals(subjectId));
+
+            if (directRow != null && (directRow.CanRead || directRow.CanWrite || directRow.CanGrantAccess || directRow.CanRevokeAccess))
+            {
+                return true;
+            }
+
+            if (subjectType != SubjectType.User || !this.features.UseGroupsAuthorization)
+            {
+                return false;
+            }
+
+            var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
+            if (existingUser == default || existingUser.ConsentRequired)
+            {
+                return false;
+            }
+
+            var userGroups = existingUser.Groups;
+            if (userGroups == default || userGroups.Count == 0)
+            {
+                return false;
+            }
+
+            var groupIds = userGroups.Select(g => g.AadGroupId).ToList();
+            var groupRows = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals(secretId) && p.SubjectType.Equals(SubjectType.Group) && groupIds.Contains(p.SubjectId))
+                .ToListAsync();
+
+            return groupRows.Any(r => r.CanRead || r.CanWrite || r.CanGrantAccess || r.CanRevokeAccess);
+        }
     }
 }

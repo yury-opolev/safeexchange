@@ -93,6 +93,7 @@ namespace SafeExchange.Core
             services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
+            services.AddScoped<IOrphanedSecretManager, OrphanedSecretManager>();
             services.AddScoped<IGroupsManager, GroupsManager>();
 
             services.AddScoped<IAuditWriter, AuditWriter>();
@@ -115,6 +116,7 @@ namespace SafeExchange.Core
             });
 
             services.Configure<Features>(configuration.GetSection("Features"));
+            services.Configure<OrphanedSecretConfiguration>(configuration.GetSection("OrphanedSecret"));
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));

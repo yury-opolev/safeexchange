@@ -167,7 +167,8 @@ namespace SafeExchange.Tests
 
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
+                this.globalFilters, this.purger, this.permissionsManager,
+                new NoOpAuditWriter(), Mock.Of<IOrphanedSecretManager>());
 
             this.secretAccessRequest = new SafeExchangeAccessRequest(
                 this.testConfiguration, this.dbContext, this.globalFilters,

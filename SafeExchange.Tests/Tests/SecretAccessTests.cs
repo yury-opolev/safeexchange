@@ -163,7 +163,8 @@ namespace SafeExchange.Tests
 
             this.secretAccess = new SafeExchangeAccess(
                 this.dbContext, this.groupsManager, this.tokenHelper,
-                this.globalFilters, this.purger, this.permissionsManager, new NoOpAuditWriter());
+                this.globalFilters, this.purger, this.permissionsManager,
+                new NoOpAuditWriter(), Mock.Of<IOrphanedSecretManager>());
 
             var groupOneId = "01010101-0101-0101-0101-010101010101";
             var groupOneInput = new GroupInput()
@@ -809,6 +810,173 @@ namespace SafeExchange.Tests
             Assert.That(permissions.First().CanWrite, Is.True);
             Assert.That(permissions.First().CanGrantAccess, Is.True);
             Assert.That(permissions.First().CanRevokeAccess, Is.True);
+        }
+
+        // ---- Application target coverage ----
+
+        [Test]
+        public async Task GrantAccessToApplication()
+        {
+            // [GIVEN] A user created a secret.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [WHEN] The user granted read/write access to an application.
+            await this.InternalAccessRequest(this.firstIdentity, "post", "sunshine",
+                SubjectTypeInput.Application, null, "test-app",
+                read: true, write: true, grantAccess: false, revokeAccess: false);
+
+            // [THEN] An Application-typed permission row is persisted.
+            var appPermissions = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectType == SubjectType.Application)
+                .ToListAsync();
+
+            Assert.That(appPermissions.Count, Is.EqualTo(1));
+            var row = appPermissions.Single();
+            Assert.That(row.SubjectId, Is.EqualTo("test-app"));
+            Assert.That(row.SubjectName, Is.EqualTo("test-app"));
+            Assert.That(row.CanRead, Is.True);
+            Assert.That(row.CanWrite, Is.True);
+            Assert.That(row.CanGrantAccess, Is.False);
+            Assert.That(row.CanRevokeAccess, Is.False);
+        }
+
+        [Test]
+        public async Task RevokeAccessFromApplication()
+        {
+            // [GIVEN] A user granted full access to an application.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+            await this.InternalAccessRequest(this.firstIdentity, "post", "sunshine",
+                SubjectTypeInput.Application, null, "test-app",
+                read: true, write: true, grantAccess: true, revokeAccess: true);
+
+            // [WHEN] The user revoked all access from that application.
+            await this.InternalAccessRequest(this.firstIdentity, "delete", "sunshine",
+                SubjectTypeInput.Application, null, "test-app",
+                read: true, write: true, grantAccess: true, revokeAccess: true);
+
+            // [THEN] No Application row remains for that secret.
+            var rows = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectType == SubjectType.Application)
+                .ToListAsync();
+            Assert.That(rows, Is.Empty);
+        }
+
+        [Test]
+        public async Task GrantAndRevokeApplicationPartially()
+        {
+            // [GIVEN] A user granted read+write to an application.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+            await this.InternalAccessRequest(this.firstIdentity, "post", "sunshine",
+                SubjectTypeInput.Application, null, "test-app",
+                read: true, write: true, grantAccess: false, revokeAccess: false);
+
+            // [WHEN] The user revoked only write.
+            await this.InternalAccessRequest(this.firstIdentity, "delete", "sunshine",
+                SubjectTypeInput.Application, null, "test-app",
+                read: false, write: true, grantAccess: false, revokeAccess: false);
+
+            // [THEN] The Application row remains with only read.
+            var row = (await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectType == SubjectType.Application)
+                .ToListAsync()).Single();
+            Assert.That(row.CanRead, Is.True);
+            Assert.That(row.CanWrite, Is.False);
+            Assert.That(row.CanGrantAccess, Is.False);
+            Assert.That(row.CanRevokeAccess, Is.False);
+        }
+
+        // ---- Group target coverage on DELETE ----
+
+        [Test]
+        public async Task RevokeAccessFromExistingGroup_OldApi()
+        {
+            // [GIVEN] A user granted access to a known mail group, which got unified to GroupId.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+            await this.GrantGroupAccess(
+                this.firstIdentity, "sunshine",
+                null, this.existingGroupOne.GroupMail!,
+                true, true, true, true);
+
+            // [WHEN] The user revoked all access targeting the same group by mail.
+            await this.InternalAccessRequest(this.firstIdentity, "delete", "sunshine",
+                SubjectTypeInput.Group, null, this.existingGroupOne.GroupMail!,
+                read: true, write: true, grantAccess: true, revokeAccess: true);
+
+            // [THEN] No Group row remains for that secret.
+            var rows = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectType == SubjectType.Group)
+                .ToListAsync();
+            Assert.That(rows, Is.Empty);
+        }
+
+        [Test]
+        public async Task RevokeAccessFromExistingGroup_NewApi()
+        {
+            // [GIVEN] A user granted access to a group by GUID.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+            await this.GrantGroupAccess(
+                this.firstIdentity, "sunshine",
+                this.existingGroupTwo.GroupId, this.existingGroupTwo.DisplayName,
+                true, true, true, true);
+
+            // [WHEN] The user revoked all access targeting the same group by GUID.
+            await this.InternalAccessRequest(this.firstIdentity, "delete", "sunshine",
+                SubjectTypeInput.Group, this.existingGroupTwo.GroupId, this.existingGroupTwo.DisplayName,
+                read: true, write: true, grantAccess: true, revokeAccess: true);
+
+            // [THEN] No Group row remains for that secret.
+            var rows = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectType == SubjectType.Group)
+                .ToListAsync();
+            Assert.That(rows, Is.Empty);
+        }
+
+        // ---- Cross-cutting DELETE auth/validation ----
+
+        [Test]
+        public async Task RevokeAccessWithoutHavingPermission_Returns403()
+        {
+            // [GIVEN] First user owns the secret. Second user has read but not revoke.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+            await this.GrantAccess(this.firstIdentity, "sunshine", "second@test.test", true, false, false, false);
+
+            // [WHEN] Second user attempts to revoke first user's access.
+            var accessRequest = TestFactory.CreateHttpRequestData("delete");
+            accessRequest.SetBodyAsJson(new List<SubjectPermissionsInput>
+            {
+                new SubjectPermissionsInput
+                {
+                    SubjectType = SubjectTypeInput.User,
+                    SubjectName = "first@test.test",
+                    CanRead = true, CanWrite = true, CanGrantAccess = true, CanRevokeAccess = true,
+                }
+            });
+            var response = await this.secretAccess.Run(accessRequest, "sunshine", new ClaimsPrincipal(this.secondIdentity), this.logger);
+
+            // [THEN] 403 returned, owner's row is preserved.
+            var result = response as TestHttpResponseData;
+            Assert.That(result?.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+
+            var ownerRows = await this.dbContext.Permissions
+                .Where(p => p.SecretName.Equals("sunshine") && p.SubjectId == "first@test.test")
+                .ToListAsync();
+            Assert.That(ownerRows.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task RevokeAccessWithEmptyBody_Returns400()
+        {
+            // [GIVEN] A secret exists.
+            await this.CreateSecret(this.firstIdentity, "sunshine");
+
+            // [WHEN] The user issues a DELETE with no body.
+            var accessRequest = TestFactory.CreateHttpRequestData("delete");
+            accessRequest.SetBodyAsJson(new List<SubjectPermissionsInput>());
+            var response = await this.secretAccess.Run(accessRequest, "sunshine", new ClaimsPrincipal(this.firstIdentity), this.logger);
+
+            // [THEN] 400 is returned.
+            var result = response as TestHttpResponseData;
+            Assert.That(result?.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
         }
 
         private async Task CreateSecret(CaseSensitiveClaimsIdentity identity, string secretName)

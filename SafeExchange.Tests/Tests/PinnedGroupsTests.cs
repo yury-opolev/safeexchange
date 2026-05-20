@@ -72,7 +72,7 @@ namespace SafeExchange.Tests
                 .Build();
 
             this.dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
-                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(GroupsTests)}Database", CosmosTestOptions.UseGateway)
+                .UseCosmos(secretConfiguration.GetConnectionString("CosmosDb"), databaseName: $"{nameof(PinnedGroupsTests)}Database", CosmosTestOptions.UseGateway)
                 .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CosmosEventId.SyncNotSupported))
                 .Options;
 
