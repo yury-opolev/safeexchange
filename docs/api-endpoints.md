@@ -75,6 +75,17 @@ When `Features.UseAccessGiveUp` is enabled, the existing `DELETE /v2/access/{sec
 | POST | `/v2/groups/pinned` | Pin a group for quick access |
 | DELETE | `/v2/groups/pinned/{groupId}` | Unpin a group |
 
+## Pinned Secrets
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v2/pinnedsecrets-list` | List the caller's pinned secrets, newest-pin first |
+| GET | `/v2/pinnedsecrets/{secretId}` | Check whether the caller has pinned `{secretId}` |
+| PUT | `/v2/pinnedsecrets/{secretId}` | Pin a secret. Requires `Read`. Capped at `PinnedSecrets.MaxPinnedSecretsPerUser` (default 5) |
+| DELETE | `/v2/pinnedsecrets/{secretId}` | Unpin a secret (idempotent) |
+
+The list / single-GET responses always return a DTO with `exists`, `canRead`, `canWrite`, `canGrantAccess`, `canRevokeAccess`, and `tags`. When the secret has been deleted, `exists` is `false`; when the caller has lost access, all permission flags are `false` and `tags` is empty. The UI uses this to render deleted / no-access status badges.
+
 ## Notifications
 
 | Method | Path | Description |

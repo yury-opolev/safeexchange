@@ -27,6 +27,8 @@ namespace SafeExchange.Core
 
         public DbSet<PinnedGroup> PinnedGroups { get; set; }
 
+        public DbSet<PinnedSecret> PinnedSecrets { get; set; }
+
         public DbSet<SecretAuditAnchor> SecretAuditAnchors { get; set; }
 
         public DbSet<SecretAuditEvent> SecretAuditEvents { get; set; }
@@ -130,6 +132,14 @@ namespace SafeExchange.Core
 
             modelBuilder.Entity<PinnedGroup>()
                 .HasKey(pg => new { pg.UserId, pg.GroupItemId });
+
+            modelBuilder.Entity<PinnedSecret>()
+                .ToContainer("PinnedSecrets")
+                .HasNoDiscriminator()
+                .HasPartitionKey(ps => ps.PartitionKey);
+
+            modelBuilder.Entity<PinnedSecret>()
+                .HasKey(ps => new { ps.UserId, ps.SecretName });
 
             modelBuilder.Entity<SecretAuditAnchor>()
                 .ToContainer("SecretAuditAnchors")

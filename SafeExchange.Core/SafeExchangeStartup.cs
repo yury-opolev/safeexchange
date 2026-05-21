@@ -117,6 +117,7 @@ namespace SafeExchange.Core
 
             services.Configure<Features>(configuration.GetSection("Features"));
             services.Configure<OrphanedSecretConfiguration>(configuration.GetSection("OrphanedSecret"));
+            services.Configure<PinnedSecretsConfiguration>(configuration.GetSection("PinnedSecrets"));
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));

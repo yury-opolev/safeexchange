@@ -148,6 +148,17 @@ A registered service principal / application identity.
 | ClientId | Entra ID application (client) ID |
 | Enabled | Whether the application is allowed |
 
+### PinnedSecret
+
+A per-user bookmark of a secret. Capped at `PinnedSecrets.MaxPinnedSecretsPerUser` per user (default 5). Independent of permission state — a pin row may outlive the user's access to the secret.
+
+| Field | Description |
+|-------|-------------|
+| PartitionKey | Constant `"PSEC"` |
+| UserId | Caller's user id (composite key) |
+| SecretName | The pinned `ObjectMetadata.ObjectName` (composite key) |
+| CreatedAt | UTC creation time; list is ordered DESC |
+
 ## Storage Strategy
 
 - **Cosmos DB** stores all entities above as JSON documents, organized by container with partition keys tuned for common query patterns.
