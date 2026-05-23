@@ -513,7 +513,7 @@
                 "IngestionMode": "LogAnalytics",
                 "publicNetworkAccessForIngestion": "Enabled",
                 "publicNetworkAccessForQuery": "Enabled",
-                "DisableLocalAuth": true
+                "DisableLocalAuth": false
             },
             "dependsOn": [
                 "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
