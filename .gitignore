@@ -281,3 +281,6 @@ __pycache__/
 deployment/.env
 deployment/.env.*
 !deployment/.env.example
+
+# Git worktrees for spikes
+.worktrees/
