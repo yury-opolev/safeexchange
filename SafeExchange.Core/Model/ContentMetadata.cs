@@ -22,6 +22,7 @@ namespace SafeExchange.Core.Model
             this.ContentName = ContentMetadata.NewName();
 
             this.IsMain = false;
+            this.IsImage = input.IsImage;
             this.ContentType = input.ContentType;
             this.FileName = input.FileName;
             this.Status = ContentStatus.Blank;
@@ -41,6 +42,8 @@ namespace SafeExchange.Core.Model
         public string ContentName { get; set; }
 
         public bool IsMain { get; set; }
+
+        public bool IsImage { get; set; }
 
         public string ContentType { get; set; }
 
@@ -90,6 +93,7 @@ namespace SafeExchange.Core.Model
         {
             ContentName = this.ContentName,
             IsMain = this.IsMain,
+            IsImage = this.IsImage,
             ContentType = this.ContentType,
             FileName = this.FileName,
             IsReady = this.Status == ContentStatus.Ready,
