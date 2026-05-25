@@ -56,6 +56,9 @@
         "settings-features-useGraphGroupSearch": {
             "value": "False"
         },
+        "settings-features-useAccessGiveUp": {
+            "value": "False"
+        },
         "deployer_ip_addresses": {
             "value": []
         },

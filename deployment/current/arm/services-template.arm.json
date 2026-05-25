@@ -168,6 +168,14 @@
                 "False"
             ]
         },
+        "settings-features-useAccessGiveUp": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ]
+        },
         "settings-features-auditRetentionDays": {
             "defaultValue": "365",
             "type": "string",
@@ -1840,6 +1848,22 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-features-useGraphGroupSearch')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--UseAccessGiveUp')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-useAccessGiveUp')]"
             }
         },
         {
