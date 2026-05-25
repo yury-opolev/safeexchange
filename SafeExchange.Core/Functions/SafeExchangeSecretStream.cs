@@ -641,6 +641,15 @@ namespace SafeExchange.Core.Functions
             sanitizer.AllowedAttributes.Add("data-bs-placement");
             sanitizer.AllowedAttributes.Add("title");
 
+            // images-as-attachments spike: keep inline-image geometry/alignment
+            // (blotFormatter2 writes width/style) and the attachment reference marker
+            // so a stored <img data-saex-attachment="..."> survives upload sanitizing.
+            sanitizer.AllowedAttributes.Add("style");
+            sanitizer.AllowedAttributes.Add("width");
+            sanitizer.AllowedAttributes.Add("height");
+            sanitizer.AllowedAttributes.Add("alt");
+            sanitizer.AllowedAttributes.Add("data-saex-attachment");
+
             content = sanitizer.Sanitize(content);
 
             log.LogInformation($"Lenght before sanitizing: {lengthBefore}, after sanitizing: {content.Length}.");

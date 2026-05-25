@@ -12,6 +12,8 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         public bool IsMain { get; set; }
 
+        public bool IsImage { get; set; }
+
         public string ContentType { get; set; }
 
         public string FileName { get; set; }
