@@ -57,7 +57,7 @@
             "value": "False"
         },
         "settings-features-useAccessGiveUp": {
-            "value": "False"
+            "value": "True"
         },
         "deployer_ip_addresses": {
             "value": []
