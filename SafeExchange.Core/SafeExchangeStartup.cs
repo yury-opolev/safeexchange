@@ -15,6 +15,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Applications;
     using SafeExchange.Core.Audit;
     using SafeExchange.Core.AzureAd;
+    using SafeExchange.Core.LocalDev;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Permissions;
@@ -39,6 +40,15 @@ namespace SafeExchange.Core
             => context.FunctionDefinition.InputBindings.Values
                 .First(a => a.Type.EndsWith("Trigger")).Type == "httpTrigger";
 
+        // LOCAL SPIKE ONLY: when SAEX_DEV_MODE=true we substitute local-runnable
+        // implementations for ICryptoHelper / IBlobHelper and point Cosmos at the
+        // emulator with its well-known key. Authentication intentionally stays on
+        // the real middleware so local dev exercises the same token-validation
+        // path production uses (just against the staging Entra app). Never set
+        // SAEX_DEV_MODE in a deployed environment.
+        public static bool IsDevMode()
+            => string.Equals(Environment.GetEnvironmentVariable("SAEX_DEV_MODE"), "true", StringComparison.OrdinalIgnoreCase);
+
         public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
         {
             builder.UseWhen<DefaultAuthenticationMiddleware>(IsHttpTrigger);
@@ -55,12 +65,11 @@ namespace SafeExchange.Core
             var interimConfiguration = configurationBuilder.Build();
             var keyVaultBaseUri = interimConfiguration["KEYVAULT_BASEURI"];
 
-            // Local dev runs without a Key Vault; if the URI is missing or unreachable
-            // we silently skip the KV configuration source and rely on whatever else
-            // is in the configuration chain (local.settings.json / env vars). This
-            // keeps `func host start` viable on a workstation that doesn't have a
-            // bespoke Key Vault provisioned.
-            if (string.IsNullOrWhiteSpace(keyVaultBaseUri))
+            // Local dev (SAEX_DEV_MODE) or missing-URI runs skip the KV source
+            // entirely and rely on whatever else is in the chain (local.settings.json /
+            // env vars). Production always sets KEYVAULT_BASEURI so its posture is
+            // unchanged.
+            if (IsDevMode() || string.IsNullOrWhiteSpace(keyVaultBaseUri))
             {
                 return;
             }
@@ -92,17 +101,49 @@ namespace SafeExchange.Core
             // request-scoped context shared by handlers. Sharing a context would let
             // an audit-write retry's ChangeTracker.Clear() drop pending user-facing
             // mutations (e.g., permission grants batched before the final SaveChanges).
-            services.AddDbContextFactory<SafeExchangeDbContext>(
-                options => options.UseCosmos(
-                    cosmosDbConfig.CosmosDbEndpoint,
-                    defaultCredential,
-                    cosmosDbConfig.DatabaseName));
+            if (IsDevMode())
+            {
+                // LOCAL SPIKE: Cosmos emulator on its well-known key; accept its
+                // self-signed cert.
+                const string emulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+                services.AddDbContextFactory<SafeExchangeDbContext>(
+                    options => options.UseCosmos(
+                        cosmosDbConfig.CosmosDbEndpoint,
+                        emulatorKey,
+                        cosmosDbConfig.DatabaseName,
+                        cosmos =>
+                        {
+                            cosmos.ConnectionMode(Microsoft.Azure.Cosmos.ConnectionMode.Gateway);
+                            cosmos.LimitToEndpoint();
+                            cosmos.HttpClientFactory(() => new HttpClient(new HttpClientHandler
+                            {
+                                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                            }));
+                        }));
+            }
+            else
+            {
+                services.AddDbContextFactory<SafeExchangeDbContext>(
+                    options => options.UseCosmos(
+                        cosmosDbConfig.CosmosDbEndpoint,
+                        defaultCredential,
+                        cosmosDbConfig.DatabaseName));
+            }
             services.AddScoped<SafeExchangeDbContext>(sp =>
                 sp.GetRequiredService<IDbContextFactory<SafeExchangeDbContext>>().CreateDbContext());
 
             services.AddSingleton<ITokenHelper, TokenHelper>();
-            services.AddSingleton<ICryptoHelper, CryptoHelper>();
-            services.AddSingleton<IBlobHelper, BlobHelper>();
+            if (IsDevMode())
+            {
+                services.AddSingleton<ICryptoHelper, DevCryptoHelper>();
+                services.AddSingleton<IBlobHelper, DevBlobHelper>();
+                services.AddHostedService<DevDbInitializerHostedService>();
+            }
+            else
+            {
+                services.AddSingleton<ICryptoHelper, CryptoHelper>();
+                services.AddSingleton<IBlobHelper, BlobHelper>();
+            }
             services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
             services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
             services.AddSingleton<IPurger, PurgeManager>();

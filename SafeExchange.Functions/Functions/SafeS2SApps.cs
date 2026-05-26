@@ -48,7 +48,10 @@ namespace SafeExchange.Functions
 
         [Function("SafeExchange-S2SApps-Mine")]
         public async Task<HttpResponseData> RunListMine(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/s2sapps/mine")]
+            // Distinct route so it can't collide with /s2sapps/{displayName} —
+            // Azure Functions doesn't always prefer literal segments over
+            // parameterised ones when both routes are equally specific.
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/me/s2sapps")]
             HttpRequestData request)
         {
             var principal = request.FunctionContext.GetPrincipal();
