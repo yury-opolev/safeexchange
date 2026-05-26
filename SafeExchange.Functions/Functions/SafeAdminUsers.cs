@@ -85,4 +85,31 @@ namespace SafeExchange.Functions
             return await this.handler.RunToggleEnabled(request, displayName, principal, this.log);
         }
     }
+
+    public class SafeAdminAudit
+    {
+        private const string Version = "v2";
+
+        private readonly SafeExchangeAdminAudit handler;
+        private readonly ILogger log;
+
+        public SafeAdminAudit(
+            SafeExchangeDbContext dbContext,
+            GlobalFilters globalFilters,
+            IOptionsMonitor<Limits> limits,
+            ILogger<SafeAdminAudit> log)
+        {
+            this.handler = new SafeExchangeAdminAudit(dbContext, globalFilters, limits);
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
+        }
+
+        [Function("SafeExchange-Admin-Audit-Search")]
+        public async Task<HttpResponseData> RunSearchAnchors(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/admin/audit")]
+            HttpRequestData request)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunSearchAnchors(request, principal, this.log);
+        }
+    }
 }
