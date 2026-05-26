@@ -42,5 +42,12 @@ namespace SafeExchange.Core.Model.Dto.Output
         public bool Enabled { get; set; }
 
         public int OwnerCount { get; set; }
+
+        /// <summary>
+        /// True iff the caller is the registrar (primary owner) of this app.
+        /// False = the caller was added later as a co-owner. Lets the UI
+        /// distinguish the two roles without an extra round-trip.
+        /// </summary>
+        public bool IsRegistrar { get; set; }
     }
 }

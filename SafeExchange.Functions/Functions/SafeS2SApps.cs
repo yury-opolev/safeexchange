@@ -31,9 +31,10 @@ namespace SafeExchange.Functions
             GlobalFilters globalFilters,
             IApplicationOwnerService ownerService,
             IOptionsMonitor<Features> features,
+            IOptionsMonitor<Limits> limits,
             ILogger<SafeS2SApps> log)
         {
-            this.handler = new SafeExchangeS2SApps(dbContext, tokenHelper, globalFilters, ownerService, features);
+            this.handler = new SafeExchangeS2SApps(dbContext, tokenHelper, globalFilters, ownerService, features, limits);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 

@@ -35,20 +35,25 @@ namespace SafeExchange.Core.Functions
         private readonly GlobalFilters globalFilters;
         private readonly IApplicationOwnerService ownerService;
         private readonly IOptionsMonitor<Features> features;
+        private readonly IOptionsMonitor<Limits> limits;
 
         public SafeExchangeS2SApps(
             SafeExchangeDbContext dbContext,
             ITokenHelper tokenHelper,
             GlobalFilters globalFilters,
             IApplicationOwnerService ownerService,
-            IOptionsMonitor<Features> features)
+            IOptionsMonitor<Features> features,
+            IOptionsMonitor<Limits> limits)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
             this.ownerService = ownerService ?? throw new ArgumentNullException(nameof(ownerService));
             this.features = features ?? throw new ArgumentNullException(nameof(features));
+            this.limits = limits ?? throw new ArgumentNullException(nameof(limits));
         }
+
+        private string RegistrarCreatedBy(string upn) => $"User {upn}";
 
         /// <summary>POST /s2sapps — self-service register.</summary>
         public async Task<HttpResponseData> RunRegister(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
@@ -107,17 +112,38 @@ namespace SafeExchange.Core.Functions
 
                 var contactEmail = string.IsNullOrWhiteSpace(input.ContactEmail) ? subjectId : input.ContactEmail;
 
-                // Uniqueness: display name OR (tenantId + clientId) pair.
+                // Per-registrar cap. Counts apps where the caller is the *registrar*
+                // (Application.CreatedBy starts with their UPN); does NOT count apps
+                // where they were merely added as a co-owner. Cap=0 disables the
+                // check. See docs/SPIKE-s2s-apps.md and Limits.MaxAppsPerRegistrar.
+                var maxRegistered = this.limits.CurrentValue.MaxAppsPerRegistrar;
+                if (maxRegistered > 0)
+                {
+                    var createdBy = this.RegistrarCreatedBy(subjectId);
+                    var existingRegistered = await this.dbContext.Applications.CountAsync(a => a.CreatedBy == createdBy);
+                    if (existingRegistered >= maxRegistered)
+                    {
+                        return await ConflictAsync(request,
+                            $"You have already registered {existingRegistered} apps (max {maxRegistered}). " +
+                            "Co-ownership is unlimited — ask another owner to register the new app and add you as a co-owner, or have an admin raise the cap.");
+                    }
+                }
+
+                // Uniqueness: display name (global) and client id (global).
                 var nameTaken = await this.dbContext.Applications.AnyAsync(a => a.DisplayName == input.DisplayName);
                 if (nameTaken)
                 {
                     return await ConflictAsync(request, $"Application '{input.DisplayName}' is already registered.");
                 }
-                var clientPairTaken = await this.dbContext.Applications.AnyAsync(
-                    a => a.AadTenantId == tenantId && a.AadClientId == input.AadClientId);
-                if (clientPairTaken)
+                // Client id GUID uniqueness is enforced GLOBALLY (not per-tenant): an
+                // Entra app id is a GUID and there's no scenario where two apps should
+                // share one. Combined with the DisplayName uniqueness check above this
+                // gives us "two apps cannot share either identifier".
+                var clientIdTaken = await this.dbContext.Applications.AnyAsync(
+                    a => a.AadClientId == input.AadClientId);
+                if (clientIdTaken)
                 {
-                    return await ConflictAsync(request, "An application with that tenant/client id pair already exists.");
+                    return await ConflictAsync(request, $"An application with client id '{input.AadClientId}' is already registered.");
                 }
 
                 // Validate the invariant up-front against the proposed owner set
@@ -153,7 +179,7 @@ namespace SafeExchange.Core.Functions
                     Enabled = true,
                     ExternalNotificationsReader = false,
                 };
-                var app = new Application(input.DisplayName, registration, createdBy: $"User {subjectId}");
+                var app = new Application(input.DisplayName, registration, createdBy: this.RegistrarCreatedBy(subjectId));
                 await this.dbContext.Applications.AddAsync(app);
                 await this.dbContext.SaveChangesAsync();
 
@@ -198,12 +224,14 @@ namespace SafeExchange.Core.Functions
             {
                 var owned = await this.ownerService.ListAppsOwnedByUserAsync(subjectId);
 
+                var registrarCreatedBy = this.RegistrarCreatedBy(subjectId);
                 var overviews = owned.Select(a => new S2SAppOverviewOutput
                 {
                     DisplayName = a.DisplayName,
                     AadClientId = a.AadClientId,
                     Enabled = a.Enabled,
                     OwnerCount = -1, // populated below if needed; left at -1 to avoid an N+1 in the list view
+                    IsRegistrar = string.Equals(a.CreatedBy, registrarCreatedBy, StringComparison.OrdinalIgnoreCase),
                 }).ToList();
 
                 return await ActionResults.CreateResponseAsync(

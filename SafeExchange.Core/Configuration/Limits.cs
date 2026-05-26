@@ -32,11 +32,21 @@ namespace SafeExchange.Core.Configuration
         /// </summary>
         public int OwnerlessGracePeriodDays { get; set; } = 30;
 
+        /// <summary>
+        /// Maximum number of apps a single user can REGISTER (be the primary
+        /// owner / registrar of). Co-ownership of apps registered by others is
+        /// intentionally unbounded — capping it would break the safety-net
+        /// pattern (an app already at the cap could be unable to add the second
+        /// owner the invariant requires). Set to 0 to disable the cap entirely.
+        /// </summary>
+        public int MaxAppsPerRegistrar { get; set; } = 3;
+
         public Limits Clone() => new Limits()
         {
             AdminListDefaultPageSize = this.AdminListDefaultPageSize,
             AdminListMaxPageSize = this.AdminListMaxPageSize,
             OwnerlessGracePeriodDays = this.OwnerlessGracePeriodDays,
+            MaxAppsPerRegistrar = this.MaxAppsPerRegistrar,
         };
 
         public override bool Equals(object obj)
@@ -49,12 +59,14 @@ namespace SafeExchange.Core.Configuration
             return
                 this.AdminListDefaultPageSize.Equals(other.AdminListDefaultPageSize) &&
                 this.AdminListMaxPageSize.Equals(other.AdminListMaxPageSize) &&
-                this.OwnerlessGracePeriodDays.Equals(other.OwnerlessGracePeriodDays);
+                this.OwnerlessGracePeriodDays.Equals(other.OwnerlessGracePeriodDays) &&
+                this.MaxAppsPerRegistrar.Equals(other.MaxAppsPerRegistrar);
         }
 
         public override int GetHashCode() => HashCode.Combine(
             this.AdminListDefaultPageSize,
             this.AdminListMaxPageSize,
-            this.OwnerlessGracePeriodDays);
+            this.OwnerlessGracePeriodDays,
+            this.MaxAppsPerRegistrar);
     }
 }
