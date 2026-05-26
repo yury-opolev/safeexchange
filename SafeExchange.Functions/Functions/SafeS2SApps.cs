@@ -54,5 +54,57 @@ namespace SafeExchange.Functions
             var principal = request.FunctionContext.GetPrincipal();
             return await this.handler.RunListMine(request, principal, this.log);
         }
+
+        [Function("SafeExchange-S2SApps-Detail")]
+        public async Task<HttpResponseData> RunDetail(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/s2sapps/{{displayName}}")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunDetail(request, displayName, principal, this.log);
+        }
+
+        [Function("SafeExchange-S2SApps-Delete")]
+        public async Task<HttpResponseData> RunDelete(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = $"{Version}/s2sapps/{{displayName}}")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunDelete(request, displayName, principal, this.log);
+        }
+
+        [Function("SafeExchange-S2SApps-ListOwners")]
+        public async Task<HttpResponseData> RunListOwners(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/s2sapps/{{displayName}}/owners")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunListOwners(request, displayName, principal, this.log);
+        }
+
+        [Function("SafeExchange-S2SApps-AddOwner")]
+        public async Task<HttpResponseData> RunAddOwner(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = $"{Version}/s2sapps/{{displayName}}/owners")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunAddOwner(request, displayName, principal, this.log);
+        }
+
+        [Function("SafeExchange-S2SApps-RemoveOwner")]
+        public async Task<HttpResponseData> RunRemoveOwner(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = $"{Version}/s2sapps/{{displayName}}/owners/{{subjectType}}/{{subjectId}}")]
+            HttpRequestData request,
+            string displayName,
+            string subjectType,
+            string subjectId)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunRemoveOwner(request, displayName, subjectType, subjectId, principal, this.log);
+        }
     }
 }
