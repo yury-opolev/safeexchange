@@ -135,15 +135,16 @@ namespace SafeExchange.Core.Functions
                 {
                     return await ConflictAsync(request, $"Application '{input.DisplayName}' is already registered.");
                 }
-                // Client id GUID uniqueness is enforced GLOBALLY (not per-tenant): an
-                // Entra app id is a GUID and there's no scenario where two apps should
-                // share one. Combined with the DisplayName uniqueness check above this
-                // gives us "two apps cannot share either identifier".
-                var clientIdTaken = await this.dbContext.Applications.AnyAsync(
-                    a => a.AadClientId == input.AadClientId);
-                if (clientIdTaken)
+                // Client-id uniqueness is enforced on the (tenantId, clientId) pair —
+                // the natural domain key matching SubjectHelper.GetApplicationDisplayNameAsync.
+                // Multi-tenant Entra apps legitimately use the same clientId across
+                // multiple tenants (different `tid` claims), and we want both to be
+                // registrable as distinct subjects.
+                var clientPairTaken = await this.dbContext.Applications.AnyAsync(
+                    a => a.AadTenantId == tenantId && a.AadClientId == input.AadClientId);
+                if (clientPairTaken)
                 {
-                    return await ConflictAsync(request, $"An application with client id '{input.AadClientId}' is already registered.");
+                    return await ConflictAsync(request, $"An application with tenant/client id pair ({tenantId}, {input.AadClientId}) is already registered.");
                 }
 
                 // Validate the invariant up-front against the proposed owner set
