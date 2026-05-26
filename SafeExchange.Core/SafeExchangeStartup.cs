@@ -53,7 +53,22 @@ namespace SafeExchange.Core
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
         {
             var interimConfiguration = configurationBuilder.Build();
-            var keyVaultUri = new Uri(interimConfiguration["KEYVAULT_BASEURI"]);
+            var keyVaultBaseUri = interimConfiguration["KEYVAULT_BASEURI"];
+
+            // Local dev runs without a Key Vault; if the URI is missing or unreachable
+            // we silently skip the KV configuration source and rely on whatever else
+            // is in the configuration chain (local.settings.json / env vars). This
+            // keeps `func host start` viable on a workstation that doesn't have a
+            // bespoke Key Vault provisioned.
+            if (string.IsNullOrWhiteSpace(keyVaultBaseUri))
+            {
+                return;
+            }
+
+            if (!Uri.TryCreate(keyVaultBaseUri, UriKind.Absolute, out var keyVaultUri))
+            {
+                return;
+            }
 
             configurationBuilder.AddAzureKeyVault(
                 keyVaultUri, DefaultCredentialProvider.CreateDefaultCredential(), new AzureKeyVaultConfigurationOptions()
