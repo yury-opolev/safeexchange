@@ -62,21 +62,20 @@ namespace SafeExchange.Core
 
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
         {
-            var interimConfiguration = configurationBuilder.Build();
-            var keyVaultBaseUri = interimConfiguration["KEYVAULT_BASEURI"];
-
-            // Local dev (SAEX_DEV_MODE) or missing-URI runs skip the KV source
-            // entirely and rely on whatever else is in the chain (local.settings.json /
-            // env vars). Production always sets KEYVAULT_BASEURI so its posture is
-            // unchanged.
-            if (IsDevMode() || string.IsNullOrWhiteSpace(keyVaultBaseUri))
+            if (IsDevMode())
             {
                 return;
             }
 
+            var keyVaultBaseUri = configurationBuilder.Build()["KEYVAULT_BASEURI"];
+            if (string.IsNullOrWhiteSpace(keyVaultBaseUri))
+            {
+                throw new ConfigurationErrorsException("KEYVAULT_BASEURI is required outside of SAEX_DEV_MODE.");
+            }
+
             if (!Uri.TryCreate(keyVaultBaseUri, UriKind.Absolute, out var keyVaultUri))
             {
-                return;
+                throw new ConfigurationErrorsException($"KEYVAULT_BASEURI is not a valid absolute URI: '{keyVaultBaseUri}'.");
             }
 
             configurationBuilder.AddAzureKeyVault(

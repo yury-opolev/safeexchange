@@ -5,6 +5,7 @@
 namespace SafeExchange.Functions
 {
     using System.Threading.Tasks;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
     using SafeExchange.Core;
@@ -16,6 +17,13 @@ namespace SafeExchange.Functions
             var host = new HostBuilder()
                 .ConfigureFunctionsWorkerDefaults(SafeExchangeStartup.ConfigureWorkerDefaults)
                 .ConfigureAppConfiguration(SafeExchangeStartup.ConfigureAppConfiguration)
+                .ConfigureAppConfiguration(cb =>
+                {
+                    if (SafeExchangeStartup.IsDevMode())
+                    {
+                        cb.AddUserSecrets<Program>(optional: true);
+                    }
+                })
                 .ConfigureServices((hostBuilderContext, serviceCollection) =>
                 {
                     SafeExchangeStartup.ConfigureServices(hostBuilderContext.Configuration, serviceCollection);

@@ -1,13 +1,27 @@
-﻿{
+{
   "IsEncrypted": false,
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
 
-    "DelayedTasksQueue__queueServiceUri": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/Queue--QueueServiceUri/)",
-    // "DelayedTasksQueue__credential": "managedidentity",
-    "DelayedTasksQueue__tenantId": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue-TenantId/)",
-    "DelayedTasksQueue__clientId": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue-ClientId/)",
-    "DelayedTasksQueue__clientSecret": "@Microsoft.KeyVault(SecretUri=https://safeexchange-local.vault.azure.net/secrets/DelayedTasksQueue-ClientSecret/)"
+    "SAEX_DEV_MODE": "true",
+
+    "CosmosDb:CosmosDbEndpoint": "https://localhost:8081",
+    "CosmosDb:DatabaseName": "SafeExchangeSpike",
+
+    "Authentication:Authority": "https://login.microsoftonline.com/1472703e-99d8-45ee-aeac-7ec3ae9ab104/v2.0",
+    "Authentication:MetadataAddress": "https://login.microsoftonline.com/1472703e-99d8-45ee-aeac-7ec3ae9ab104/v2.0/.well-known/openid-configuration",
+    "Authentication:ValidAudiences": "api://safeexchange-staging.onmicrosoft.com,fdfa17b0-db9b-4927-8b83-07055ae70c39",
+    "Authentication:ValidIssuers": "https://login.microsoftonline.com/1472703e-99d8-45ee-aeac-7ec3ae9ab104/v2.0,https://sts.windows.net/1472703e-99d8-45ee-aeac-7ec3ae9ab104/",
+    "Authentication:UpnClaims": "upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn,preferred_username,unique_name,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress,email",
+
+    "Features:S2SAppsSelfService": "True",
+    "Features:RequireApplicationOwnership": "True",
+    "Features:UseGraphUserSearch": "True",
+    "Features:UseGraphGroupSearch": "True"
+  },
+  "Host": {
+    "CORS": "https://localhost:5001,https://localhost:5101",
+    "CORSCredentials": true
   }
 }
