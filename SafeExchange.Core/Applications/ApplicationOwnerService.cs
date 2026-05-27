@@ -97,10 +97,13 @@ namespace SafeExchange.Core.Applications
 
         public async Task<bool> IsOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, CancellationToken ct = default)
         {
-            return await this.dbContext.ApplicationOwners
-                .AnyAsync(o => o.ApplicationId == applicationId
-                               && o.SubjectType == subjectType
-                               && o.SubjectId == subjectId, ct);
+            // CountAsync(...) > 0 instead of AnyAsync(predicate): the latter generates
+            // SELECT VALUE EXISTS(...) which the Cosmos emulator doesn't support.
+            var matches = await this.dbContext.ApplicationOwners
+                .CountAsync(o => o.ApplicationId == applicationId
+                              && o.SubjectType == subjectType
+                              && o.SubjectId == subjectId, ct);
+            return matches > 0;
         }
 
         public async Task<List<Application>> ListAppsOwnedByUserAsync(string upn, CancellationToken ct = default)

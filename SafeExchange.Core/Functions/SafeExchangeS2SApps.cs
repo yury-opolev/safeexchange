@@ -20,6 +20,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Linq;
     using System.Net;
@@ -97,6 +98,11 @@ namespace SafeExchange.Core.Functions
                     return await BadRequestAsync(request, "DisplayName and AadClientId are required.");
                 }
 
+                if (!S2SAppDisplayNameValidator.TryValidate(input.DisplayName, out var nameError))
+                {
+                    return await BadRequestAsync(request, nameError!);
+                }
+
                 if (!Regex.IsMatch(input.AadClientId, GuidRegex))
                 {
                     return await BadRequestAsync(request, "AadClientId must be a GUID.");
@@ -130,7 +136,11 @@ namespace SafeExchange.Core.Functions
                 }
 
                 // Uniqueness: display name (global) and client id (global).
-                var nameTaken = await this.dbContext.Applications.AnyAsync(a => a.DisplayName == input.DisplayName);
+                // CountAsync(...) > 0 instead of AnyAsync(predicate) — the latter generates
+                // SELECT VALUE EXISTS (SELECT 1 FROM root c WHERE ...) which the Cosmos
+                // emulator can't parse; CountAsync emits SELECT VALUE COUNT(1) which it
+                // does support. Real Cosmos handles both.
+                var nameTaken = await this.dbContext.Applications.CountAsync(a => a.DisplayName == input.DisplayName) > 0;
                 if (nameTaken)
                 {
                     return await ConflictAsync(request, $"Application '{input.DisplayName}' is already registered.");
@@ -140,8 +150,8 @@ namespace SafeExchange.Core.Functions
                 // Multi-tenant Entra apps legitimately use the same clientId across
                 // multiple tenants (different `tid` claims), and we want both to be
                 // registrable as distinct subjects.
-                var clientPairTaken = await this.dbContext.Applications.AnyAsync(
-                    a => a.AadTenantId == tenantId && a.AadClientId == input.AadClientId);
+                var clientPairTaken = await this.dbContext.Applications.CountAsync(
+                    a => a.AadTenantId == tenantId && a.AadClientId == input.AadClientId) > 0;
                 if (clientPairTaken)
                 {
                     return await ConflictAsync(request, $"An application with tenant/client id pair ({tenantId}, {input.AadClientId}) is already registered.");

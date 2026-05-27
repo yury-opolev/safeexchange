@@ -66,15 +66,17 @@ namespace SafeExchange.Core.Functions.Admin
                     .Take(pageSize)
                     .ToListAsync();
 
-                // Compute owner counts as a second pass — Cosmos EF can't do joins
-                // efficiently. Bounded by pageSize so it's small.
+                // Compute owner counts as a second pass — Cosmos EF can't translate
+                // a server-side GroupBy, so we project the ApplicationId column and
+                // group client-side. Bounded by pageSize × per-app owner count.
                 var appIds = apps.Select(a => a.Id).ToList();
-                var ownerCounts = await this.dbContext.ApplicationOwners
+                var ownerAppIds = await this.dbContext.ApplicationOwners
                     .Where(o => appIds.Contains(o.ApplicationId))
-                    .GroupBy(o => o.ApplicationId)
-                    .Select(g => new { ApplicationId = g.Key, Count = g.Count() })
+                    .Select(o => o.ApplicationId)
                     .ToListAsync();
-                var countByApp = ownerCounts.ToDictionary(x => x.ApplicationId, x => x.Count);
+                var countByApp = ownerAppIds
+                    .GroupBy(id => id)
+                    .ToDictionary(g => g.Key, g => g.Count());
 
                 var items = apps.Select(a => new ApplicationAdminOverviewOutput
                 {
