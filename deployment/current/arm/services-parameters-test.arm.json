@@ -35,6 +35,9 @@
         "settings-features-useAccessGiveUp": {
             "value": "True"
         },
+        "settings-features-s2sAppsSelfService": {
+            "value": "True"
+        },
         "deployer_ip_addresses": {
             "value": []
         },

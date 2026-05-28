@@ -176,6 +176,35 @@
                 "False"
             ]
         },
+        "settings-features-s2sAppsSelfService": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ],
+            "metadata": {
+                "description": "Master switch for the self-service S2S apps surface (/v2/s2sapps/*). When False, all endpoints return 204 (gated client-side too). Default off."
+            }
+        },
+        "settings-features-requireApplicationOwnership": {
+            "defaultValue": "True",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ],
+            "metadata": {
+                "description": "Enforces the ApplicationOwner invariant on register/replace-owners (>=2 distinct principals, >=1 must be a User). Default True; disabling is a spike-only escape hatch."
+            }
+        },
+        "settings-limits-maxAppsPerRegistrar": {
+            "defaultValue": "3",
+            "type": "string",
+            "metadata": {
+                "description": "Cap on apps a single registrar (user) can register. Counts only apps where Application.CreatedBy starts with the caller's UPN; co-ownership of apps registered by others is unlimited. 0 disables the check."
+            }
+        },
         "settings-features-auditRetentionDays": {
             "defaultValue": "365",
             "type": "string",
@@ -1869,6 +1898,54 @@
         {
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--S2SAppsSelfService')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-s2sAppsSelfService')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--RequireApplicationOwnership')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-requireApplicationOwnership')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Limits--MaxAppsPerRegistrar')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-limits-maxAppsPerRegistrar')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
             "name": "[concat(parameters('safeexchange_kv_name'), '/Features--AuditRetentionDays')]",
             "location": "[parameters('default_location')]",
             "dependsOn": [
@@ -2220,6 +2297,55 @@
                             {
                                 "paths": [
                                     "/DisplayName"
+                                ]
+                            }
+                        ]
+                    },
+                    "conflictResolutionPolicy": {
+                        "mode": "LastWriterWins",
+                        "conflictResolutionPath": "/_ts"
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+            "apiVersion": "2023-09-15",
+            "name": "[concat(parameters('safeexchange_dbaccount_name'), '/', parameters('safeexchange_cosmosdb_database_name'), '/ApplicationOwners')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('safeexchange_dbaccount_name'), parameters('safeexchange_cosmosdb_database_name'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('safeexchange_dbaccount_name'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "ApplicationOwners",
+                    "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true,
+                        "includedPaths": [
+                            {
+                                "path": "/*"
+                            }
+                        ],
+                        "excludedPaths": [
+                            {
+                                "path": "/\"_etag\"/?"
+                            }
+                        ]
+                    },
+                    "partitionKey": {
+                        "paths": [
+                            "/PartitionKey"
+                        ],
+                        "kind": "Hash",
+                        "version": 2
+                    },
+                    "uniqueKeyPolicy": {
+                        "uniqueKeys": [
+                            {
+                                "paths": [
+                                    "/SubjectType",
+                                    "/SubjectId"
                                 ]
                             }
                         ]
