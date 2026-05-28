@@ -87,75 +87,85 @@ namespace SafeExchange.Core.Functions
                         });
                 }
 
-                var qs = System.Web.HttpUtility.ParseQueryString(request.Url?.Query ?? string.Empty);
-                var from = TryParseUtc(qs["from"]);
-                var to = TryParseUtc(qs["to"]);
-                var raw = bool.TryParse(qs["raw"], out var r) && r;
-                var pageSize = int.TryParse(qs["pageSize"], out var p) ? Math.Clamp(p, 1, MaxPageSize) : DefaultPageSize;
-                var after = TryDecodeContinuation(qs["continuation"]);
-                var descending = string.Equals(qs["direction"], "desc", StringComparison.OrdinalIgnoreCase);
-
-                var instanceId = metadata.AuditInstanceId!;
-                var query = this.dbContext.SecretAuditEvents.Where(e => e.AuditInstanceId == instanceId);
-                if (after.HasValue)
-                {
-                    var afterVal = after.Value;
-                    query = descending
-                        ? query.Where(e => e.SequenceNumber < afterVal)
-                        : query.Where(e => e.SequenceNumber > afterVal);
-                }
-                if (from.HasValue)
-                {
-                    var fromVal = from.Value;
-                    query = query.Where(e => e.OccurredAt >= fromVal);
-                }
-                if (to.HasValue)
-                {
-                    var toVal = to.Value;
-                    query = query.Where(e => e.OccurredAt < toVal);
-                }
-
-                var ordered = descending
-                    ? query.OrderByDescending(e => e.SequenceNumber)
-                    : query.OrderBy(e => e.SequenceNumber);
-                var events = await ordered.Take(pageSize + 1).ToListAsync();
-                string? nextToken = null;
-                if (events.Count > pageSize)
-                {
-                    var lastInPage = events[pageSize - 1];
-                    nextToken = EncodeContinuation(lastInPage.SequenceNumber);
-                    events = events.GetRange(0, pageSize);
-                }
-
-                // ContentReadMerger expects ascending input. When paging desc, reverse the
-                // page in/out so the merger sees ascending and the response preserves desc.
-                List<SecretAuditEventOutput> dtoEvents;
-                if (descending)
-                {
-                    var ascForMerge = new List<SecretAuditEvent>(events);
-                    ascForMerge.Reverse();
-                    var merged = raw ? ContentReadMerger.Raw(ascForMerge) : ContentReadMerger.Merge(ascForMerge);
-                    merged.Reverse();
-                    dtoEvents = merged;
-                }
-                else
-                {
-                    dtoEvents = raw ? ContentReadMerger.Raw(events) : ContentReadMerger.Merge(events);
-                }
-
+                var page = await BuildAuditPageAsync(this.dbContext, metadata.AuditInstanceId!, request.Url?.Query ?? string.Empty);
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
-                    new BaseResponseObject<SecretAuditPageOutput>
-                    {
-                        Status = "ok",
-                        Result = new SecretAuditPageOutput
-                        {
-                            AuditEnabled = true,
-                            Events = dtoEvents,
-                            NextContinuation = nextToken,
-                        },
-                    });
+                    new BaseResponseObject<SecretAuditPageOutput> { Status = "ok", Result = page });
             }, nameof(SafeExchangeSecretAudit), log);
+        }
+
+        // Shared with SafeExchangeAdminSecretAudit. Takes an auditInstanceId
+        // directly so the admin path can be route-keyed by instance (the
+        // immutable identity of an audit run) rather than by SecretObjectName
+        // (which can be reused after delete+recreate). queryString is the raw
+        // request URL query — decoupling from HttpRequestData keeps the helper
+        // unit-testable without an HTTP request fixture.
+        internal static async Task<SecretAuditPageOutput> BuildAuditPageAsync(
+            SafeExchangeDbContext dbContext, string auditInstanceId, string queryString)
+        {
+            var qs = System.Web.HttpUtility.ParseQueryString(queryString ?? string.Empty);
+            var from = TryParseUtc(qs["from"]);
+            var to = TryParseUtc(qs["to"]);
+            var raw = bool.TryParse(qs["raw"], out var r) && r;
+            var pageSize = int.TryParse(qs["pageSize"], out var p) ? Math.Clamp(p, 1, MaxPageSize) : DefaultPageSize;
+            var after = TryDecodeContinuation(qs["continuation"]);
+            var descending = string.Equals(qs["direction"], "desc", StringComparison.OrdinalIgnoreCase);
+
+            var query = dbContext.SecretAuditEvents.Where(e => e.AuditInstanceId == auditInstanceId);
+            if (after.HasValue)
+            {
+                var afterVal = after.Value;
+                query = descending
+                    ? query.Where(e => e.SequenceNumber < afterVal)
+                    : query.Where(e => e.SequenceNumber > afterVal);
+            }
+
+            if (from.HasValue)
+            {
+                var fromVal = from.Value;
+                query = query.Where(e => e.OccurredAt >= fromVal);
+            }
+
+            if (to.HasValue)
+            {
+                var toVal = to.Value;
+                query = query.Where(e => e.OccurredAt < toVal);
+            }
+
+            var ordered = descending
+                ? query.OrderByDescending(e => e.SequenceNumber)
+                : query.OrderBy(e => e.SequenceNumber);
+            var events = await ordered.Take(pageSize + 1).ToListAsync();
+            string? nextToken = null;
+            if (events.Count > pageSize)
+            {
+                var lastInPage = events[pageSize - 1];
+                nextToken = EncodeContinuation(lastInPage.SequenceNumber);
+                events = events.GetRange(0, pageSize);
+            }
+
+            // ContentReadMerger expects ascending input. When paging desc, reverse the
+            // page in/out so the merger sees ascending and the response preserves desc.
+            List<SecretAuditEventOutput> dtoEvents;
+            if (descending)
+            {
+                var ascForMerge = new List<SecretAuditEvent>(events);
+                ascForMerge.Reverse();
+                var merged = raw ? ContentReadMerger.Raw(ascForMerge) : ContentReadMerger.Merge(ascForMerge);
+                merged.Reverse();
+                dtoEvents = merged;
+            }
+            else
+            {
+                dtoEvents = raw ? ContentReadMerger.Raw(events) : ContentReadMerger.Merge(events);
+            }
+
+            return new SecretAuditPageOutput
+            {
+                AuditEnabled = true,
+                Events = dtoEvents,
+                NextContinuation = nextToken,
+            };
         }
 
         private static DateTime? TryParseUtc(string? value)

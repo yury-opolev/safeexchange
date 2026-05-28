@@ -13,6 +13,8 @@ namespace SafeExchange.Core
 
         public DbSet<Application> Applications { get; set; }
 
+        public DbSet<ApplicationOwner> ApplicationOwners { get; set; }
+
         public DbSet<ObjectMetadata> Objects { get; set; }
 
         public DbSet<SubjectPermissions> Permissions { get; set; }
@@ -114,6 +116,17 @@ namespace SafeExchange.Core
                 .ToContainer("Applications")
                 .HasNoDiscriminator()
                 .HasPartitionKey(a => a.PartitionKey);
+
+            modelBuilder.Entity<ApplicationOwner>()
+                .ToContainer("ApplicationOwners")
+                .HasNoDiscriminator()
+                .HasPartitionKey(ao => ao.PartitionKey);
+
+            // Composite key: an owner is uniquely identified by the app it owns + the
+            // principal (typed). Same SubjectId can be both a User and a Group owner
+            // of different apps, so the type is part of the key.
+            modelBuilder.Entity<ApplicationOwner>()
+                .HasKey(ao => new { ao.ApplicationId, ao.SubjectType, ao.SubjectId });
 
             modelBuilder.Entity<WebhookSubscription>()
                 .ToContainer("WebhookSubscriptions")

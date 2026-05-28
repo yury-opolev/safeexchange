@@ -12,8 +12,10 @@ namespace SafeExchange.Core
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
+    using SafeExchange.Core.Applications;
     using SafeExchange.Core.Audit;
     using SafeExchange.Core.AzureAd;
+    using SafeExchange.Core.LocalDev;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Permissions;
@@ -38,6 +40,15 @@ namespace SafeExchange.Core
             => context.FunctionDefinition.InputBindings.Values
                 .First(a => a.Type.EndsWith("Trigger")).Type == "httpTrigger";
 
+        // LOCAL SPIKE ONLY: when SAEX_DEV_MODE=true we substitute local-runnable
+        // implementations for ICryptoHelper / IBlobHelper and point Cosmos at the
+        // emulator with its well-known key. Authentication intentionally stays on
+        // the real middleware so local dev exercises the same token-validation
+        // path production uses (just against the staging Entra app). Never set
+        // SAEX_DEV_MODE in a deployed environment.
+        public static bool IsDevMode()
+            => string.Equals(Environment.GetEnvironmentVariable("SAEX_DEV_MODE"), "true", StringComparison.OrdinalIgnoreCase);
+
         public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
         {
             builder.UseWhen<DefaultAuthenticationMiddleware>(IsHttpTrigger);
@@ -51,8 +62,21 @@ namespace SafeExchange.Core
 
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
         {
-            var interimConfiguration = configurationBuilder.Build();
-            var keyVaultUri = new Uri(interimConfiguration["KEYVAULT_BASEURI"]);
+            if (IsDevMode())
+            {
+                return;
+            }
+
+            var keyVaultBaseUri = configurationBuilder.Build()["KEYVAULT_BASEURI"];
+            if (string.IsNullOrWhiteSpace(keyVaultBaseUri))
+            {
+                throw new ConfigurationErrorsException("KEYVAULT_BASEURI is required outside of SAEX_DEV_MODE.");
+            }
+
+            if (!Uri.TryCreate(keyVaultBaseUri, UriKind.Absolute, out var keyVaultUri))
+            {
+                throw new ConfigurationErrorsException($"KEYVAULT_BASEURI is not a valid absolute URI: '{keyVaultBaseUri}'.");
+            }
 
             configurationBuilder.AddAzureKeyVault(
                 keyVaultUri, DefaultCredentialProvider.CreateDefaultCredential(), new AzureKeyVaultConfigurationOptions()
@@ -76,17 +100,59 @@ namespace SafeExchange.Core
             // request-scoped context shared by handlers. Sharing a context would let
             // an audit-write retry's ChangeTracker.Clear() drop pending user-facing
             // mutations (e.g., permission grants batched before the final SaveChanges).
-            services.AddDbContextFactory<SafeExchangeDbContext>(
-                options => options.UseCosmos(
-                    cosmosDbConfig.CosmosDbEndpoint,
-                    defaultCredential,
-                    cosmosDbConfig.DatabaseName));
+            if (IsDevMode())
+            {
+                // LOCAL SPIKE: Cosmos emulator key comes from CosmosDb:PrimaryKey in
+                // user-secrets — never hardcoded. Fail fast with the exact command
+                // to set it so the dev experience stays self-explanatory.
+                if (string.IsNullOrWhiteSpace(cosmosDbConfig.PrimaryKey))
+                {
+                    throw new ConfigurationErrorsException(
+                        "CosmosDb:PrimaryKey is required when SAEX_DEV_MODE=true. " +
+                        "Set it via user-secrets, e.g.: " +
+                        "dotnet user-secrets set \"CosmosDb:PrimaryKey\" \"<emulator-key>\" --project SafeExchange.Functions");
+                }
+
+                services.AddDbContextFactory<SafeExchangeDbContext>(
+                    options => options.UseCosmos(
+                        cosmosDbConfig.CosmosDbEndpoint,
+                        cosmosDbConfig.PrimaryKey,
+                        cosmosDbConfig.DatabaseName,
+                        cosmos =>
+                        {
+                            cosmos.ConnectionMode(Microsoft.Azure.Cosmos.ConnectionMode.Gateway);
+                            cosmos.LimitToEndpoint();
+                            cosmos.HttpClientFactory(() => new HttpClient(new HttpClientHandler
+                            {
+                                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                            }));
+                        }));
+            }
+            else
+            {
+                services.AddDbContextFactory<SafeExchangeDbContext>(
+                    options => options.UseCosmos(
+                        cosmosDbConfig.CosmosDbEndpoint,
+                        defaultCredential,
+                        cosmosDbConfig.DatabaseName));
+            }
+
             services.AddScoped<SafeExchangeDbContext>(sp =>
                 sp.GetRequiredService<IDbContextFactory<SafeExchangeDbContext>>().CreateDbContext());
 
             services.AddSingleton<ITokenHelper, TokenHelper>();
-            services.AddSingleton<ICryptoHelper, CryptoHelper>();
-            services.AddSingleton<IBlobHelper, BlobHelper>();
+            if (IsDevMode())
+            {
+                services.AddSingleton<ICryptoHelper, DevCryptoHelper>();
+                services.AddSingleton<IBlobHelper, DevBlobHelper>();
+                services.AddHostedService<DevDbInitializerHostedService>();
+            }
+            else
+            {
+                services.AddSingleton<ICryptoHelper, CryptoHelper>();
+                services.AddSingleton<IBlobHelper, BlobHelper>();
+            }
+
             services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
             services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
             services.AddSingleton<IPurger, PurgeManager>();
@@ -95,6 +161,7 @@ namespace SafeExchange.Core
             services.AddScoped<IPermissionsManager, PermissionsManager>();
             services.AddScoped<IOrphanedSecretManager, OrphanedSecretManager>();
             services.AddScoped<IGroupsManager, GroupsManager>();
+            services.AddScoped<IApplicationOwnerService, ApplicationOwnerService>();
 
             services.AddScoped<IAuditWriter, AuditWriter>();
             services.AddScoped<IAuditPurger, AuditPurger>();
@@ -116,6 +183,7 @@ namespace SafeExchange.Core
             });
 
             services.Configure<Features>(configuration.GetSection("Features"));
+            services.Configure<Limits>(configuration.GetSection("Limits"));
             services.Configure<OrphanedSecretConfiguration>(configuration.GetSection("OrphanedSecret"));
             services.Configure<PinnedSecretsConfiguration>(configuration.GetSection("PinnedSecrets"));
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));

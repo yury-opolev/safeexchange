@@ -1,0 +1,176 @@
+/// <summary>
+/// ApplicationOwnerService — implementation of <see cref="IApplicationOwnerService"/>.
+/// EF-backed; takes a DbContext and produces deterministic owner rows.
+/// </summary>
+
+namespace SafeExchange.Core.Applications
+{
+    using Microsoft.EntityFrameworkCore;
+    using SafeExchange.Core.Model;
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    public class ApplicationOwnerService : IApplicationOwnerService
+    {
+        private readonly SafeExchangeDbContext dbContext;
+
+        public ApplicationOwnerService(SafeExchangeDbContext dbContext)
+        {
+            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        }
+
+        public void ValidateInvariant(IReadOnlyCollection<ApplicationOwner> owners)
+        {
+            if (owners is null)
+            {
+                throw new ArgumentNullException(nameof(owners));
+            }
+
+            // Distinct by (type, id) — defensive: callers shouldn't pass duplicates
+            // but the EF key prevents them anyway, so this is a belt-and-braces check.
+            var distinct = owners
+                .Select(o => (o.SubjectType, o.SubjectId))
+                .Distinct()
+                .ToList();
+
+            if (distinct.Count < 2)
+            {
+                throw new ApplicationOwnerInvariantException(
+                    "An application must have at least two distinct owner principals.");
+            }
+
+            if (!owners.Any(o => o.SubjectType == OwnerSubjectType.User))
+            {
+                throw new ApplicationOwnerInvariantException(
+                    "An application must have at least one User owner (groups alone are not sufficient).");
+            }
+        }
+
+        public Task<List<ApplicationOwner>> ListOwnersAsync(string applicationId, CancellationToken ct = default)
+        {
+            return this.dbContext.ApplicationOwners
+                .Where(o => o.ApplicationId == applicationId)
+                .ToListAsync(ct);
+        }
+
+        public async Task AddOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy, string subjectName = "", CancellationToken ct = default)
+        {
+            // Idempotent: re-adding a same-typed same-id owner is a no-op so
+            // the UI doesn't have to know whether a principal is already an owner.
+            var existing = await this.dbContext.ApplicationOwners.FindAsync(
+                new object[] { applicationId, subjectType, subjectId }, ct);
+            if (existing is not null)
+            {
+                // Backfill the friendly name if the caller now has one and the
+                // existing row was added before the column was populated.
+                if (string.IsNullOrEmpty(existing.SubjectName) && !string.IsNullOrEmpty(subjectName))
+                {
+                    existing.SubjectName = subjectName;
+                    await this.dbContext.SaveChangesAsync(ct);
+                }
+                return;
+            }
+
+            var row = new ApplicationOwner(applicationId, subjectType, subjectId, addedBy, subjectName);
+            await this.dbContext.ApplicationOwners.AddAsync(row, ct);
+            await this.dbContext.SaveChangesAsync(ct);
+        }
+
+        public async Task RemoveOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, CancellationToken ct = default)
+        {
+            var existing = await this.dbContext.ApplicationOwners.FindAsync(
+                new object[] { applicationId, subjectType, subjectId }, ct);
+            if (existing is null)
+            {
+                return;
+            }
+
+            // Validate that the *resulting* owner set still satisfies the invariant.
+            // Read-then-write race is acceptable for the spike; see SPIKE doc for
+            // the optimistic-concurrency follow-up note.
+            var remaining = await this.dbContext.ApplicationOwners
+                .Where(o => o.ApplicationId == applicationId
+                            && !(o.SubjectType == subjectType && o.SubjectId == subjectId))
+                .ToListAsync(ct);
+
+            this.ValidateInvariant(remaining);
+
+            this.dbContext.ApplicationOwners.Remove(existing);
+            await this.dbContext.SaveChangesAsync(ct);
+        }
+
+        public async Task ReplaceOwnersAsync(string applicationId, IReadOnlyList<ApplicationOwner> desired, CancellationToken ct = default)
+        {
+            // Invariant is checked against the *final* desired state once,
+            // up-front, so a swap (remove+add) can't fail mid-way through.
+            this.ValidateInvariant(desired);
+
+            var current = await this.dbContext.ApplicationOwners
+                .Where(o => o.ApplicationId == applicationId)
+                .ToListAsync(ct);
+
+            static string Key(ApplicationOwner o) => $"{(int)o.SubjectType}|{o.SubjectId}";
+            var currentByKey = current.ToDictionary(Key);
+            var desiredByKey = desired.ToDictionary(Key);
+
+            foreach (var cur in current)
+            {
+                if (!desiredByKey.ContainsKey(Key(cur)))
+                {
+                    this.dbContext.ApplicationOwners.Remove(cur);
+                }
+            }
+
+            foreach (var want in desired)
+            {
+                if (currentByKey.TryGetValue(Key(want), out var existing))
+                {
+                    // Refresh the friendly name if the persisted row didn't carry one.
+                    if (string.IsNullOrEmpty(existing.SubjectName) && !string.IsNullOrEmpty(want.SubjectName))
+                    {
+                        existing.SubjectName = want.SubjectName;
+                    }
+                }
+                else
+                {
+                    await this.dbContext.ApplicationOwners.AddAsync(want, ct);
+                }
+            }
+
+            // All operations live in the same OWNERS-{applicationId} partition,
+            // so this single SaveChanges is transactional in Cosmos.
+            await this.dbContext.SaveChangesAsync(ct);
+        }
+
+        public async Task<bool> IsOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, CancellationToken ct = default)
+        {
+            // CountAsync(...) > 0 instead of AnyAsync(predicate): the latter generates
+            // SELECT VALUE EXISTS(...) which the Cosmos emulator doesn't support.
+            var matches = await this.dbContext.ApplicationOwners
+                .CountAsync(o => o.ApplicationId == applicationId
+                              && o.SubjectType == subjectType
+                              && o.SubjectId == subjectId, ct);
+            return matches > 0;
+        }
+
+        public async Task<List<Application>> ListAppsOwnedByUserAsync(string upn, CancellationToken ct = default)
+        {
+            var ownedAppIds = await this.dbContext.ApplicationOwners
+                .Where(o => o.SubjectType == OwnerSubjectType.User && o.SubjectId == upn)
+                .Select(o => o.ApplicationId)
+                .ToListAsync(ct);
+
+            if (ownedAppIds.Count == 0)
+            {
+                return new List<Application>();
+            }
+
+            return await this.dbContext.Applications
+                .Where(a => ownedAppIds.Contains(a.Id))
+                .ToListAsync(ct);
+        }
+    }
+}

@@ -24,6 +24,21 @@ namespace SafeExchange.Core.Configuration
 
         public int AuditRetentionDays { get; set; } = 365;
 
+        /// <summary>
+        /// Master flag for the spike's self-service S2S apps surface
+        /// (POST/GET/DELETE/PATCH /s2sapps and its sub-routes). When false,
+        /// the endpoints return 204/`disabled` so the client can hide the UI.
+        /// </summary>
+        public bool S2SAppsSelfService { get; set; } = false;
+
+        /// <summary>
+        /// Enforce the ApplicationOwner invariant on register / owner-remove
+        /// (≥2 distinct principals, ≥1 of which is a User). Off by default so
+        /// legacy admin-created apps without owners aren't broken on rollout —
+        /// the migration class sets owners + a follow-up flips this to true.
+        /// </summary>
+        public bool RequireApplicationOwnership { get; set; } = false;
+
         public Features Clone() => new Features()
         {
             UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
@@ -34,6 +49,8 @@ namespace SafeExchange.Core.Configuration
             IgnoreChunkHashHeader = this.IgnoreChunkHashHeader,
             UseAccessGiveUp = this.UseAccessGiveUp,
             AuditRetentionDays = this.AuditRetentionDays,
+            S2SAppsSelfService = this.S2SAppsSelfService,
+            RequireApplicationOwnership = this.RequireApplicationOwnership,
         };
 
         public override bool Equals(object obj)
@@ -51,13 +68,17 @@ namespace SafeExchange.Core.Configuration
                 this.AllowLegacyAttachmentUploads.Equals(other.AllowLegacyAttachmentUploads) &&
                 this.IgnoreChunkHashHeader.Equals(other.IgnoreChunkHashHeader) &&
                 this.UseAccessGiveUp.Equals(other.UseAccessGiveUp) &&
-                this.AuditRetentionDays.Equals(other.AuditRetentionDays);
+                this.AuditRetentionDays.Equals(other.AuditRetentionDays) &&
+                this.S2SAppsSelfService.Equals(other.S2SAppsSelfService) &&
+                this.RequireApplicationOwnership.Equals(other.RequireApplicationOwnership);
         }
 
         public override int GetHashCode() => HashCode.Combine(
-            this.UseExternalWebHookNotifications, this.UseGroupsAuthorization,
-            this.UseGraphUserSearch, this.UseGraphGroupSearch,
-            this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader,
-            this.UseAccessGiveUp, this.AuditRetentionDays);
+            HashCode.Combine(
+                this.UseExternalWebHookNotifications, this.UseGroupsAuthorization,
+                this.UseGraphUserSearch, this.UseGraphGroupSearch,
+                this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader,
+                this.UseAccessGiveUp, this.AuditRetentionDays),
+            HashCode.Combine(this.S2SAppsSelfService, this.RequireApplicationOwnership));
     }
 }
