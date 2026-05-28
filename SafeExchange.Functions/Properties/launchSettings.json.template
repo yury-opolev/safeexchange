@@ -1,0 +1,16 @@
+{
+  "//": "Per-developer launch profile for `dotnet run` / VS / Rider. Copy to launchSettings.json (gitignored) and fill in your own KEYVAULT_BASEURI + cert path. The committed template stays free of personal paths.",
+  "profiles": {
+    "SafeExchange.Functions": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7078",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "KEYVAULT_BASEURI": "https://<your-dev-keyvault>.vault.azure.net/",
+        "AZURE_TENANT_ID": "<your-tenant-guid>",
+        "AZURE_CLIENT_ID": "<your-local-app-registration-client-id>",
+        "AZURE_CLIENT_CERTIFICATE_PATH": "<absolute-path-to-your-pfx>"
+      }
+    }
+  }
+}

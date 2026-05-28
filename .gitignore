@@ -284,3 +284,6 @@ deployment/.env.*
 
 # Git worktrees for spikes
 .worktrees/
+
+# Per-developer launch profile (use launchSettings.json.template as a starting point)
+SafeExchange.Functions/Properties/launchSettings.json
