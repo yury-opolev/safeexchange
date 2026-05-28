@@ -76,26 +76,34 @@ namespace SafeExchange.Core.Functions
                         ActionResults.InsufficientPermissions(PermissionType.Read, secretId, string.Empty));
                 }
 
-                var page = await BuildAuditPageAsync(this.dbContext, metadata, request);
+                if (!metadata.AuditEnabled || string.IsNullOrEmpty(metadata.AuditInstanceId))
+                {
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.OK,
+                        new BaseResponseObject<SecretAuditPageOutput>
+                        {
+                            Status = "ok",
+                            Result = new SecretAuditPageOutput { AuditEnabled = false },
+                        });
+                }
+
+                var page = await BuildAuditPageAsync(this.dbContext, metadata.AuditInstanceId!, request.Url?.Query ?? string.Empty);
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<SecretAuditPageOutput> { Status = "ok", Result = page });
             }, nameof(SafeExchangeSecretAudit), log);
         }
 
-        // Shared with SafeExchangeAdminSecretAudit (admin endpoint) — same query
-        // shape, same pagination/merger semantics. The only thing the admin path
-        // omits is the per-secret IsAuthorizedAsync(Read) check before calling
-        // this; the `auditEnabled` short-circuit and everything below are identical.
+        // Shared with SafeExchangeAdminSecretAudit. Takes an auditInstanceId
+        // directly so the admin path can be route-keyed by instance (the
+        // immutable identity of an audit run) rather than by SecretObjectName
+        // (which can be reused after delete+recreate). queryString is the raw
+        // request URL query — decoupling from HttpRequestData keeps the helper
+        // unit-testable without an HTTP request fixture.
         internal static async Task<SecretAuditPageOutput> BuildAuditPageAsync(
-            SafeExchangeDbContext dbContext, ObjectMetadata metadata, HttpRequestData request)
+            SafeExchangeDbContext dbContext, string auditInstanceId, string queryString)
         {
-            if (!metadata.AuditEnabled || string.IsNullOrEmpty(metadata.AuditInstanceId))
-            {
-                return new SecretAuditPageOutput { AuditEnabled = false };
-            }
-
-            var qs = System.Web.HttpUtility.ParseQueryString(request.Url?.Query ?? string.Empty);
+            var qs = System.Web.HttpUtility.ParseQueryString(queryString ?? string.Empty);
             var from = TryParseUtc(qs["from"]);
             var to = TryParseUtc(qs["to"]);
             var raw = bool.TryParse(qs["raw"], out var r) && r;
@@ -103,8 +111,7 @@ namespace SafeExchange.Core.Functions
             var after = TryDecodeContinuation(qs["continuation"]);
             var descending = string.Equals(qs["direction"], "desc", StringComparison.OrdinalIgnoreCase);
 
-            var instanceId = metadata.AuditInstanceId!;
-            var query = dbContext.SecretAuditEvents.Where(e => e.AuditInstanceId == instanceId);
+            var query = dbContext.SecretAuditEvents.Where(e => e.AuditInstanceId == auditInstanceId);
             if (after.HasValue)
             {
                 var afterVal = after.Value;

@@ -11,41 +11,40 @@ namespace SafeExchange.Functions
     using System;
     using System.Threading.Tasks;
 
-    public class SafeAdminUsers
+    public class SafeAdminAudit
     {
         private const string Version = "v2";
 
-        private readonly SafeExchangeAdminUsers handler;
+        private readonly SafeExchangeAdminAudit handler;
         private readonly ILogger log;
 
-        public SafeAdminUsers(
+        public SafeAdminAudit(
             SafeExchangeDbContext dbContext,
-            ITokenHelper tokenHelper,
             GlobalFilters globalFilters,
             IOptionsMonitor<Limits> limits,
-            ILogger<SafeAdminUsers> log)
+            ILogger<SafeAdminAudit> log)
         {
-            this.handler = new SafeExchangeAdminUsers(dbContext, tokenHelper, globalFilters, limits);
+            this.handler = new SafeExchangeAdminAudit(dbContext, globalFilters, limits);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        [Function("SafeExchange-Admin-Users-List")]
-        public async Task<HttpResponseData> RunList(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/admin/users")]
+        [Function("SafeExchange-Admin-Audit-Search")]
+        public async Task<HttpResponseData> RunSearchAnchors(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/admin/audit")]
             HttpRequestData request)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.handler.RunList(request, principal, this.log);
+            return await this.handler.RunSearchAnchors(request, principal, this.log);
         }
 
-        [Function("SafeExchange-Admin-Users-ToggleEnabled")]
-        public async Task<HttpResponseData> RunToggleEnabled(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/admin/users/{{upn}}/enabled")]
+        [Function("SafeExchange-Admin-Audit-Instance")]
+        public async Task<HttpResponseData> RunInstance(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/admin/audit/{{auditInstanceId}}")]
             HttpRequestData request,
-            string upn)
+            string auditInstanceId)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.handler.RunToggleEnabled(request, upn, principal, this.log);
+            return await this.handler.RunInstance(request, auditInstanceId, principal, this.log);
         }
     }
 }
