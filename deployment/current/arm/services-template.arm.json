@@ -58,6 +58,13 @@
                 "description": "Name of AFD endpoint for web client. Value is required."
             }
         },
+        "safeexchange_adminpanel_afd_endpoint": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Hostname of the AdminPanel AFD route (e.g. admin.staging.safeexchange.dk). Adds the hostname to the Function app CORS allowlist when set. Leave empty in environments where the admin panel is not deployed."
+            }
+        },
         "safeexchange_webjobsstorage_name": {
             "defaultValue": "[concat(replace(parameters('safeexchange_site_name'), '-', ''), 'wj')]",
             "type": "string",
@@ -2170,11 +2177,7 @@
                 "autoHealEnabled": false,
                 "vnetRouteAllEnabled": true,
                 "cors": {
-                    "allowedOrigins": [
-                        "https://portal.azure.com",
-                        "https://localhost:5001",
-                        "[concat('https://', parameters('safeexchange_website_afd_endpoint'))]"
-                    ],
+                    "allowedOrigins": "[union(createArray('https://portal.azure.com', 'https://localhost:5001', 'https://localhost:5101', concat('https://', parameters('safeexchange_website_afd_endpoint'))), if(empty(parameters('safeexchange_adminpanel_afd_endpoint')), createArray(), createArray(concat('https://', parameters('safeexchange_adminpanel_afd_endpoint')))))]",
                     "supportCredentials": false
                 },
                 "ipSecurityRestrictions": [

@@ -8,6 +8,9 @@
         "safeexchange_website_afd_endpoint": {
             "value": "www.staging.safeexchange.dk"
         },
+        "safeexchange_adminpanel_afd_endpoint": {
+            "value": "admin.staging.safeexchange.dk"
+        },
         "settings-aadClient-clientId": {
             "value": "fdfa17b0-db9b-4927-8b83-07055ae70c39"
         },
