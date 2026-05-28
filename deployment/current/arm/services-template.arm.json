@@ -2344,7 +2344,6 @@
                         "uniqueKeys": [
                             {
                                 "paths": [
-                                    "/SubjectType",
                                     "/SubjectId"
                                 ]
                             }
