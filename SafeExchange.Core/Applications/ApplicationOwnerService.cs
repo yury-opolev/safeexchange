@@ -56,7 +56,7 @@ namespace SafeExchange.Core.Applications
                 .ToListAsync(ct);
         }
 
-        public async Task AddOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy, CancellationToken ct = default)
+        public async Task AddOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy, string subjectName = "", CancellationToken ct = default)
         {
             // Idempotent: re-adding a same-typed same-id owner is a no-op so
             // the UI doesn't have to know whether a principal is already an owner.
@@ -64,10 +64,17 @@ namespace SafeExchange.Core.Applications
                 new object[] { applicationId, subjectType, subjectId }, ct);
             if (existing is not null)
             {
+                // Backfill the friendly name if the caller now has one and the
+                // existing row was added before the column was populated.
+                if (string.IsNullOrEmpty(existing.SubjectName) && !string.IsNullOrEmpty(subjectName))
+                {
+                    existing.SubjectName = subjectName;
+                    await this.dbContext.SaveChangesAsync(ct);
+                }
                 return;
             }
 
-            var row = new ApplicationOwner(applicationId, subjectType, subjectId, addedBy);
+            var row = new ApplicationOwner(applicationId, subjectType, subjectId, addedBy, subjectName);
             await this.dbContext.ApplicationOwners.AddAsync(row, ct);
             await this.dbContext.SaveChangesAsync(ct);
         }
@@ -92,6 +99,49 @@ namespace SafeExchange.Core.Applications
             this.ValidateInvariant(remaining);
 
             this.dbContext.ApplicationOwners.Remove(existing);
+            await this.dbContext.SaveChangesAsync(ct);
+        }
+
+        public async Task ReplaceOwnersAsync(string applicationId, IReadOnlyList<ApplicationOwner> desired, CancellationToken ct = default)
+        {
+            // Invariant is checked against the *final* desired state once,
+            // up-front, so a swap (remove+add) can't fail mid-way through.
+            this.ValidateInvariant(desired);
+
+            var current = await this.dbContext.ApplicationOwners
+                .Where(o => o.ApplicationId == applicationId)
+                .ToListAsync(ct);
+
+            static string Key(ApplicationOwner o) => $"{(int)o.SubjectType}|{o.SubjectId}";
+            var currentByKey = current.ToDictionary(Key);
+            var desiredByKey = desired.ToDictionary(Key);
+
+            foreach (var cur in current)
+            {
+                if (!desiredByKey.ContainsKey(Key(cur)))
+                {
+                    this.dbContext.ApplicationOwners.Remove(cur);
+                }
+            }
+
+            foreach (var want in desired)
+            {
+                if (currentByKey.TryGetValue(Key(want), out var existing))
+                {
+                    // Refresh the friendly name if the persisted row didn't carry one.
+                    if (string.IsNullOrEmpty(existing.SubjectName) && !string.IsNullOrEmpty(want.SubjectName))
+                    {
+                        existing.SubjectName = want.SubjectName;
+                    }
+                }
+                else
+                {
+                    await this.dbContext.ApplicationOwners.AddAsync(want, ct);
+                }
+            }
+
+            // All operations live in the same OWNERS-{applicationId} partition,
+            // so this single SaveChanges is transactional in Cosmos.
             await this.dbContext.SaveChangesAsync(ct);
         }
 

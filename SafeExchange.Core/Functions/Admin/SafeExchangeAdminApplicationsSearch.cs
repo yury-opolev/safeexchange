@@ -42,7 +42,10 @@ namespace SafeExchange.Core.Functions.Admin
         public async Task<HttpResponseData> RunList(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn) return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
@@ -102,7 +105,10 @@ namespace SafeExchange.Core.Functions.Admin
         public async Task<HttpResponseData> RunToggleEnabled(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn) return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
@@ -135,6 +141,36 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<string> { Status = "ok", Result = input.Enabled ? "enabled" : "disabled" });
             }, nameof(RunToggleEnabled), log);
+        }
+
+        /// <summary>DELETE /admin/applications/{displayName} — admin-only; cascades owner rows.</summary>
+        public async Task<HttpResponseData> RunDelete(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
+        {
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
+                if (app is null)
+                {
+                    return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                        new BaseResponseObject<string> { Status = "no_content", Result = "already absent" });
+                }
+
+                var owners = await this.dbContext.ApplicationOwners.Where(o => o.ApplicationId == app.Id).ToListAsync();
+                this.dbContext.ApplicationOwners.RemoveRange(owners);
+                this.dbContext.Applications.Remove(app);
+                await this.dbContext.SaveChangesAsync();
+
+                log.LogInformation("Admin deleted Application '{App}' ({OwnerCount} owners cascaded).",
+                    displayName, owners.Count);
+                return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                    new BaseResponseObject<string> { Status = "ok", Result = "deleted" });
+            }, nameof(RunDelete), log);
         }
     }
 }

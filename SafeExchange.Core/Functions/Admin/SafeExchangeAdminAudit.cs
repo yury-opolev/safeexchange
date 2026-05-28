@@ -39,7 +39,10 @@ namespace SafeExchange.Core.Functions.Admin
         public async Task<HttpResponseData> RunSearchAnchors(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn) return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {

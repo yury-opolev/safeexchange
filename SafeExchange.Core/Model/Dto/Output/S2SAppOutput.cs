@@ -21,6 +21,13 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         public DateTime CreatedAt { get; set; }
 
+        /// <summary>
+        /// UPN of the user who registered the app (the "registrar"). This row
+        /// is protected — removing it from the owner set is refused (409). UI
+        /// uses it to hide the remove control on that row.
+        /// </summary>
+        public string RegistrarSubjectId { get; set; } = string.Empty;
+
         public List<S2SAppOwnerOutput> Owners { get; set; } = new();
     }
 
@@ -29,6 +36,9 @@ namespace SafeExchange.Core.Model.Dto.Output
         public OwnerSubjectType SubjectType { get; set; }
 
         public string SubjectId { get; set; }
+
+        /// <summary>Friendly label (display name) captured at add time. May be empty for older rows.</summary>
+        public string SubjectName { get; set; }
 
         public DateTime AddedAt { get; set; }
     }

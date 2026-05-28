@@ -79,6 +79,26 @@ namespace SafeExchange.Functions
             return await this.handler.RunDelete(request, displayName, principal, this.log);
         }
 
+        [Function("SafeExchange-S2SApps-ReplaceOwners")]
+        public async Task<HttpResponseData> RunReplaceOwners(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = $"{Version}/s2sapps/{{displayName}}/owners")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunReplaceOwners(request, displayName, principal, this.log);
+        }
+
+        [Function("SafeExchange-S2SApps-ToggleEnabled")]
+        public async Task<HttpResponseData> RunToggleEnabled(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/s2sapps/{{displayName}}/enabled")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunToggleEnabled(request, displayName, principal, this.log);
+        }
+
         [Function("SafeExchange-S2SApps-ListOwners")]
         public async Task<HttpResponseData> RunListOwners(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/s2sapps/{{displayName}}/owners")]

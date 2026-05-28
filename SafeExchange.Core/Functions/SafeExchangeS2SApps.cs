@@ -56,6 +56,22 @@ namespace SafeExchange.Core.Functions
 
         private string RegistrarCreatedBy(string upn) => $"User {upn}";
 
+        // Inverse of RegistrarCreatedBy — parses the UPN back out of Application.CreatedBy.
+        // Returns null for rows that don't carry the "User {upn}" shape (e.g. legacy
+        // service-created rows). When null, no row is registrar-protected; callers
+        // should treat that as "no registrar guard for this app".
+        private static string? RegistrarUpnOf(Application app)
+        {
+            const string prefix = "User ";
+            if (app?.CreatedBy is null || !app.CreatedBy.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var upn = app.CreatedBy.Substring(prefix.Length).Trim();
+            return string.IsNullOrEmpty(upn) ? null : upn;
+        }
+
         /// <summary>POST /s2sapps — self-service register.</summary>
         public async Task<HttpResponseData> RunRegister(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
@@ -198,7 +214,7 @@ namespace SafeExchange.Core.Functions
                 await this.ownerService.AddOwnerAsync(app.Id, OwnerSubjectType.User, subjectId, addedBy: subjectId);
                 foreach (var ao in input.AdditionalOwners ?? new List<S2SAppOwnerInput>())
                 {
-                    await this.ownerService.AddOwnerAsync(app.Id, ao.SubjectType, ao.SubjectId, addedBy: subjectId);
+                    await this.ownerService.AddOwnerAsync(app.Id, ao.SubjectType, ao.SubjectId, addedBy: subjectId, subjectName: ao.SubjectName ?? string.Empty);
                 }
 
                 log.LogInformation("S2S app '{App}' registered by User {Subject} with {OwnerCount} owners.",
@@ -251,7 +267,7 @@ namespace SafeExchange.Core.Functions
             }, nameof(RunListMine), log);
         }
 
-        private static S2SAppOutput ToDto(Application app, IReadOnlyCollection<ApplicationOwner> owners) => new()
+        internal static S2SAppOutput ToDto(Application app, IReadOnlyCollection<ApplicationOwner> owners) => new()
         {
             DisplayName = app.DisplayName,
             AadTenantId = app.AadTenantId,
@@ -259,13 +275,51 @@ namespace SafeExchange.Core.Functions
             ContactEmail = app.ContactEmail,
             Enabled = app.Enabled,
             CreatedAt = app.CreatedAt,
+            RegistrarSubjectId = RegistrarUpnOf(app) ?? string.Empty,
             Owners = owners.Select(o => new S2SAppOwnerOutput
             {
                 SubjectType = o.SubjectType,
                 SubjectId = o.SubjectId,
+                SubjectName = o.SubjectName ?? string.Empty,
                 AddedAt = o.AddedAt,
             }).ToList(),
         };
+
+        // Shared with admin endpoints: parse "User {upn}" out of Application.CreatedBy.
+        internal static string? RegistrarUpnOfApp(Application app) => RegistrarUpnOf(app);
+
+        internal const string RegistrarProtectionMessage =
+            "The registrar (primary owner) cannot be removed from an app's owners. " +
+            "Delete the whole app instead, or disable it.";
+
+        // True iff the (type, id) pair identifies the registrar row.
+        // Returns false when the app has no parseable registrar (legacy / system-created).
+        internal static bool IsRegistrarRow(Application app, OwnerSubjectType subjectType, string subjectId)
+        {
+            if (subjectType != OwnerSubjectType.User)
+            {
+                return false;
+            }
+
+            var registrar = RegistrarUpnOf(app);
+            return registrar is not null
+                && string.Equals(registrar, subjectId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // True iff `desired` contains a User row whose UPN matches the registrar.
+        // Returns true when the app has no parseable registrar (nothing to protect).
+        internal static bool HasRegistrarOwner(Application app, IEnumerable<ApplicationOwner> desired)
+        {
+            var registrar = RegistrarUpnOf(app);
+            if (registrar is null)
+            {
+                return true;
+            }
+
+            return desired.Any(o =>
+                o.SubjectType == OwnerSubjectType.User
+                && string.Equals(o.SubjectId, registrar, StringComparison.OrdinalIgnoreCase));
+        }
 
         private static Task<HttpResponseData> BadRequestAsync(HttpRequestData request, string message)
             => ActionResults.CreateResponseAsync(request, HttpStatusCode.BadRequest,
@@ -283,14 +337,24 @@ namespace SafeExchange.Core.Functions
         public async Task<HttpResponseData> RunDetail(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
         {
             var gate = await this.GateAsync(request, principal);
-            if (gate.shouldReturn) return gate.response!;
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
                 var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
-                if (app is null) return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                if (app is null)
+                {
+                    return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                }
+
                 if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
                     return await ActionResults.ForbiddenAsync(request, "Only owners may view this application.");
+                }
+
 
                 var owners = await this.ownerService.ListOwnersAsync(app.Id);
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
@@ -302,7 +366,10 @@ namespace SafeExchange.Core.Functions
         public async Task<HttpResponseData> RunDelete(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
         {
             var gate = await this.GateAsync(request, principal);
-            if (gate.shouldReturn) return gate.response!;
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
@@ -314,7 +381,10 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<string> { Status = "no_content", Result = "already absent" });
                 }
                 if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
                     return await ActionResults.ForbiddenAsync(request, "Only owners may delete this application.");
+                }
+
 
                 var owners = await this.dbContext.ApplicationOwners.Where(o => o.ApplicationId == app.Id).ToListAsync();
                 this.dbContext.ApplicationOwners.RemoveRange(owners);
@@ -328,51 +398,195 @@ namespace SafeExchange.Core.Functions
             }, nameof(RunDelete), log);
         }
 
-        /// <summary>GET /s2sapps/{name}/owners — owner-only.</summary>
-        public async Task<HttpResponseData> RunListOwners(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
+        /// <summary>PATCH /s2sapps/{name}/enabled — owner-only enable/disable toggle.</summary>
+        public async Task<HttpResponseData> RunToggleEnabled(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
         {
             var gate = await this.GateAsync(request, principal);
-            if (gate.shouldReturn) return gate.response!;
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
                 var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
-                if (app is null) return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                if (app is null)
+                {
+                    return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                }
+
                 if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
+                    return await ActionResults.ForbiddenAsync(request, "Only owners may change this application's state.");
+                }
+
+
+                var body = await new StreamReader(request.Body).ReadToEndAsync();
+                EnabledToggleInput? input;
+                try { input = DefaultJsonSerializer.Deserialize<EnabledToggleInput>(body); }
+                catch
+                {
+                    return await BadRequestAsync(request, "Body must be { \"enabled\": bool }.");
+                }
+                if (input is null)
+                {
+                    return await BadRequestAsync(request, "Body is required.");
+                }
+
+
+                app.Enabled = input.Enabled;
+                app.ModifiedAt = DateTimeProvider.UtcNow;
+                await this.dbContext.SaveChangesAsync();
+
+                log.LogInformation("S2S app '{App}' Enabled set to {Enabled} by owner {Upn}.",
+                    app.DisplayName, input.Enabled, gate.callerUpn);
+
+                var owners = await this.ownerService.ListOwnersAsync(app.Id);
+                return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                    new BaseResponseObject<S2SAppOutput> { Status = "ok", Result = ToDto(app, owners) });
+            }, nameof(RunToggleEnabled), log);
+        }
+
+        /// <summary>GET /s2sapps/{name}/owners — owner-only.</summary>
+        public async Task<HttpResponseData> RunListOwners(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
+        {
+            var gate = await this.GateAsync(request, principal);
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
+                if (app is null)
+                {
+                    return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                }
+
+                if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
                     return await ActionResults.ForbiddenAsync(request, "Only owners may view ownership.");
+                }
+
 
                 var owners = await this.ownerService.ListOwnersAsync(app.Id);
                 var dto = owners.Select(o => new S2SAppOwnerOutput
                 {
-                    SubjectType = o.SubjectType, SubjectId = o.SubjectId, AddedAt = o.AddedAt,
+                    SubjectType = o.SubjectType, SubjectId = o.SubjectId,
+                    SubjectName = o.SubjectName ?? string.Empty,
+                    AddedAt = o.AddedAt,
                 }).ToList();
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<List<S2SAppOwnerOutput>> { Status = "ok", Result = dto });
             }, nameof(RunListOwners), log);
         }
 
-        /// <summary>POST /s2sapps/{name}/owners — owner-only; idempotent.</summary>
-        public async Task<HttpResponseData> RunAddOwner(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
+        /// <summary>PUT /s2sapps/{name}/owners — owner-only; atomic full-set reconcile.</summary>
+        public async Task<HttpResponseData> RunReplaceOwners(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
         {
             var gate = await this.GateAsync(request, principal);
-            if (gate.shouldReturn) return gate.response!;
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
                 var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
-                if (app is null) return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                if (app is null)
+                {
+                    return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                }
+
                 if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
+                    return await ActionResults.ForbiddenAsync(request, "Only owners may change the owner list.");
+                }
+
+                var body = await new StreamReader(request.Body).ReadToEndAsync();
+                S2SAppReplaceOwnersInput? input;
+                try
+                {
+                    input = DefaultJsonSerializer.Deserialize<S2SAppReplaceOwnersInput>(body);
+                }
+                catch
+                {
+                    return await BadRequestAsync(request, "Body is not valid JSON.");
+                }
+
+                if (input is null || input.Owners is null)
+                {
+                    return await BadRequestAsync(request, "Owner list is required.");
+                }
+
+                var desired = input.Owners
+                    .Where(o => o is not null && !string.IsNullOrWhiteSpace(o.SubjectId))
+                    .Select(o => new ApplicationOwner(app.Id, o.SubjectType, o.SubjectId, addedBy: gate.callerUpn, subjectName: o.SubjectName ?? string.Empty))
+                    .ToList();
+
+                if (!HasRegistrarOwner(app, desired))
+                {
+                    return await ConflictAsync(request, RegistrarProtectionMessage);
+                }
+
+                try
+                {
+                    await this.ownerService.ReplaceOwnersAsync(app.Id, desired);
+                }
+                catch (ApplicationOwnerInvariantException ex)
+                {
+                    return await ConflictAsync(request, ex.Message);
+                }
+
+                log.LogInformation("S2S app '{App}' owner set replaced by {Upn} (final count {Count}).",
+                    app.DisplayName, gate.callerUpn, desired.Count);
+
+                var owners = await this.ownerService.ListOwnersAsync(app.Id);
+                return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                    new BaseResponseObject<S2SAppOutput> { Status = "ok", Result = ToDto(app, owners) });
+            }, nameof(RunReplaceOwners), log);
+        }
+
+        /// <summary>POST /s2sapps/{name}/owners — owner-only; idempotent.</summary>
+        public async Task<HttpResponseData> RunAddOwner(HttpRequestData request, string displayName, ClaimsPrincipal principal, ILogger log)
+        {
+            var gate = await this.GateAsync(request, principal);
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
+                if (app is null)
+                {
+                    return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                }
+
+                if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
                     return await ActionResults.ForbiddenAsync(request, "Only owners may add owners.");
+                }
 
                 var body = await new StreamReader(request.Body).ReadToEndAsync();
                 S2SAppOwnerInput? input;
-                try { input = DefaultJsonSerializer.Deserialize<S2SAppOwnerInput>(body); }
-                catch { return await BadRequestAsync(request, "Body is not valid JSON."); }
+                try
+                {
+                    input = DefaultJsonSerializer.Deserialize<S2SAppOwnerInput>(body);
+                }
+                catch
+                {
+                    return await BadRequestAsync(request, "Body is not valid JSON.");
+                }
 
                 if (input is null || string.IsNullOrWhiteSpace(input.SubjectId))
+                {
                     return await BadRequestAsync(request, "SubjectId is required.");
+                }
 
-                await this.ownerService.AddOwnerAsync(app.Id, input.SubjectType, input.SubjectId, addedBy: gate.callerUpn);
+                await this.ownerService.AddOwnerAsync(app.Id, input.SubjectType, input.SubjectId, addedBy: gate.callerUpn, subjectName: input.SubjectName ?? string.Empty);
                 var owners = await this.ownerService.ListOwnersAsync(app.Id);
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<S2SAppOutput> { Status = "ok", Result = ToDto(app, owners) });
@@ -383,17 +597,35 @@ namespace SafeExchange.Core.Functions
         public async Task<HttpResponseData> RunRemoveOwner(HttpRequestData request, string displayName, string subjectTypeString, string subjectId, ClaimsPrincipal principal, ILogger log)
         {
             var gate = await this.GateAsync(request, principal);
-            if (gate.shouldReturn) return gate.response!;
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
                 if (!Enum.TryParse<OwnerSubjectType>(subjectTypeString, ignoreCase: true, out var subjectType))
+                {
                     return await BadRequestAsync(request, "Subject type must be 'User' or 'Group'.");
+                }
+
 
                 var app = await this.dbContext.Applications.FirstOrDefaultAsync(a => a.DisplayName == displayName);
-                if (app is null) return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                if (app is null)
+                {
+                    return await NotFoundAsync(request, $"Application '{displayName}' not found.");
+                }
+
                 if (!await this.ownerService.IsOwnerAsync(app.Id, OwnerSubjectType.User, gate.callerUpn))
+                {
                     return await ActionResults.ForbiddenAsync(request, "Only owners may remove owners.");
+                }
+
+
+                if (IsRegistrarRow(app, subjectType, subjectId))
+                {
+                    return await ConflictAsync(request, RegistrarProtectionMessage);
+                }
 
                 try
                 {

@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SafeExchange.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Core" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" />

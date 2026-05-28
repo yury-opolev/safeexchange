@@ -43,5 +43,12 @@ namespace SafeExchange.Core.Model.Dto.Input
 
         /// <summary>UPN for users, OID for groups.</summary>
         public string SubjectId { get; set; }
+
+        /// <summary>
+        /// Optional friendly label captured from the directory picker (group
+        /// display name, user display name). Persisted alongside SubjectId so
+        /// the UI can render something readable without resolving the GUID.
+        /// </summary>
+        public string SubjectName { get; set; }
     }
 }

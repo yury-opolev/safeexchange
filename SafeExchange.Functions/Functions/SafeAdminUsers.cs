@@ -5,6 +5,7 @@ namespace SafeExchange.Functions
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using SafeExchange.Core;
+    using SafeExchange.Core.Applications;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions.Admin;
@@ -84,6 +85,16 @@ namespace SafeExchange.Functions
             var principal = request.FunctionContext.GetPrincipal();
             return await this.handler.RunToggleEnabled(request, displayName, principal, this.log);
         }
+
+        [Function("SafeExchange-Admin-AppsSearch-Delete")]
+        public async Task<HttpResponseData> RunDelete(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = $"{Version}/admin/applications/{{displayName}}")]
+            HttpRequestData request,
+            string displayName)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunDelete(request, displayName, principal, this.log);
+        }
     }
 
     public class SafeAdminAudit
@@ -112,4 +123,5 @@ namespace SafeExchange.Functions
             return await this.handler.RunSearchAnchors(request, principal, this.log);
         }
     }
+
 }

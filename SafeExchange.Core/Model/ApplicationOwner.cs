@@ -14,7 +14,7 @@ namespace SafeExchange.Core.Model
 
         public ApplicationOwner() { }
 
-        public ApplicationOwner(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy)
+        public ApplicationOwner(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy, string subjectName = "")
         {
             if (string.IsNullOrWhiteSpace(applicationId))
             {
@@ -29,6 +29,7 @@ namespace SafeExchange.Core.Model
             this.PartitionKey = $"{PartitionKeyPrefix}{applicationId}";
             this.SubjectType = subjectType;
             this.SubjectId = subjectId;
+            this.SubjectName = subjectName ?? string.Empty;
             // Composite id keeps owner rows deterministic so re-adding a removed owner
             // doesn't create a duplicate, and "is X an owner" can hit a single point read.
             this.Id = $"{(int)subjectType}:{subjectId}";
@@ -45,6 +46,9 @@ namespace SafeExchange.Core.Model
         public OwnerSubjectType SubjectType { get; set; }
 
         public string SubjectId { get; set; }
+
+        /// <summary>Friendly label captured from the directory picker. May be empty for older rows.</summary>
+        public string SubjectName { get; set; } = string.Empty;
 
         public DateTime AddedAt { get; set; }
 

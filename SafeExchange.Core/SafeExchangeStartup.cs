@@ -102,13 +102,21 @@ namespace SafeExchange.Core
             // mutations (e.g., permission grants batched before the final SaveChanges).
             if (IsDevMode())
             {
-                // LOCAL SPIKE: Cosmos emulator on its well-known key; accept its
-                // self-signed cert.
-                const string emulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+                // LOCAL SPIKE: Cosmos emulator key comes from CosmosDb:PrimaryKey in
+                // user-secrets — never hardcoded. Fail fast with the exact command
+                // to set it so the dev experience stays self-explanatory.
+                if (string.IsNullOrWhiteSpace(cosmosDbConfig.PrimaryKey))
+                {
+                    throw new ConfigurationErrorsException(
+                        "CosmosDb:PrimaryKey is required when SAEX_DEV_MODE=true. " +
+                        "Set it via user-secrets, e.g.: " +
+                        "dotnet user-secrets set \"CosmosDb:PrimaryKey\" \"<emulator-key>\" --project SafeExchange.Functions");
+                }
+
                 services.AddDbContextFactory<SafeExchangeDbContext>(
                     options => options.UseCosmos(
                         cosmosDbConfig.CosmosDbEndpoint,
-                        emulatorKey,
+                        cosmosDbConfig.PrimaryKey,
                         cosmosDbConfig.DatabaseName,
                         cosmos =>
                         {
@@ -128,6 +136,7 @@ namespace SafeExchange.Core
                         defaultCredential,
                         cosmosDbConfig.DatabaseName));
             }
+
             services.AddScoped<SafeExchangeDbContext>(sp =>
                 sp.GetRequiredService<IDbContextFactory<SafeExchangeDbContext>>().CreateDbContext());
 
@@ -143,6 +152,7 @@ namespace SafeExchange.Core
                 services.AddSingleton<ICryptoHelper, CryptoHelper>();
                 services.AddSingleton<IBlobHelper, BlobHelper>();
             }
+
             services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
             services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
             services.AddSingleton<IPurger, PurgeManager>();

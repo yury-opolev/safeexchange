@@ -22,9 +22,18 @@ namespace SafeExchange.Core.Applications
 
         Task<List<ApplicationOwner>> ListOwnersAsync(string applicationId, CancellationToken ct = default);
 
-        Task AddOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy, CancellationToken ct = default);
+        Task AddOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, string addedBy, string subjectName = "", CancellationToken ct = default);
 
         Task RemoveOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Reconcile the owner set for one application in a single transaction
+        /// (one SaveChanges within the OWNERS-{appId} partition). Validates the
+        /// invariant against the desired state first, then commits adds/removes
+        /// together. Names on existing rows are refreshed if the desired entry
+        /// carries one and the persisted row didn't.
+        /// </summary>
+        Task ReplaceOwnersAsync(string applicationId, IReadOnlyList<ApplicationOwner> desired, CancellationToken ct = default);
 
         Task<bool> IsOwnerAsync(string applicationId, OwnerSubjectType subjectType, string subjectId, CancellationToken ct = default);
 
