@@ -4,14 +4,21 @@
     "logLevel": {
       "default": "Information",
       "Azure.Core": "Warning",
+      "Azure.Identity": "Warning",
       "Microsoft.EntityFrameworkCore": "Warning",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.Azure.Functions.Worker": "Warning",
+      "Host.Aggregator": "Warning",
+      "Host.Function.Console": "Warning",
+      "Host.Results": "Warning",
       "SafeExchange.Core": "Information",
       "System.Net.Http.HttpClient": "Warning"
     },
     "applicationInsights": {
       "samplingSettings": {
         "isEnabled": true,
-        "excludedTypes": "Request"
+        "maxTelemetryItemsPerSecond": 2,
+        "excludedTypes": "Request;Exception"
       }
     }
   },
