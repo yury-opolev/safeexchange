@@ -2098,10 +2098,6 @@
                             "value": "[reference(resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name')), '2020-02-02').ConnectionString]"
                         },
                         {
-                            "name": "APPLICATIONINSIGHTS_AUTHENTICATION_STRING",
-                            "value": "Authorization=AAD"
-                        },
-                        {
                             "name": "AzureWebJobsStorage__accountname",
                             "value": "[parameters('safeexchange_webjobsstorage_name')]"
                         },
