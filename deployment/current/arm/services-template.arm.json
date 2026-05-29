@@ -340,6 +340,7 @@
         "monitoring_role_metricsPublisher": "3913510d-42f4-4e42-8a64-420c390055eb",
         "appinsights_workspace_retention_days": 90,
         "appinsights_workspace_resource_permissions": true,
+        "appinsights_workspace_daily_quota_gb": "[json('0.1')]",
 
         "subnet_functionapp_name": "snet-functionapp",
         "subnet_functionapp_prefix": "10.0.0.0/24",
@@ -386,6 +387,9 @@
                     "name": "PerGB2018"
                 },
                 "retentionInDays": "[variables('appinsights_workspace_retention_days')]",
+                "workspaceCapping": {
+                    "dailyQuotaGb": "[variables('appinsights_workspace_daily_quota_gb')]"
+                },
                 "features": {
                     "enableLogAccessUsingOnlyResourcePermissions": "[variables('appinsights_workspace_resource_permissions')]"
                 }
