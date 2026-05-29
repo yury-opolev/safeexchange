@@ -8,6 +8,7 @@ namespace SafeExchange.Functions
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
+    using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
 
     class Program
@@ -16,6 +17,7 @@ namespace SafeExchange.Functions
         {
             var host = new HostBuilder()
                 .ConfigureFunctionsWorkerDefaults(SafeExchangeStartup.ConfigureWorkerDefaults)
+                .ConfigureLogging(SafeExchangeStartup.ConfigureWorkerLogging)
                 .ConfigureAppConfiguration(SafeExchangeStartup.ConfigureAppConfiguration)
                 .ConfigureAppConfiguration(cb =>
                 {

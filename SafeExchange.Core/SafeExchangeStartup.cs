@@ -60,6 +60,26 @@ namespace SafeExchange.Core
             builder.UseWhen<SessionCorrelationMiddleware>(IsHttpTrigger);
         }
 
+        // The categories below are emitted inside the isolated worker process —
+        // most notably Azure.Identity, which logs four Information traces per
+        // managed-identity token acquisition. After the 2026-05-25 move to
+        // identity-based App Insights ingestion, the telemetry channel acquires
+        // a token for https://monitor.azure.com/ roughly once a second, so those
+        // traces ballooned to ~98% of App Insights ingestion (the self-amplifying
+        // feedback loop described in commit 0794d88).
+        //
+        // host.json's logging.logLevel only governs the HOST process, so the
+        // 'Azure.Identity: Warning' filter there never reaches these worker-side
+        // logs. The worker must filter them itself, here. Warning keeps genuine
+        // credential failures visible while dropping the success-path flood.
+        public static void ConfigureWorkerLogging(ILoggingBuilder logging)
+        {
+            logging.AddFilter("Azure.Identity", LogLevel.Warning);
+            logging.AddFilter("Azure.Core", LogLevel.Warning);
+            logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+            logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+        }
+
         public static void ConfigureAppConfiguration(IConfigurationBuilder configurationBuilder)
         {
             if (IsDevMode())
