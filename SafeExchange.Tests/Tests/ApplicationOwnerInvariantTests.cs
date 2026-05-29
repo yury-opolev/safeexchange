@@ -8,7 +8,9 @@
 
 namespace SafeExchange.Tests
 {
+    using Microsoft.EntityFrameworkCore;
     using NUnit.Framework;
+    using SafeExchange.Core;
     using SafeExchange.Core.Applications;
     using SafeExchange.Core.Model;
     using System;
@@ -25,18 +27,27 @@ namespace SafeExchange.Tests
         private static ApplicationOwner Group(string oid)
             => new ApplicationOwner(AppId, OwnerSubjectType.Group, oid, addedBy: "test");
 
+        // ValidateInvariant is a pure function that never touches the DbContext,
+        // but the constructor (correctly) rejects a null context. Hand it a
+        // throwaway in-memory context that is never queried — keeps these tests
+        // free of any Cosmos-emulator dependency.
+        private static ApplicationOwnerService CreateService()
+        {
+            var options = new DbContextOptionsBuilder<SafeExchangeDbContext>()
+                .UseInMemoryDatabase($"AppOwnerInvariant-{Guid.NewGuid()}")
+                .Options;
+            return new ApplicationOwnerService(new SafeExchangeDbContext(options));
+        }
+
         private static void Assert_PassesInvariant(params ApplicationOwner[] owners)
         {
-            var sut = new ApplicationOwnerService(dbContext: null!);
-            // Pure function — DbContext is unused. If we ever pull I/O into
-            // ValidateInvariant this assertion will helpfully NRE and force a
-            // re-think of the layering.
+            var sut = CreateService();
             Assert.DoesNotThrow(() => sut.ValidateInvariant(owners));
         }
 
         private static void Assert_FailsInvariant(string expectedMessageFragment, params ApplicationOwner[] owners)
         {
-            var sut = new ApplicationOwnerService(dbContext: null!);
+            var sut = CreateService();
             var ex = Assert.Throws<ApplicationOwnerInvariantException>(() => sut.ValidateInvariant(owners));
             Assert.That(ex!.Message, Does.Contain(expectedMessageFragment));
         }
