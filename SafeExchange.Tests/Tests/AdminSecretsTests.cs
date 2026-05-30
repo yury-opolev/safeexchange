@@ -235,37 +235,44 @@ namespace SafeExchange.Tests
         [Test]
         public async Task List_NeverAccessedFilter_OnlyReturnsNeverAccessedSecrets()
         {
-            // [GIVEN] Two secrets: one never accessed (LastAccessedAt == CreatedAt),
-            // one accessed after creation.
-            var now = DateTimeProvider.UtcNow;
+            // Use real time so the test verifies the fix works without frozen-clock assistance.
+            DateTimeProvider.UseSpecifiedDateTime = false;
+            try
+            {
+                // [GIVEN] A never-accessed secret — constructor now captures a single timestamp,
+                // so LastAccessedAt == CreatedAt exactly.
+                var neverAccessedSecret = this.CreateSecret("never-accessed-1", "creator@test.test");
+                this.dbContext.Objects.Add(neverAccessedSecret);
 
-            DateTimeProvider.SpecifiedDateTime = now;
-            var neverAccessedSecret = this.CreateSecret("never-accessed-1", "creator@test.test");
-            // LastAccessedAt is set equal to CreatedAt in CreateSecret, so no further change needed.
-            this.dbContext.Objects.Add(neverAccessedSecret);
+                // [GIVEN] An accessed secret whose LastAccessedAt is clearly after CreatedAt.
+                var accessedSecret = this.CreateSecret("was-accessed-1", "creator@test.test");
+                accessedSecret.LastAccessedAt = accessedSecret.CreatedAt + TimeSpan.FromMinutes(5);
+                this.dbContext.Objects.Add(accessedSecret);
 
-            var accessedSecret = this.CreateSecret("was-accessed-1", "creator@test.test");
-            // Manually set LastAccessedAt after CreatedAt.
-            accessedSecret.LastAccessedAt = now.AddHours(2);
-            this.dbContext.Objects.Add(accessedSecret);
+                await this.dbContext.SaveChangesAsync();
+                this.dbContext.ChangeTracker.Clear();
 
-            await this.dbContext.SaveChangesAsync();
-            this.dbContext.ChangeTracker.Clear();
+                // [WHEN] Admin lists with neverAccessed=true.
+                var request = TestFactory.CreateHttpRequestData("get");
+                request.SetQueryString("neverAccessed=true");
+                var principal = new ClaimsPrincipal(this.adminIdentity);
+                var response = await this.handler.RunList(request, principal, this.logger) as TestHttpResponseData;
 
-            // [WHEN] Admin lists with neverAccessed=true.
-            var request = TestFactory.CreateHttpRequestData("get");
-            request.SetQueryString("neverAccessed=true");
-            var principal = new ClaimsPrincipal(this.adminIdentity);
-            var response = await this.handler.RunList(request, principal, this.logger) as TestHttpResponseData;
+                // [THEN] Only the never-accessed secret is returned.
+                Assert.That(response, Is.Not.Null);
+                Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            // [THEN] Only the never-accessed secret is returned.
-            Assert.That(response, Is.Not.Null);
-            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-
-            var body = response.ReadBodyAsJson<BaseResponseObject<PaginatedResult<SecretAdminOverviewOutput>>>();
-            Assert.That(body?.Status, Is.EqualTo("ok"));
-            Assert.That(body!.Result.Items.Any(i => i.ObjectName == "never-accessed-1"), Is.True);
-            Assert.That(body.Result.Items.Any(i => i.ObjectName == "was-accessed-1"), Is.False);
+                var body = response.ReadBodyAsJson<BaseResponseObject<PaginatedResult<SecretAdminOverviewOutput>>>();
+                Assert.That(body?.Status, Is.EqualTo("ok"));
+                Assert.That(body!.Result.Items.Any(i => i.ObjectName == "never-accessed-1"), Is.True);
+                Assert.That(body.Result.Items.Any(i => i.ObjectName == "was-accessed-1"), Is.False);
+            }
+            finally
+            {
+                // Restore frozen-time mode so other tests in this fixture are unaffected.
+                DateTimeProvider.UseSpecifiedDateTime = true;
+                DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
+            }
         }
 
         // -----------------------------------------------------------------------

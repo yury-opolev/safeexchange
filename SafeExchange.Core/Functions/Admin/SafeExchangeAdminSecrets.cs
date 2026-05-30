@@ -195,7 +195,7 @@ namespace SafeExchange.Core.Functions.Admin
                 var items = permissions.Select(p => new SecretAccessItemOutput
                 {
                     SubjectName = p.SubjectName,
-                    SubjectType = Enum.GetName(typeof(SubjectType), p.SubjectType) ?? p.SubjectType.ToString(),
+                    SubjectType = p.SubjectType.ToDto().ToString(),
                     CanRead = p.CanRead,
                     CanWrite = p.CanWrite,
                     CanGrantAccess = p.CanGrantAccess,

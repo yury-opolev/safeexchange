@@ -28,11 +28,12 @@ namespace SafeExchange.Core.Model
 
             this.KeepInStorage = true;
             this.CreatedBy = createdBy;
-            this.CreatedAt = DateTimeProvider.UtcNow;
+            var now = DateTimeProvider.UtcNow;
+            this.CreatedAt = now;
             this.ModifiedBy = string.Empty;
             this.ModifiedAt = DateTime.MinValue;
 
-            this.LastAccessedAt = DateTimeProvider.UtcNow;
+            this.LastAccessedAt = now;
         }
 
         private static List<ContentMetadata> CreateContent(bool isStarter)
