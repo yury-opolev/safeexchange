@@ -30,7 +30,17 @@
 
 ## Backend — Feature 2 data model
 
-## Task 1: Add `LastAccessedAt` to ObjectMetadata
+> **REVISED 2026-05-30 during execution:** `ObjectMetadata.LastAccessedAt` ALREADY
+> EXISTS as a non-nullable `DateTime`, set in the constructor AND updated on every
+> content/metadata access (10 call sites incl. `SafeExchangeSecretStream`); its
+> setter drives `ExpireIfUnusedAt`, which `PurgeManager` relies on. **Tasks 1 and 2
+> are already satisfied by existing code — SKIP them. Do NOT make the field
+> nullable** (that alters idle-expiry). The admin overview just surfaces the
+> existing field. Sort by `LastAccessedAt` asc = stale-first (no null handling).
+> **"Never accessed" is redefined as `LastAccessedAt <= CreatedAt`** (never read
+> after creation). Apply this to Task 4a.
+
+## Task 1 (SKIP — already implemented): Add `LastAccessedAt` to ObjectMetadata
 
 **Files:**
 - Modify: `SafeExchange.Core/Model/ObjectMetadata.cs`
@@ -73,7 +83,7 @@ If `SafeExchangeDbContext.OnModelCreating` configures `ObjectMetadata` indexes e
 - [ ] **Step 4: Run test** → PASS.
 - [ ] **Step 5: Commit** — `git commit -am "feat(model): add nullable ObjectMetadata.LastAccessedAt"`
 
-## Task 2: Set `LastAccessedAt` on content read
+## Task 2 (SKIP — already implemented): Set `LastAccessedAt` on content read
 
 **Files:**
 - Modify: `SafeExchange.Core/Functions/SafeExchangeSecretStream.cs` (download path from Task 0 Step 2)
