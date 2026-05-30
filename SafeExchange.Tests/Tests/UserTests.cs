@@ -193,6 +193,26 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task TelemetryId_IsStampedOnInvocationAndMatchesUser()
+        {
+            // [GIVEN] A user with valid credentials
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var request = TestFactory.CreateHttpRequestData("get");
+
+            // [WHEN] An arbitrary call to a service resolves the user
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
+
+            // [THEN] The persisted user carries a non-empty telemetry id
+            var createdUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
+            Assert.That(createdUser, Is.Not.Null);
+            Assert.That(createdUser!.TelemetryId, Is.Not.Empty);
+
+            // [THEN] The same telemetry id is stamped onto the invocation so the
+            // middleware can re-establish it on TelemetryContext around next().
+            Assert.That(request.FunctionContext.GetTelemetryId(), Is.EqualTo(createdUser.TelemetryId));
+        }
+
+        [Test]
         public async Task SimultaneousUserCalls_WithGroups()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<UserTests>();

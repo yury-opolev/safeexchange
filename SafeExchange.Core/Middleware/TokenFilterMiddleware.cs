@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Middleware
     using Microsoft.Azure.Functions.Worker.Middleware;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
+    using SafeExchange.Core.Telemetry;
     using System.Net;
     using System.Security.Claims;
 
@@ -32,18 +33,36 @@ namespace SafeExchange.Core.Middleware
                 return;
             }
 
-            using (var scope = context.InstanceServices.CreateScope())
+            // Resolve-and-run sets the request's telemetry id on context.Items. We
+            // re-establish it on TelemetryContext within this frame (and restore the
+            // previous value afterwards) so every telemetry item emitted during
+            // next(context) carries saex.telemetryId without the AsyncLocal leaking
+            // across invocations — mirrors SessionCorrelationMiddleware's save/restore.
+            var previousTelemetryId = TelemetryContext.Current;
+            try
             {
-                var tokenMiddlewareCore = scope.ServiceProvider.GetRequiredService<ITokenMiddlewareCore>();
-                (bool shouldReturn, HttpResponseData? earlyResponse) = await tokenMiddlewareCore.RunAsync(httpRequestData!, principal);
-                if (shouldReturn)
+                using (var scope = context.InstanceServices.CreateScope())
                 {
-                    SetResponse(context, earlyResponse);
-                    return;
+                    var tokenMiddlewareCore = scope.ServiceProvider.GetRequiredService<ITokenMiddlewareCore>();
+                    (bool shouldReturn, HttpResponseData? earlyResponse) = await tokenMiddlewareCore.RunAsync(httpRequestData!, principal);
+                    if (shouldReturn)
+                    {
+                        SetResponse(context, earlyResponse);
+                        return;
+                    }
                 }
-            }
 
-            await next(context);
+                if (context.Items.TryGetValue(DefaultAuthenticationMiddleware.InvocationContextTelemetryIdKey, out var telemetryId))
+                {
+                    TelemetryContext.Current = telemetryId as string;
+                }
+
+                await next(context);
+            }
+            finally
+            {
+                TelemetryContext.Current = previousTelemetryId;
+            }
         }
 
         private static async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)

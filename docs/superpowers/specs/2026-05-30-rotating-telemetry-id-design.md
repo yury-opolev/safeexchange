@@ -94,20 +94,22 @@ only its appearance in **log messages** changes.
 
 ### 5. PII-redaction safety net — feature-flagged
 
-`PiiRedactionTelemetryProcessor : ITelemetryProcessor` (`SafeExchange.Core/Telemetry/`):
+`PiiRedactionTelemetryInitializer : ITelemetryInitializer` (`SafeExchange.Core/Telemetry/`):
+- An initializer rather than an `ITelemetryProcessor` because the isolated-worker
+  host registers `ITelemetryInitializer` cleanly via DI, while a processor would
+  need the host's processor chain, which it does not expose here.
 - Gated by a feature flag `Features.RedactTelemetryPii` (bool), read **live**
-  via `IOptionsMonitor<Features>` on each `Process(...)`, so it can be toggled
+  via `IOptionsMonitor<Features>` on each `Initialize(...)`, so it can be toggled
   through Key Vault **without a redeploy** (the config provider's reload interval
   applies).
-- **Disabled** → pure pass-through (just call the next processor).
+- **Disabled** → pure pass-through (no-op).
 - **Enabled** → for `TraceTelemetry` / `ExceptionTelemetry` message text:
   short-circuit on `message.IndexOf('@') >= 0`, then apply a single **linear,
   non-backtracking** email/UPN regex and replace matches with `[redacted]`.
   - Deliberately does **not** touch GUIDs (oid / tenant / secret ids / the
     `telemetryId` itself) or display names — those rely on the source fix (§4).
     GUID redaction would gut legitimate diagnostics.
-- Always registered; behavior controlled by the flag. Then it forwards to the
-  next processor in the chain.
+- Always registered; behavior controlled by the flag.
 
 **Runtime cost:** a bool check when disabled; when enabled, a fast `'@'` scan
 per item and a regex only on the rare messages that contain `@`. Microseconds;
@@ -156,9 +158,9 @@ follow-up, **out of scope** here.
   - `NextWeekBoundaryUtc` for each weekday, including Monday and exactly-on-boundary.
 - `TelemetryIdTelemetryInitializer`: stamps when set; no-op when empty; does not
   overwrite an existing `saex.telemetryId`.
-- `PiiRedactionTelemetryProcessor`: redacts email/UPN in message text; leaves
+- `PiiRedactionTelemetryInitializer`: redacts email/UPN in message text; leaves
   clean text intact; does **not** redact GUIDs / the telemetry id; pure
-  pass-through when the flag is disabled; always forwards to the next processor.
+  pass-through (no-op) when the flag is disabled.
 - Integration (where feasible against the Cosmos emulator): an authenticated
   request resolves the user, populates `TelemetryContext`, and persists a
   rotation when the boundary is crossed.

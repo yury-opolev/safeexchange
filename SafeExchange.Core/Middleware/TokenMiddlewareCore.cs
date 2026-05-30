@@ -97,12 +97,18 @@ namespace SafeExchange.Core.Middleware
             }
 
             var telemetryIdChanged = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
-            TelemetryContext.Current = user.TelemetryId;
             if (telemetryIdChanged)
             {
                 await this.dbContext.SaveChangesAsync();
             }
 
+            // Stamp the telemetry id onto this request's frame so logs emitted within
+            // RunAsync (e.g. the group-sync traces) carry the saex.telemetryId dimension,
+            // and stash it on the invocation so TokenFilterMiddleware can re-establish it
+            // within the frame that wraps next() — AsyncLocal mutations made here do not
+            // reliably flow back up to the caller across the awaits in between.
+            TelemetryContext.Current = user.TelemetryId;
+            request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextTelemetryIdKey] = user.TelemetryId;
             request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = user.Id;
             await this.UpdateGroupsAsync(user, request, principal);
             return result;

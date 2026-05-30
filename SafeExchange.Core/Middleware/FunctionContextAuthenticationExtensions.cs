@@ -21,5 +21,11 @@ namespace SafeExchange.Core
             return context.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] as string
                 ?? throw new ArgumentNullException(DefaultAuthenticationMiddleware.InvocationContextUserIdKey);
         }
+
+        public static string GetTelemetryId(this FunctionContext context)
+        {
+            return context.Items[DefaultAuthenticationMiddleware.InvocationContextTelemetryIdKey] as string
+                ?? throw new ArgumentNullException(DefaultAuthenticationMiddleware.InvocationContextTelemetryIdKey);
+        }
     }
 }

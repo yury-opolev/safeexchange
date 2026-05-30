@@ -18,6 +18,8 @@ namespace SafeExchange.Core.Middleware
         public static readonly string ClaimsPrincipalKey = "ClaimsPrincipal";
         public static readonly string InvocationContextUserIdKey = "CurrentUserId";
 
+        public static readonly string InvocationContextTelemetryIdKey = "CurrentTelemetryId";
+
         /// <summary>
         /// Fixed body text surfaced to the caller when JWT validation fails. Never
         /// contains the underlying <c>IDX…</c> reason — see the catch block in
