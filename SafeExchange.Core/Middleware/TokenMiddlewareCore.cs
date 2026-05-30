@@ -99,6 +99,17 @@ namespace SafeExchange.Core.Middleware
             var rotation = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
             if (rotation.Rotated)
             {
+                if (rotation.RetiredTelemetryId is not null)
+                {
+                    await this.dbContext.Set<TelemetryIdMapEntry>().AddAsync(new TelemetryIdMapEntry
+                    {
+                        id = rotation.RetiredTelemetryId,
+                        UserId = user.Id,
+                        ValidFromUtc = rotation.RetiredValidFromUtc,
+                        ValidToUtc = rotation.RetiredValidToUtc,
+                    });
+                }
+
                 await this.dbContext.SaveChangesAsync();
             }
 

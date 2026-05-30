@@ -35,6 +35,8 @@ namespace SafeExchange.Core
 
         public DbSet<SecretAuditEvent> SecretAuditEvents { get; set; }
 
+        public DbSet<TelemetryIdMapEntry> TelemetryIdMap { get; set; }
+
         public SafeExchangeDbContext(DbContextOptions<SafeExchangeDbContext> options)
             : base(options)
         { }
@@ -165,6 +167,13 @@ namespace SafeExchange.Core
                 .HasNoDiscriminator()
                 .HasPartitionKey(e => e.AuditInstanceId);
             modelBuilder.Entity<SecretAuditEvent>().HasKey(e => e.id);
+
+            modelBuilder.Entity<TelemetryIdMapEntry>()
+                .ToContainer("TelemetryIdMap")
+                .HasNoDiscriminator()
+                .HasPartitionKey(e => e.UserId)
+                .HasDefaultTimeToLive(2419200);
+            modelBuilder.Entity<TelemetryIdMapEntry>().HasKey(e => e.id);
         }
     }
 }

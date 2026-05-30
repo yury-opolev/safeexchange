@@ -20,6 +20,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Middleware;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Telemetry;
@@ -78,6 +79,12 @@ namespace SafeExchange.Tests
                     .Path("/AadUpn")
                 .Attach()
                 .CreateIfNotExistsAsync().GetAwaiter().GetResult();
+
+            await cosmosClient.GetDatabase(databaseName).CreateContainerIfNotExistsAsync(
+                new Microsoft.Azure.Cosmos.ContainerProperties("TelemetryIdMap", "/UserId")
+                {
+                    DefaultTimeToLive = 2419200,
+                });
 
             this.logger = TestFactory.CreateLogger();
 
@@ -152,6 +159,7 @@ namespace SafeExchange.Tests
             this.dbContext.Permissions.RemoveRange(this.dbContext.Permissions.ToList());
             this.dbContext.AccessRequests.RemoveRange(this.dbContext.AccessRequests.ToList());
             this.dbContext.GroupDictionary.RemoveRange(this.dbContext.GroupDictionary.ToList());
+            this.dbContext.Set<TelemetryIdMapEntry>().RemoveRange(this.dbContext.Set<TelemetryIdMapEntry>().ToList());
             this.dbContext.SaveChanges();
         }
 
@@ -458,6 +466,31 @@ namespace SafeExchange.Tests
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-ffff00000001")), Is.True);
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-ffff00009999")), Is.True);
             Assert.That(userGroups?.Any(g => g.AadGroupId.Equals("00000000-0000-0000-9999-eeee00009999")), Is.True);
+        }
+
+        [Test]
+        public async Task Rotation_WritesTelemetryIdMapEntry_ForRetiredId()
+        {
+            // [GIVEN] A user that has already been created (id #1 active)
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var request = TestFactory.CreateHttpRequestData("get");
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
+
+            var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
+            Assert.That(user, Is.Not.Null);
+            var firstId = user!.TelemetryId;
+            Assert.That(firstId, Is.Not.Empty);
+
+            // [WHEN] Time crosses the week boundary and the user calls again -> rotation
+            DateTimeProvider.SpecifiedDateTime = user.TelemetryIdExpiresAt.AddSeconds(1);
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
+
+            // [THEN] The retired (first) id is recorded in the map for this user
+            var entry = await this.dbContext.Set<TelemetryIdMapEntry>()
+                .FirstOrDefaultAsync(e => e.id == firstId);
+            Assert.That(entry, Is.Not.Null);
+            Assert.That(entry!.UserId, Is.EqualTo(user.Id));
+            Assert.That(entry.ValidToUtc, Is.EqualTo(DateTimeProvider.SpecifiedDateTime));
         }
 
         private void CreateDefaultTestConfiguration()
