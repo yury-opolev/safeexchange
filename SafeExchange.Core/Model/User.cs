@@ -63,5 +63,12 @@ namespace SafeExchange.Core.Model
         public DateTime CreatedAt { get; set; }
 
         public DateTime ModifiedAt { get; set; }
+
+        /// <summary>Current pseudonymous telemetry id (GUID "n"). Rotates weekly; stamped on
+        /// telemetry instead of real identifiers. Empty until first set (migration/lazy).</summary>
+        public string TelemetryId { get; set; } = string.Empty;
+
+        /// <summary>UTC instant at/after which TelemetryId must rotate (next week boundary).</summary>
+        public DateTime TelemetryIdExpiresAt { get; set; }
     }
 }
