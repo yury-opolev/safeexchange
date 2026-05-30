@@ -22,6 +22,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Telemetry;
 
     public class SafeExchangeContentCommit
     {
@@ -75,7 +76,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeContentCommit)} triggered for '{secretId}' ({contentId}) by {subjectType} {subjectId}.");
+            log.LogInformation($"{nameof(SafeExchangeContentCommit)} triggered for '{secretId}' ({contentId}) by {subjectType} (tid {TelemetryContext.Current}).");
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
             return await ActionResults.TryCatchAsync(request, async () =>

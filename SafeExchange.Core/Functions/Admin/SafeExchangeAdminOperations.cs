@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// SafeExchangeAdminOperations
 /// </summary>
 
@@ -10,6 +10,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Migrations;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -51,7 +52,7 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeAdminOperations)} triggered for operation '{operationName}' by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeAdminOperations)} triggered for operation '{operationName}' by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             switch (request.Method.ToLower())
             {

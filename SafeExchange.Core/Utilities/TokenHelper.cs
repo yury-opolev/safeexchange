@@ -61,13 +61,12 @@ namespace SafeExchange.Core
         public bool IsUserToken(ClaimsPrincipal principal)
         {
             var tokenType = this.GetTokenType(principal);
-            var userName = this.GetUpn(principal);
-            var result = (tokenType == TokenType.IdToken) || 
+            var result = (tokenType == TokenType.IdToken) ||
                 (HasClaim(principal, "http://schemas.microsoft.com/identity/claims/scope") ||
                 HasClaim(principal, "scope") ||
                 HasClaim(principal, "scp"));
 
-            this.log.LogInformation($"Principal {userName} is authenticated as {(result ? "a user" : "an app")} with {tokenType}");
+            this.log.LogInformation("Principal is authenticated as {AuthKind} with {TokenType}.", result ? "a user" : "an app", tokenType);
             return result;
         }
 

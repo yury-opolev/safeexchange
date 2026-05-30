@@ -1,4 +1,4 @@
-﻿
+
 namespace SafeExchange.Core.Functions
 {
     using Microsoft.Azure.Functions.Worker.Http;
@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Utilities;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -63,7 +64,7 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Pinned group Id is not in a guid format ('00000000-0000-0000-0000-000000000000')." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangePinnedGroups)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangePinnedGroups)} triggered by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -192,7 +193,7 @@ namespace SafeExchange.Core.Functions
             this.dbContext.PinnedGroups.Remove(existingPinnedGroup);
             await dbContext.SaveChangesAsync();
 
-            log.LogInformation($"{subjectType} '{subjectId}' deleted pinned group registration '{pinnedGroupId}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' deleted pinned group registration '{pinnedGroupId}'.");
 
             return await ActionResults.CreateResponseAsync(
                         request, HttpStatusCode.OK,
@@ -207,7 +208,7 @@ namespace SafeExchange.Core.Functions
             if (pinnedGroup == default)
             {
                 pinnedGroup = await this.RegisterPinnedGroupAsync(input, userId, log);
-                log.LogInformation($"Pinned group '{pinnedGroupId}' ({input.GroupDisplayName}, {input.GroupMail}) registered by {subjectType} '{subjectId}'.");
+                log.LogInformation($"Pinned group '{pinnedGroupId}' registered by {subjectType} (tid {TelemetryContext.Current}).");
             }
 
             return groupItem;
@@ -219,7 +220,7 @@ namespace SafeExchange.Core.Functions
             if (groupItem == default)
             {
                 groupItem = await this.RegisterGroupAsync(pinnedGroupId, input, subjectType, subjectId, log);
-                log.LogInformation($"Group '{pinnedGroupId}' ({input.GroupDisplayName}, {input.GroupMail}) registered by {subjectType} '{subjectId}'.");
+                log.LogInformation($"Group '{pinnedGroupId}' registered by {subjectType} (tid {TelemetryContext.Current}).");
             }
 
             return groupItem;
@@ -227,7 +228,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<GroupDictionaryItem> RegisterGroupAsync(string groupId, PinnedGroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
+            var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} (tid {TelemetryContext.Current})");
             return await DbUtils.TryAddOrGetEntityAsync(
                 async () =>
                 {

@@ -13,6 +13,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Globalization;
     using System.Linq;
@@ -57,7 +58,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeSecretAudit)} triggered for '{secretId}' by {subjectType} {subjectId}.");
+            log.LogInformation($"{nameof(SafeExchangeSecretAudit)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}).");
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {

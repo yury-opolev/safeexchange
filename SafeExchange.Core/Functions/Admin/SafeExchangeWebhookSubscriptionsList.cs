@@ -1,4 +1,4 @@
-﻿
+
 namespace SafeExchange.Core.Functions
 {
     using Microsoft.Azure.Functions.Worker.Http;
@@ -7,6 +7,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -41,7 +42,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeWebhookSubscriptionsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeWebhookSubscriptionsList)} triggered by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             switch (request.Method.ToLower())
             {

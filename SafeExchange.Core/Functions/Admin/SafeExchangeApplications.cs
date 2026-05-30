@@ -1,4 +1,4 @@
-﻿
+
 namespace SafeExchange.Core.Functions.Admin
 {
     using Microsoft.Azure.Functions.Worker.Http;
@@ -8,6 +8,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -51,7 +52,7 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeApplications)} triggered for '{applicationId}' by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -175,7 +176,7 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             var registeredApplication = await this.RegisterApplicationAsync(applicationId, registrationInput, subjectType, subjectId, log);
-            log.LogInformation($"Application '{applicationId}' ({registrationInput.AadTenantId}.{registrationInput.AadClientId}) registered by {subjectType} '{subjectId}'.");
+            log.LogInformation($"Application '{applicationId}' ({registrationInput.AadTenantId}.{registrationInput.AadClientId}) registered by {subjectType} '(tid {TelemetryContext.Current})'.");
 
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
@@ -252,7 +253,7 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             var updatedRegistration = await this.UpdateApplicationRegistrationAsync(existingRegistration, updateInput, log);
-            log.LogInformation($"{subjectType} '{subjectId}' updated application registration '{existingRegistration.DisplayName}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' updated application registration '{existingRegistration.DisplayName}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -274,7 +275,7 @@ namespace SafeExchange.Core.Functions.Admin
             this.dbContext.Applications.Remove(existingRegistration);
             await dbContext.SaveChangesAsync();
 
-            log.LogInformation($"{subjectType} '{subjectId}' deleted application registration '{applicationId}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' deleted application registration '{applicationId}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -283,7 +284,7 @@ namespace SafeExchange.Core.Functions.Admin
 
         private async Task<Application> RegisterApplicationAsync(string applicationId, ApplicationRegistrationInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var appRegistration = new Application(applicationId, registrationInput, $"{subjectType} {subjectId}");
+            var appRegistration = new Application(applicationId, registrationInput, $"{subjectType} (tid {TelemetryContext.Current})");
             var entity = await this.dbContext.Applications.AddAsync(appRegistration);
 
             await this.dbContext.SaveChangesAsync();

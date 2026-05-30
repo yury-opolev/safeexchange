@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// SafeExchangeAccessRequest
 /// </summary>
 
@@ -17,6 +17,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -72,7 +73,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeAccessRequest)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
 
@@ -117,7 +118,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeAccessRequest)}-{nameof(RunList)} triggered by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeAccessRequest)}-{nameof(RunList)} triggered by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -163,7 +164,7 @@ namespace SafeExchange.Core.Functions
 
             if (existingRequest != null && existingRequest.Permission == requestedPermission)
             {
-                log.LogInformation($"Found identical access request {existingRequest.Id} from {subjectType} {subjectId} for secret '{secretId}', skipping duplicate.");
+                log.LogInformation($"Found identical access request {existingRequest.Id} from {subjectType} (tid {TelemetryContext.Current}) for secret '{secretId}', skipping duplicate.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<string> { Status = "ok", Result = "ok" });
@@ -186,7 +187,7 @@ namespace SafeExchange.Core.Functions
             await this.dbContext.AccessRequests.AddAsync(accessRequest);
             await this.dbContext.SaveChangesAsync();
 
-            log.LogInformation($"Created access request {accessRequest.Id} from {subjectType} {subjectId} for secret '{secretId}'.");
+            log.LogInformation($"Created access request {accessRequest.Id} from {subjectType} (tid {TelemetryContext.Current}) for secret '{secretId}'.");
 
             await this.TryNotifyAsync(accessRequest);
 
@@ -294,7 +295,7 @@ namespace SafeExchange.Core.Functions
             var foundRecipient = existingRequest.Recipients.FirstOrDefault(r => r.SubjectType.Equals(subjectType) && r.SubjectId.Equals(subjectId, StringComparison.OrdinalIgnoreCase));
             if (foundRecipient == null)
             {
-                log.LogWarning($"{subjectType} '{subjectId}' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
+                log.LogWarning($"{subjectType} '(tid {TelemetryContext.Current})' is not in the list of request '{accessRequestInput.RequestId}' recipients on secret {secretId}.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "User is not a recipient." });
@@ -303,7 +304,7 @@ namespace SafeExchange.Core.Functions
             var userHasGrantRights = await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.GrantAccess);
             if (!userHasGrantRights)
             {
-                log.LogWarning($"{subjectType} {subjectId} does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
+                log.LogWarning($"{subjectType} (tid {TelemetryContext.Current}) does not have '{PermissionType.GrantAccess}' permission on secret '{secretId}', cannot approve.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     ActionResults.InsufficientPermissions(PermissionType.GrantAccess, secretId, string.Empty));
@@ -319,7 +320,7 @@ namespace SafeExchange.Core.Functions
                 existingRequest.Status = RequestStatus.Rejected;
             }
 
-            existingRequest.FinishedBy = $"{subjectType} {subjectId}";
+            existingRequest.FinishedBy = $"{subjectType} (tid {TelemetryContext.Current})";
             existingRequest.FinishedAt = DateTimeProvider.UtcNow;
 
             await this.dbContext.SaveChangesAsync();
@@ -386,7 +387,7 @@ namespace SafeExchange.Core.Functions
 
             if (!(existingRequest.SubjectType.Equals(subjectType) && existingRequest.SubjectName.Equals(subjectId, StringComparison.OrdinalIgnoreCase)))
             {
-                log.LogWarning($"{subjectType} '{subjectId}' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
+                log.LogWarning($"{subjectType} '(tid {TelemetryContext.Current})' did not create request '{accessRequestInput.RequestId}' for secret {secretId}.");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
                     ActionResults.InsufficientPermissions("AccessRequestCancellation", secretId, string.Empty));

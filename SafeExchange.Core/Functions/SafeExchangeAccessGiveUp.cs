@@ -15,6 +15,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -66,7 +67,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeAccessGiveUp)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeAccessGiveUp)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             if (!this.features.CurrentValue.UseAccessGiveUp)
             {
@@ -133,11 +134,11 @@ namespace SafeExchange.Core.Functions
             var directRow = await this.permissionsManager.GetSubjectPermissionsAsync(secretId, subjectType, subjectId);
             if (directRow == null)
             {
-                log.LogInformation($"Subject {subjectType} '{subjectId}' attempted give-up on '{secretId}' but had no direct row.");
+                log.LogInformation($"Subject {subjectType} '(tid {TelemetryContext.Current})' attempted give-up on '{secretId}' but had no direct row.");
                 return request.CreateResponse(HttpStatusCode.NoContent);
             }
 
-            log.LogInformation($"Subject {subjectType} '{subjectId}' relinquished access to '{secretId}'.");
+            log.LogInformation($"Subject {subjectType} '(tid {TelemetryContext.Current})' relinquished access to '{secretId}'.");
             var beforePerm = AuditPayloads.ToPermissionType(directRow);
             this.dbContext.Permissions.Remove(directRow);
 

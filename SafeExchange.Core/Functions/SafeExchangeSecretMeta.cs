@@ -20,6 +20,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Utilities;
+    using SafeExchange.Core.Telemetry;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Collections.Generic;
@@ -75,7 +76,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
             
@@ -115,7 +116,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} {subjectId}, ID {this.tokenHelper.GetObjectId(principal)} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -251,7 +252,7 @@ namespace SafeExchange.Core.Functions
             metadataInput.Tags = normalisedTags.ToList();
 
             var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
-            log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '{subjectId}' are set.");
+            log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '(tid {TelemetryContext.Current})' are set.");
 
             if (createdMetadata.AuditEnabled)
             {
@@ -387,7 +388,7 @@ namespace SafeExchange.Core.Functions
             }
 
             var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
-            log.LogInformation($"{subjectType} '{subjectId}' updated metadata for secret '{existingMetadata.ObjectName}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' updated metadata for secret '{existingMetadata.ObjectName}'.");
 
             if (diffJson is not null)
             {
@@ -430,7 +431,7 @@ namespace SafeExchange.Core.Functions
             }
 
             await this.purger.PurgeAsync(secretId, this.dbContext, this.auditWriter, subjectType, subjectId, this.features.AuditRetentionDays);
-            log.LogInformation($"{subjectType} '{subjectId}' deleted secret '{secretId}'");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' deleted secret '{secretId}'");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -439,7 +440,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} {subjectId}");
+            var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} (tid {TelemetryContext.Current})");
             var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
 
             var subjectName = subjectId;

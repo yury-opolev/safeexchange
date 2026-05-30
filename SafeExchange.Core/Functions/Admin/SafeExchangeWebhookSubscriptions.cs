@@ -1,4 +1,4 @@
-﻿
+
 namespace SafeExchange.Core.Functions.Admin
 {
     using Microsoft.Azure.Functions.Worker.Http;
@@ -8,6 +8,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -49,7 +50,7 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeWebhookSubscriptions)} triggered for webhook subscription{(string.IsNullOrEmpty(webhookSubscriptionId) ? string.Empty : $" ID '{webhookSubscriptionId}'")} by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeWebhookSubscriptions)} triggered for webhook subscription{(string.IsNullOrEmpty(webhookSubscriptionId) ? string.Empty : $" ID '{webhookSubscriptionId}'")} by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -152,7 +153,7 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             var createdSubscription = await this.CreateWebhookSubscriptionAsync(creationInput, subjectType, subjectId, log);
-            log.LogInformation($"Webhook subscription ID '{createdSubscription.Id}' ({creationInput.EventType}, {creationInput.Url}) created by {subjectType} '{subjectId}'.");
+            log.LogInformation($"Webhook subscription ID '{createdSubscription.Id}' ({creationInput.EventType}, {creationInput.Url}) created by {subjectType} '(tid {TelemetryContext.Current})'.");
 
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.OK,
@@ -237,7 +238,7 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             var updatedSubscription = await this.UpdateWebhookSubscriptionAsync(existingSubscription, updateInput, log);
-            log.LogInformation($"{subjectType} '{subjectId}' updated webhook subscription '{existingSubscription.Id}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' updated webhook subscription '{existingSubscription.Id}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -259,7 +260,7 @@ namespace SafeExchange.Core.Functions.Admin
             this.dbContext.WebhookSubscriptions.Remove(existingSubscription);
             await dbContext.SaveChangesAsync();
 
-            log.LogInformation($"{subjectType} '{subjectId}' deleted webhook subscription '{webhookSubscriptionId}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' deleted webhook subscription '{webhookSubscriptionId}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
@@ -268,7 +269,7 @@ namespace SafeExchange.Core.Functions.Admin
 
         private async Task<WebhookSubscription> CreateWebhookSubscriptionAsync(WebhookSubscriptionCreationInput creationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var webhookSubscription = new WebhookSubscription(creationInput, $"{subjectType} {subjectId}");
+            var webhookSubscription = new WebhookSubscription(creationInput, $"{subjectType} (tid {TelemetryContext.Current})");
             var entity = await this.dbContext.WebhookSubscriptions.AddAsync(webhookSubscription);
 
             await this.dbContext.SaveChangesAsync();

@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// Authorizer
 /// </summary>
 
@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Permissions
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Threading.Tasks;
 
@@ -52,7 +53,7 @@ namespace SafeExchange.Core.Permissions
             }
 
             var isAuthorized = await this.HasPermissionAsync(subjectType, subjectId, secretId, permission);
-            this.logger.LogInformation($"Subject '{subjectType} {subjectId}' {(isAuthorized ? "has" : "does not have")} direct {permission} permissions for '{secretId}'.");
+            this.logger.LogInformation($"Subject '{subjectType} (tid {TelemetryContext.Current})' {(isAuthorized ? "has" : "does not have")} direct {permission} permissions for '{secretId}'.");
 
             if (!isAuthorized && subjectType == SubjectType.User)
             {

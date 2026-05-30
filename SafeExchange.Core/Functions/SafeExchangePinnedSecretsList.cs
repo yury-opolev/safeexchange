@@ -12,6 +12,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Utilities;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -52,7 +53,7 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangePinnedSecretsList)} triggered by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangePinnedSecretsList)} triggered by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             var userId = request.FunctionContext.GetUserId();
             switch (request.Method.ToLower())

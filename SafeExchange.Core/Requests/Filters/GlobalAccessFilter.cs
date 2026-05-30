@@ -68,12 +68,12 @@ namespace SafeExchange.Core.Filters
             {
                 if (existingUser.Groups.Any(g => g.AadGroupId.Equals(groupId)))
                 {
-                    this.log.LogInformation($"{existingUser.AadUpn} is a member of global access group '{groupId}', authorized.");
+                    this.log.LogInformation("User (tid {TelemetryId}) is a member of global access group '{GroupId}', authorized.", existingUser.TelemetryId, groupId);
                     return result;
                 }
             }
 
-            this.log.LogInformation($"{existingUser.AadUpn} is not a member of any global access group, unauthorized.");
+            this.log.LogInformation("User (tid {TelemetryId}) is not a member of any global access group, unauthorized.", existingUser.TelemetryId);
             result.shouldReturn = true;
             result.response = await ActionResults.CreateResponseAsync(
                 req, HttpStatusCode.Forbidden,

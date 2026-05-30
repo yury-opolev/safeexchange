@@ -1,4 +1,4 @@
-﻿
+
 namespace SafeExchange.Core.Functions.Admin
 {
     using Microsoft.Azure.Functions.Worker.Http;
@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -55,7 +56,7 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.ForbiddenAsync(request, "Applications cannot use this API.");
             }
 
-            log.LogInformation($"{nameof(SafeExchangeAdminGroups)} triggered for '{groupId}' by {subjectType} {subjectId} [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangeAdminGroups)} triggered for '{groupId}' by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
@@ -162,7 +163,7 @@ namespace SafeExchange.Core.Functions.Admin
             }
 
             var registeredGroup = await this.groupsManager.PutGroupAsync(groupId, registrationInput, subjectType, subjectId);
-            log.LogInformation($"Group '{groupId}' ({registrationInput.DisplayName}, {registrationInput.Mail}) registered by {subjectType} '{subjectId}'.");
+            log.LogInformation($"Group '{groupId}' registered by {subjectType} (tid {TelemetryContext.Current}).");
 
             return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Created,
@@ -184,7 +185,7 @@ namespace SafeExchange.Core.Functions.Admin
 
             await this.groupsManager.DeleteGroupAsync(groupId);
 
-            log.LogInformation($"{subjectType} '{subjectId}' deleted group registration '{groupId}'.");
+            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' deleted group registration '{groupId}'.");
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,

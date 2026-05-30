@@ -15,6 +15,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Utilities;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -73,7 +74,7 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Secret id value is not provided." });
             }
 
-            log.LogInformation($"{nameof(SafeExchangePinnedSecrets)} triggered for '{secretId}' by {subjectType} {subjectId}, [{request.Method}].");
+            log.LogInformation($"{nameof(SafeExchangePinnedSecrets)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             var userId = request.FunctionContext.GetUserId();
 
