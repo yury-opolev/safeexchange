@@ -5,7 +5,8 @@
 ///               Paginated; supports q (name search), page, pageSize,
 ///               sortBy (name|created|lastAccessed, default created),
 ///               sortDir (asc|desc, default desc),
-///               accessedBefore (ISO date), neverAccessed (bool).
+///               accessedBefore (ISO date).
+///               Fully server-side paginated — no client-side materialisation.
 ///
 /// * RunDetail — GET v2/admin/secret/{secretName}
 ///               Full metadata (no content bytes or chunk data).
@@ -50,7 +51,7 @@ namespace SafeExchange.Core.Functions.Admin
             this.limits = limits ?? throw new ArgumentNullException(nameof(limits));
         }
 
-        /// <summary>GET v2/admin/secret-list — paginated list of secrets.</summary>
+        /// <summary>GET v2/admin/secret-list — paginated list of secrets (server-side).</summary>
         public async Task<HttpResponseData> RunList(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
@@ -65,23 +66,15 @@ namespace SafeExchange.Core.Functions.Admin
                 var sortBy = request.Query["sortBy"] ?? "created";
                 var sortDir = request.Query["sortDir"] ?? "desc";
                 var accessedBeforeRaw = request.Query["accessedBefore"];
-                var neverAccessedRaw = request.Query["neverAccessed"];
 
                 var (page, pageSize) = PaginationHelper.Parse(request, this.limits.CurrentValue);
 
-                // Parse optional filters.
+                // Parse optional accessedBefore filter.
                 DateTime? accessedBefore = null;
                 if (!string.IsNullOrWhiteSpace(accessedBeforeRaw) &&
                     DateTime.TryParse(accessedBeforeRaw, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsedDate))
                 {
                     accessedBefore = parsedDate.ToUniversalTime();
-                }
-
-                var neverAccessed = false;
-                if (!string.IsNullOrWhiteSpace(neverAccessedRaw) &&
-                    bool.TryParse(neverAccessedRaw, out var parsedBool))
-                {
-                    neverAccessed = parsedBool;
                 }
 
                 // Build base query — only scalar predicates that Cosmos EF can translate.
@@ -113,24 +106,19 @@ namespace SafeExchange.Core.Functions.Admin
                         : baseQuery.OrderByDescending(o => o.CreatedAt),
                 };
 
-                // Materialise to a list so we can apply client-side filters
-                // (neverAccessed uses column-vs-column comparison which Cosmos EF cannot translate).
-                var allMatching = await sortedQuery.ToListAsync();
-
-                // Client-side neverAccessed filter: LastAccessedAt <= CreatedAt.
-                if (neverAccessed)
-                {
-                    allMatching = allMatching.Where(o => o.LastAccessedAt <= o.CreatedAt).ToList();
-                }
-
-                var total = allMatching.Count;
+                // Fully server-side: count then page — no full materialisation.
                 var page0 = Math.Max(0, page);
-                var paged = allMatching
+                var total = await sortedQuery.CountAsync();
+                var items = await sortedQuery
                     .Skip(page0 * pageSize)
                     .Take(pageSize)
-                    .ToList();
-
-                var items = paged.Select(o => this.ToOverviewDto(o)).ToList();
+                    .Select(o => new SecretAdminOverviewOutput
+                    {
+                        ObjectName = o.ObjectName,
+                        CreatedAt = o.CreatedAt,
+                        LastAccessedAt = o.LastAccessedAt,
+                    })
+                    .ToListAsync();
 
                 var result = new PaginatedResult<SecretAdminOverviewOutput>
                 {
@@ -207,22 +195,6 @@ namespace SafeExchange.Core.Functions.Admin
             }, nameof(RunAccess), log);
         }
 
-        private SecretAdminOverviewOutput ToOverviewDto(ObjectMetadata obj)
-        {
-            return new SecretAdminOverviewOutput
-            {
-                ObjectName = obj.ObjectName,
-                CreatedBy = obj.CreatedBy,
-                CreatedAt = obj.CreatedAt,
-                LastAccessedAt = obj.LastAccessedAt,
-                ExpiresAt = this.NullIfDefault(obj.ExpirationMetadata?.ScheduleExpiration == true ? obj.ExpirationMetadata.ExpireAt : DefaultDateTime),
-                IdleDeleteAt = this.NullIfDefault(obj.ExpirationMetadata?.ExpireOnIdleTime == true ? obj.ExpireIfUnusedAt : DefaultDateTime),
-                AttachmentCount = obj.Content?.Count(c => !c.IsMain) ?? 0,
-                Tags = obj.Tags?.ToList() ?? new System.Collections.Generic.List<string>(),
-                AuditEnabled = obj.AuditEnabled,
-            };
-        }
-
         private SecretAdminDetailOutput ToDetailDto(ObjectMetadata obj)
         {
             return new SecretAdminDetailOutput
@@ -231,15 +203,15 @@ namespace SafeExchange.Core.Functions.Admin
                 CreatedBy = obj.CreatedBy,
                 CreatedAt = obj.CreatedAt,
                 LastAccessedAt = obj.LastAccessedAt,
+                ModifiedAt = obj.ModifiedAt,
+                ModifiedBy = obj.ModifiedBy,
                 ExpiresAt = this.NullIfDefault(obj.ExpirationMetadata?.ScheduleExpiration == true ? obj.ExpirationMetadata.ExpireAt : DefaultDateTime),
                 IdleDeleteAt = this.NullIfDefault(obj.ExpirationMetadata?.ExpireOnIdleTime == true ? obj.ExpireIfUnusedAt : DefaultDateTime),
                 AttachmentCount = obj.Content?.Count(c => !c.IsMain) ?? 0,
                 Tags = obj.Tags?.ToList() ?? new System.Collections.Generic.List<string>(),
                 AuditEnabled = obj.AuditEnabled,
-                ModifiedAt = obj.ModifiedAt,
-                ModifiedBy = obj.ModifiedBy,
-                KeepInStorage = obj.KeepInStorage,
                 AuditInstanceId = obj.AuditInstanceId ?? string.Empty,
+                KeepInStorage = obj.KeepInStorage,
             };
         }
 

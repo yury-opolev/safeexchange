@@ -140,20 +140,17 @@ namespace SafeExchange.Tests
         }
 
         // -----------------------------------------------------------------------
-        // 1. List: AttachmentCount excludes IsMain; pagination Total correct.
+        // 1. List: pagination Total is correct and items contain names.
         // -----------------------------------------------------------------------
 
         [Test]
-        public async Task List_AttachmentCountExcludesIsMain_AndPaginationTotal()
+        public async Task List_PaginationTotal_IsCorrect()
         {
-            // [GIVEN] Two secrets: first has one IsMain + two attachments; second has IsMain only.
-            var secret1 = this.CreateSecret("attach-test-1", "creator@test.test");
-            // Add two non-main content items.
-            secret1.Content.Add(new ContentMetadata { ContentName = ContentMetadata.NewName(), IsMain = false });
-            secret1.Content.Add(new ContentMetadata { ContentName = ContentMetadata.NewName(), IsMain = false });
+            // [GIVEN] Two secrets.
+            var secret1 = this.CreateSecret("list-test-1", "creator@test.test");
             this.dbContext.Objects.Add(secret1);
 
-            var secret2 = this.CreateSecret("attach-test-2", "creator@test.test");
+            var secret2 = this.CreateSecret("list-test-2", "creator@test.test");
             this.dbContext.Objects.Add(secret2);
 
             await this.dbContext.SaveChangesAsync();
@@ -164,7 +161,7 @@ namespace SafeExchange.Tests
             var principal = new ClaimsPrincipal(this.adminIdentity);
             var response = await this.handler.RunList(request, principal, this.logger) as TestHttpResponseData;
 
-            // [THEN] Total = 2; first secret has AttachmentCount = 2; second has 0.
+            // [THEN] Total = 2 and both names are present; no AttachmentCount on list items.
             Assert.That(response, Is.Not.Null);
             Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
@@ -172,13 +169,9 @@ namespace SafeExchange.Tests
             Assert.That(body?.Status, Is.EqualTo("ok"));
             Assert.That(body!.Result.Total, Is.EqualTo(2));
 
-            var first = body.Result.Items.FirstOrDefault(i => i.ObjectName == "attach-test-1");
-            Assert.That(first, Is.Not.Null);
-            Assert.That(first!.AttachmentCount, Is.EqualTo(2));
-
-            var second = body.Result.Items.FirstOrDefault(i => i.ObjectName == "attach-test-2");
-            Assert.That(second, Is.Not.Null);
-            Assert.That(second!.AttachmentCount, Is.EqualTo(0));
+            var names = body.Result.Items.Select(i => i.ObjectName).ToList();
+            Assert.That(names, Has.Member("list-test-1"));
+            Assert.That(names, Has.Member("list-test-2"));
         }
 
         // -----------------------------------------------------------------------
@@ -229,54 +222,7 @@ namespace SafeExchange.Tests
         }
 
         // -----------------------------------------------------------------------
-        // 3. List: neverAccessed=true → only secrets with LastAccessedAt <= CreatedAt.
-        // -----------------------------------------------------------------------
-
-        [Test]
-        public async Task List_NeverAccessedFilter_OnlyReturnsNeverAccessedSecrets()
-        {
-            // Use real time so the test verifies the fix works without frozen-clock assistance.
-            DateTimeProvider.UseSpecifiedDateTime = false;
-            try
-            {
-                // [GIVEN] A never-accessed secret — constructor now captures a single timestamp,
-                // so LastAccessedAt == CreatedAt exactly.
-                var neverAccessedSecret = this.CreateSecret("never-accessed-1", "creator@test.test");
-                this.dbContext.Objects.Add(neverAccessedSecret);
-
-                // [GIVEN] An accessed secret whose LastAccessedAt is clearly after CreatedAt.
-                var accessedSecret = this.CreateSecret("was-accessed-1", "creator@test.test");
-                accessedSecret.LastAccessedAt = accessedSecret.CreatedAt + TimeSpan.FromMinutes(5);
-                this.dbContext.Objects.Add(accessedSecret);
-
-                await this.dbContext.SaveChangesAsync();
-                this.dbContext.ChangeTracker.Clear();
-
-                // [WHEN] Admin lists with neverAccessed=true.
-                var request = TestFactory.CreateHttpRequestData("get");
-                request.SetQueryString("neverAccessed=true");
-                var principal = new ClaimsPrincipal(this.adminIdentity);
-                var response = await this.handler.RunList(request, principal, this.logger) as TestHttpResponseData;
-
-                // [THEN] Only the never-accessed secret is returned.
-                Assert.That(response, Is.Not.Null);
-                Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-
-                var body = response.ReadBodyAsJson<BaseResponseObject<PaginatedResult<SecretAdminOverviewOutput>>>();
-                Assert.That(body?.Status, Is.EqualTo("ok"));
-                Assert.That(body!.Result.Items.Any(i => i.ObjectName == "never-accessed-1"), Is.True);
-                Assert.That(body.Result.Items.Any(i => i.ObjectName == "was-accessed-1"), Is.False);
-            }
-            finally
-            {
-                // Restore frozen-time mode so other tests in this fixture are unaffected.
-                DateTimeProvider.UseSpecifiedDateTime = true;
-                DateTimeProvider.SpecifiedDateTime = DateTime.UtcNow;
-            }
-        }
-
-        // -----------------------------------------------------------------------
-        // 4. List: accessedBefore boundary.
+        // 3. List: accessedBefore boundary.
         // -----------------------------------------------------------------------
 
         [Test]
@@ -319,7 +265,7 @@ namespace SafeExchange.Tests
         }
 
         // -----------------------------------------------------------------------
-        // 5. List: q matches name.
+        // 4. List: q matches name.
         // -----------------------------------------------------------------------
 
         [Test]
@@ -352,13 +298,13 @@ namespace SafeExchange.Tests
         }
 
         // -----------------------------------------------------------------------
-        // 6. Detail: returns metadata or 404.
+        // 5. Detail: returns full metadata including attachments, tags, audit fields.
         // -----------------------------------------------------------------------
 
         [Test]
         public async Task Detail_ReturnsMetadataForExistingSecret()
         {
-            // [GIVEN] A secret exists.
+            // [GIVEN] A secret exists with tags.
             var secret = this.CreateSecret("detail-test-1", "owner@test.test");
             secret.Tags = new List<string> { "tag1", "tag2" };
             this.dbContext.Objects.Add(secret);
@@ -382,6 +328,31 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task Detail_AttachmentCount_ExcludesIsMain()
+        {
+            // [GIVEN] A secret with one IsMain + two attachment content items.
+            var secret = this.CreateSecret("detail-attach-1", "creator@test.test");
+            secret.Content.Add(new ContentMetadata { ContentName = ContentMetadata.NewName(), IsMain = false });
+            secret.Content.Add(new ContentMetadata { ContentName = ContentMetadata.NewName(), IsMain = false });
+            this.dbContext.Objects.Add(secret);
+            await this.dbContext.SaveChangesAsync();
+            this.dbContext.ChangeTracker.Clear();
+
+            // [WHEN] Admin requests detail.
+            var request = TestFactory.CreateHttpRequestData("get");
+            var principal = new ClaimsPrincipal(this.adminIdentity);
+            var response = await this.handler.RunDetail(request, "detail-attach-1", principal, this.logger) as TestHttpResponseData;
+
+            // [THEN] AttachmentCount = 2 (excludes IsMain item).
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var body = response.ReadBodyAsJson<BaseResponseObject<SecretAdminDetailOutput>>();
+            Assert.That(body?.Status, Is.EqualTo("ok"));
+            Assert.That(body!.Result.AttachmentCount, Is.EqualTo(2));
+        }
+
+        [Test]
         public async Task Detail_Returns404ForMissingSecret()
         {
             // [GIVEN] No secret with the given name exists.
@@ -400,7 +371,7 @@ namespace SafeExchange.Tests
         }
 
         // -----------------------------------------------------------------------
-        // 6b. Detail: audit-enabled secret exposes AuditInstanceId.
+        // 6. Detail: audit-enabled secret exposes AuditInstanceId.
         // -----------------------------------------------------------------------
 
         [Test]
