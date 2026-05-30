@@ -27,14 +27,16 @@ namespace SafeExchange.Tests
         }
 
         [Test]
-        public void EnsureCurrent_EmptyId_GeneratesAndSetsExpiry()
+        public void EnsureCurrent_EmptyId_GeneratesSetsExpiryAndIssuedAt_NoRetiredEntry()
         {
             var rotator = new TelemetryIdRotator();
             var user = new User();
             var now = new DateTime(2026, 5, 27, 10, 0, 0, DateTimeKind.Utc);
-            var changed = rotator.EnsureCurrent(user, now);
-            Assert.That(changed, Is.True);
+            var result = rotator.EnsureCurrent(user, now);
+            Assert.That(result.Rotated, Is.True);
+            Assert.That(result.RetiredTelemetryId, Is.Null);
             Assert.That(user.TelemetryId, Is.Not.Empty);
+            Assert.That(user.TelemetryIdIssuedAt, Is.EqualTo(now));
             Assert.That(user.TelemetryIdExpiresAt, Is.EqualTo(new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc)));
         }
 
@@ -43,19 +45,31 @@ namespace SafeExchange.Tests
         {
             var rotator = new TelemetryIdRotator();
             var user = new User { TelemetryId = "abc", TelemetryIdExpiresAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc) };
-            var changed = rotator.EnsureCurrent(user, new DateTime(2026, 5, 31, 23, 0, 0, DateTimeKind.Utc));
-            Assert.That(changed, Is.False);
+            var result = rotator.EnsureCurrent(user, new DateTime(2026, 5, 31, 23, 0, 0, DateTimeKind.Utc));
+            Assert.That(result.Rotated, Is.False);
+            Assert.That(result.RetiredTelemetryId, Is.Null);
             Assert.That(user.TelemetryId, Is.EqualTo("abc"));
         }
 
         [Test]
-        public void EnsureCurrent_Expired_RotatesToNewId()
+        public void EnsureCurrent_Expired_RotatesAndReportsRetiredWindow()
         {
             var rotator = new TelemetryIdRotator();
-            var user = new User { TelemetryId = "abc", TelemetryIdExpiresAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc) };
-            var changed = rotator.EnsureCurrent(user, new DateTime(2026, 6, 1, 0, 0, 1, DateTimeKind.Utc));
-            Assert.That(changed, Is.True);
+            var issued = new DateTime(2026, 5, 25, 0, 0, 0, DateTimeKind.Utc);
+            var user = new User
+            {
+                TelemetryId = "abc",
+                TelemetryIdIssuedAt = issued,
+                TelemetryIdExpiresAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc),
+            };
+            var now = new DateTime(2026, 6, 1, 0, 0, 1, DateTimeKind.Utc);
+            var result = rotator.EnsureCurrent(user, now);
+            Assert.That(result.Rotated, Is.True);
+            Assert.That(result.RetiredTelemetryId, Is.EqualTo("abc"));
+            Assert.That(result.RetiredValidFromUtc, Is.EqualTo(issued));
+            Assert.That(result.RetiredValidToUtc, Is.EqualTo(now));
             Assert.That(user.TelemetryId, Is.Not.EqualTo("abc"));
+            Assert.That(user.TelemetryIdIssuedAt, Is.EqualTo(now));
             Assert.That(user.TelemetryIdExpiresAt, Is.EqualTo(new DateTime(2026, 6, 8, 0, 0, 0, DateTimeKind.Utc)));
         }
     }

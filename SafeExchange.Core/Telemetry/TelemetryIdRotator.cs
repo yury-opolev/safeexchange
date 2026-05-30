@@ -29,8 +29,10 @@ namespace SafeExchange.Core.Telemetry
         }
 
         /// <summary>Ensures the user has a current telemetry id, regenerating it when
-        /// empty or expired. Returns true when the user was modified (caller must save).</summary>
-        public bool EnsureCurrent(User user, DateTime nowUtc)
+        /// empty or expired. Returns the rotation outcome; when a non-empty id was
+        /// replaced, the result carries the retired id and its active window so the
+        /// caller can record it in the TelemetryIdMap.</summary>
+        public TelemetryIdRotationResult EnsureCurrent(User user, DateTime nowUtc)
         {
             if (user is null)
             {
@@ -39,12 +41,23 @@ namespace SafeExchange.Core.Telemetry
 
             if (!string.IsNullOrEmpty(user.TelemetryId) && nowUtc < user.TelemetryIdExpiresAt)
             {
-                return false;
+                return new TelemetryIdRotationResult(false, null, default, default);
+            }
+
+            string? retiredId = null;
+            DateTime retiredFrom = default;
+            DateTime retiredTo = default;
+            if (!string.IsNullOrEmpty(user.TelemetryId))
+            {
+                retiredId = user.TelemetryId;
+                retiredFrom = user.TelemetryIdIssuedAt;
+                retiredTo = nowUtc;
             }
 
             user.TelemetryId = Guid.NewGuid().ToString("n");
+            user.TelemetryIdIssuedAt = nowUtc;
             user.TelemetryIdExpiresAt = NextWeekBoundaryUtc(nowUtc);
-            return true;
+            return new TelemetryIdRotationResult(true, retiredId, retiredFrom, retiredTo);
         }
     }
 }

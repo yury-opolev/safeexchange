@@ -96,8 +96,8 @@ namespace SafeExchange.Core.Middleware
                 return result;
             }
 
-            var telemetryIdChanged = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
-            if (telemetryIdChanged)
+            var rotation = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
+            if (rotation.Rotated)
             {
                 await this.dbContext.SaveChangesAsync();
             }
