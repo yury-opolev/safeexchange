@@ -219,17 +219,20 @@ namespace SafeExchange.Tests
             Assert.That(existingGroupItem.UserId, Is.EqualTo(userId));
             Assert.That(existingGroupItem.GroupItemId, Is.EqualTo("00000444-0000-0000-0000-000000000444"));
 
-            // [THEN] Group items still contain group for delete pinned group.
+            // [THEN] Group items still contain both groups (incl. the deleted pinned group's).
+            // Cosmos returns documents in no guaranteed order without an ORDER BY, so look each
+            // group up by id rather than asserting on list position — the previous positional
+            // assertions ([0]/[1]) made this test order-dependent and intermittently flaky.
             var existingGroupItems = await this.dbContext.GroupDictionary.ToListAsync();
             Assert.That(existingGroupItems.Count, Is.EqualTo(2));
 
-            Assert.That(existingGroupItems[0].GroupId, Is.EqualTo("00000333-0000-0000-0000-000000000333"));
-            Assert.That(existingGroupItems[0].DisplayName, Is.EqualTo("Group 3 Display Name"));
-            Assert.That(existingGroupItems[0].GroupMail, Is.EqualTo("test3@group.mail"));
+            var group3 = existingGroupItems.Single(g => g.GroupId == "00000333-0000-0000-0000-000000000333");
+            Assert.That(group3.DisplayName, Is.EqualTo("Group 3 Display Name"));
+            Assert.That(group3.GroupMail, Is.EqualTo("test3@group.mail"));
 
-            Assert.That(existingGroupItems[1].GroupId, Is.EqualTo("00000444-0000-0000-0000-000000000444"));
-            Assert.That(existingGroupItems[1].DisplayName, Is.EqualTo("Group 4 Display Name"));
-            Assert.That(existingGroupItems[1].GroupMail, Is.EqualTo("test4@group.mail"));
+            var group4 = existingGroupItems.Single(g => g.GroupId == "00000444-0000-0000-0000-000000000444");
+            Assert.That(group4.DisplayName, Is.EqualTo("Group 4 Display Name"));
+            Assert.That(group4.GroupMail, Is.EqualTo("test4@group.mail"));
         }
 
         [Test]
