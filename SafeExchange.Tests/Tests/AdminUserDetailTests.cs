@@ -65,6 +65,13 @@ namespace SafeExchange.Tests
             this.dbContext = new SafeExchangeDbContext(this.dbContextOptions);
             await this.dbContext.Database.EnsureCreatedAsync();
 
+            var cosmosClient = CosmosTestOptions.CreateClient(secretConfiguration.GetConnectionString("CosmosDb"));
+            await cosmosClient.GetDatabase($"{nameof(AdminUserDetailTests)}Database").CreateContainerIfNotExistsAsync(
+                new Microsoft.Azure.Cosmos.ContainerProperties("TelemetryIdMap", "/UserId")
+                {
+                    DefaultTimeToLive = 2419200,
+                });
+
             // Admin identity: oid must match AdminConfiguration.AdminUsers.
             this.adminIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>
             {
@@ -134,7 +141,33 @@ namespace SafeExchange.Tests
         {
             this.dbContext.ChangeTracker.Clear();
             this.dbContext.Users.RemoveRange(this.dbContext.Users.ToList());
+            this.dbContext.Set<TelemetryIdMapEntry>().RemoveRange(this.dbContext.Set<TelemetryIdMapEntry>().ToList());
             this.dbContext.SaveChanges();
+        }
+
+        private async Task<User> SeedUserAsync(string upn)
+        {
+            var user = new User(
+                displayName: upn,
+                aadObjectId: Guid.NewGuid().ToString(),
+                aadTenantId: "bbbbbbbb-0000-0000-0000-000000000001",
+                aadUpn: upn,
+                contactEmail: upn);
+            this.dbContext.Users.Add(user);
+            await this.dbContext.SaveChangesAsync();
+            return user;
+        }
+
+        private async Task<UserDetailOutput> GetDetailAsync(string upn)
+        {
+            var request = TestFactory.CreateHttpRequestData("get");
+            var principal = new ClaimsPrincipal(this.adminIdentity);
+            var response = await this.handler.RunDetail(request, upn, principal, this.logger) as TestHttpResponseData;
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var body = response.ReadBodyAsJson<BaseResponseObject<UserDetailOutput>>();
+            Assert.That(body?.Status, Is.EqualTo("ok"));
+            return body!.Result!;
         }
 
         // -----------------------------------------------------------------------
@@ -239,6 +272,41 @@ namespace SafeExchange.Tests
             // [THEN] A non-200 response is returned (admin gate rejects the caller).
             Assert.That(response, Is.Not.Null);
             Assert.That(response!.StatusCode, Is.Not.EqualTo(HttpStatusCode.OK));
+        }
+
+        [Test]
+        public async Task RunDetail_ReturnsCurrentTelemetryIdAndWindow()
+        {
+            // [GIVEN] a user with a current telemetry id
+            var user = await this.SeedUserAsync("detail-tid@test.test");
+            user.TelemetryId = "0123456789abcdef0123456789abcdef";
+            user.TelemetryIdIssuedAt = new DateTime(2026, 5, 25, 0, 0, 0, DateTimeKind.Utc);
+            user.TelemetryIdExpiresAt = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+            await this.dbContext.SaveChangesAsync();
+
+            // [WHEN] admin fetches detail
+            var detail = await this.GetDetailAsync(user.AadUpn);
+
+            // [THEN] current id + window are returned
+            Assert.That(detail.CurrentTelemetryId, Is.EqualTo("0123456789abcdef0123456789abcdef"));
+            Assert.That(detail.TelemetryIdActiveSinceUtc, Is.EqualTo(user.TelemetryIdIssuedAt));
+            Assert.That(detail.TelemetryIdRotatesAtUtc, Is.EqualTo(user.TelemetryIdExpiresAt));
+        }
+
+        [Test]
+        public async Task RunDetail_ListsRetiredTelemetryIds_NewestFirst()
+        {
+            var user = await this.SeedUserAsync("detail-hist@test.test");
+            await this.dbContext.Set<TelemetryIdMapEntry>().AddRangeAsync(
+                new TelemetryIdMapEntry { id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", UserId = user.Id, ValidFromUtc = new DateTime(2026, 5, 11, 0, 0, 0, DateTimeKind.Utc), ValidToUtc = new DateTime(2026, 5, 18, 0, 0, 0, DateTimeKind.Utc) },
+                new TelemetryIdMapEntry { id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", UserId = user.Id, ValidFromUtc = new DateTime(2026, 5, 18, 0, 0, 0, DateTimeKind.Utc), ValidToUtc = new DateTime(2026, 5, 25, 0, 0, 0, DateTimeKind.Utc) });
+            await this.dbContext.SaveChangesAsync();
+
+            var detail = await this.GetDetailAsync(user.AadUpn);
+
+            Assert.That(detail.RecentTelemetryIds.Count, Is.EqualTo(2));
+            Assert.That(detail.RecentTelemetryIds[0].Id, Is.EqualTo("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")); // newest ValidToUtc first
+            Assert.That(detail.RecentTelemetryIds[1].Id, Is.EqualTo("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         }
     }
 }

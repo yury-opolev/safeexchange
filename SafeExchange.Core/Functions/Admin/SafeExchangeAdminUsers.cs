@@ -104,24 +104,43 @@ namespace SafeExchange.Core.Functions.Admin
                         new BaseResponseObject<object> { Status = "not_found", Error = $"User '{upn}' not found." });
                 }
 
-                var detail = new UserDetailOutput
-                {
-                    AadUpn = user.AadUpn,
-                    DisplayName = user.DisplayName,
-                    ContactEmail = user.ContactEmail,
-                    Enabled = user.Enabled,
-                    Id = user.Id,
-                    AadObjectId = user.AadObjectId,
-                    AadTenantId = user.AadTenantId,
-                    CreatedAt = user.CreatedAt,
-                    ModifiedAt = user.ModifiedAt,
-                    ReceiveExternalNotifications = user.ReceiveExternalNotifications,
-                    ConsentRequired = user.ConsentRequired,
-                };
-
+                var detail = await this.BuildUserDetailAsync(user);
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<UserDetailOutput> { Status = "ok", Result = detail });
             }, nameof(RunDetail), log);
+        }
+
+        private async Task<UserDetailOutput> BuildUserDetailAsync(User user)
+        {
+            var recent = await this.dbContext.Set<TelemetryIdMapEntry>()
+                .Where(e => e.UserId == user.Id)
+                .OrderByDescending(e => e.ValidToUtc)
+                .Select(e => new TelemetryIdWindowOutput
+                {
+                    Id = e.id,
+                    ValidFromUtc = e.ValidFromUtc,
+                    ValidToUtc = e.ValidToUtc,
+                })
+                .ToListAsync();
+
+            return new UserDetailOutput
+            {
+                AadUpn = user.AadUpn,
+                DisplayName = user.DisplayName,
+                ContactEmail = user.ContactEmail,
+                Enabled = user.Enabled,
+                Id = user.Id,
+                AadObjectId = user.AadObjectId,
+                AadTenantId = user.AadTenantId,
+                CreatedAt = user.CreatedAt,
+                ModifiedAt = user.ModifiedAt,
+                ReceiveExternalNotifications = user.ReceiveExternalNotifications,
+                ConsentRequired = user.ConsentRequired,
+                CurrentTelemetryId = user.TelemetryId,
+                TelemetryIdActiveSinceUtc = user.TelemetryIdIssuedAt,
+                TelemetryIdRotatesAtUtc = user.TelemetryIdExpiresAt,
+                RecentTelemetryIds = recent,
+            };
         }
 
         public async Task<HttpResponseData> RunToggleEnabled(HttpRequestData request, string upn, ClaimsPrincipal principal, ILogger log)
