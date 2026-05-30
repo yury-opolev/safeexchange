@@ -18,5 +18,8 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         /// <summary>Whether the secret is kept in storage even after expiry.</summary>
         public bool KeepInStorage { get; set; }
+
+        /// <summary>The audit instance identifier when audit is enabled; empty string otherwise.</summary>
+        public string AuditInstanceId { get; set; } = string.Empty;
     }
 }

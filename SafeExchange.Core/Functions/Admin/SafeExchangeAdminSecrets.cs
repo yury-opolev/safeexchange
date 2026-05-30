@@ -239,6 +239,7 @@ namespace SafeExchange.Core.Functions.Admin
                 ModifiedAt = obj.ModifiedAt,
                 ModifiedBy = obj.ModifiedBy,
                 KeepInStorage = obj.KeepInStorage,
+                AuditInstanceId = obj.AuditInstanceId ?? string.Empty,
             };
         }
 

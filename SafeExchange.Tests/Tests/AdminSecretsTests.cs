@@ -400,6 +400,37 @@ namespace SafeExchange.Tests
         }
 
         // -----------------------------------------------------------------------
+        // 6b. Detail: audit-enabled secret exposes AuditInstanceId.
+        // -----------------------------------------------------------------------
+
+        [Test]
+        public async Task Detail_AuditEnabledSecret_ReturnsAuditInstanceId()
+        {
+            // [GIVEN] A secret with audit enabled and a known AuditInstanceId.
+            var secret = this.CreateSecret("audit-detail-1", "owner@test.test");
+            secret.AuditEnabled = true;
+            var expectedAuditId = "11111111-2222-3333-4444-555555555555";
+            secret.AuditInstanceId = expectedAuditId;
+            this.dbContext.Objects.Add(secret);
+            await this.dbContext.SaveChangesAsync();
+            this.dbContext.ChangeTracker.Clear();
+
+            // [WHEN] Admin requests detail.
+            var request = TestFactory.CreateHttpRequestData("get");
+            var principal = new ClaimsPrincipal(this.adminIdentity);
+            var response = await this.handler.RunDetail(request, "audit-detail-1", principal, this.logger) as TestHttpResponseData;
+
+            // [THEN] AuditEnabled is true and AuditInstanceId matches.
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var body = response.ReadBodyAsJson<BaseResponseObject<SecretAdminDetailOutput>>();
+            Assert.That(body?.Status, Is.EqualTo("ok"));
+            Assert.That(body!.Result.AuditEnabled, Is.True);
+            Assert.That(body.Result.AuditInstanceId, Is.EqualTo(expectedAuditId));
+        }
+
+        // -----------------------------------------------------------------------
         // 7. Access: returns one item per SubjectPermissions row, correct flags + SubjectType.
         // -----------------------------------------------------------------------
 
