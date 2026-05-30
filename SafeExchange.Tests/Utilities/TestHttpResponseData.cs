@@ -28,5 +28,12 @@ namespace SafeExchange.Tests.Utilities
             this.Body.Seek(0, SeekOrigin.Begin);
             return JsonSerializer.Deserialize<T>(this.Body ?? new MemoryStream());
         }
+
+        public string ReadBodyAsString()
+        {
+            this.Body.Seek(0, SeekOrigin.Begin);
+            using var reader = new StreamReader(this.Body, leaveOpen: true);
+            return reader.ReadToEnd();
+        }
     }
 }

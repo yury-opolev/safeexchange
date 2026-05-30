@@ -38,6 +38,16 @@ namespace SafeExchange.Functions
             return await this.handler.RunList(request, principal, this.log);
         }
 
+        [Function("SafeExchange-Admin-Users-Detail")]
+        public async Task<HttpResponseData> RunDetail(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/admin/users/{{upn}}")]
+            HttpRequestData request,
+            string upn)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunDetail(request, upn, principal, this.log);
+        }
+
         [Function("SafeExchange-Admin-Users-ToggleEnabled")]
         public async Task<HttpResponseData> RunToggleEnabled(
             [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/admin/users/{{upn}}/enabled")]

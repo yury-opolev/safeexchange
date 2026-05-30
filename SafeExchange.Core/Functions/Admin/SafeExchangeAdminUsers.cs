@@ -87,6 +87,43 @@ namespace SafeExchange.Core.Functions.Admin
             }, nameof(RunList), log);
         }
 
+        public async Task<HttpResponseData> RunDetail(HttpRequestData request, string upn, ClaimsPrincipal principal, ILogger log)
+        {
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn == upn);
+                if (user is null)
+                {
+                    return await ActionResults.CreateResponseAsync(request, HttpStatusCode.NotFound,
+                        new BaseResponseObject<object> { Status = "not_found", Error = $"User '{upn}' not found." });
+                }
+
+                var detail = new UserDetailOutput
+                {
+                    AadUpn = user.AadUpn,
+                    DisplayName = user.DisplayName,
+                    ContactEmail = user.ContactEmail,
+                    Enabled = user.Enabled,
+                    Id = user.Id,
+                    AadObjectId = user.AadObjectId,
+                    AadTenantId = user.AadTenantId,
+                    CreatedAt = user.CreatedAt,
+                    ModifiedAt = user.ModifiedAt,
+                    ReceiveExternalNotifications = user.ReceiveExternalNotifications,
+                    ConsentRequired = user.ConsentRequired,
+                };
+
+                return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                    new BaseResponseObject<UserDetailOutput> { Status = "ok", Result = detail });
+            }, nameof(RunDetail), log);
+        }
+
         public async Task<HttpResponseData> RunToggleEnabled(HttpRequestData request, string upn, ClaimsPrincipal principal, ILogger log)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
