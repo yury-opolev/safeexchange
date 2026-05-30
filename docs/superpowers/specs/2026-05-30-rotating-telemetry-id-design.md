@@ -27,8 +27,10 @@ Add to `SafeExchange.Core/Model/User.cs`:
 - `TelemetryIdExpiresAt` (DateTime) — UTC instant at/after which it must rotate.
 
 Backward-compatible: existing user documents deserialize with empty/default
-values and get a real id on their first authenticated request after deploy
-(Cosmos is schemaless; no migration).
+values. A **migration backfills all existing users** (see §6) so every document
+carries the fields immediately; the lazy rotation path (§2) then handles any
+user created between the migration pass and their next request, plus all
+ongoing weekly rotation.
 
 ### 2. Rotation — lazy, on-demand, calendar-aligned weekly
 
@@ -111,6 +113,23 @@ only its appearance in **log messages** changes.
 per item and a regex only on the rare messages that contain `@`. Microseconds;
 negligible.
 
+### 6. Migration — backfill existing users
+
+Add a numbered migration following the existing pattern in
+`SafeExchange.Core/Migrations/` (a `MigrationItemNNNNN` model class plus a pass
+in `MigrationsHelper`; the latest is `MigrationItem00010`, and
+`MigrationItem00007_User` is the User-shaped precedent — read both before
+writing the new one). The new migration (next free number, e.g.
+`MigrationItem00011`) iterates the **Users** container and, for each user with
+an empty `TelemetryId`, sets:
+- `TelemetryId = Guid.NewGuid().ToString("n")`
+- `TelemetryIdExpiresAt = TelemetryIdRotator.NextWeekBoundaryUtc(DateTimeProvider.UtcNow)`
+
+and persists. **Idempotent:** users that already have a non-empty `TelemetryId`
+are skipped, so the pass is safe to re-run. It runs via the **existing**
+migrations trigger (the same mechanism `MigrationItem00010` uses — do not invent
+a new one).
+
 ### Config & per-environment enablement
 
 - `Features.RedactTelemetryPii` (bool) — a **Key Vault secret** per the project
@@ -149,7 +168,8 @@ follow-up, **out of scope** here.
 Backend only. ARM/Key Vault: add the `RedactTelemetryPii` flag (staging = true,
 prod = false). Then `func publish` → **staging** → verify (telemetry shows
 `saex.telemetryId`; no UPN/email in message text; redaction active in staging) →
-**prod** (redaction flag stays off in prod for now). No data migration.
+**prod** (redaction flag stays off in prod for now). The §6 migration runs via
+the existing migrations trigger and backfills the new `User` fields.
 
 ## Out of scope
 
