@@ -158,7 +158,7 @@ namespace SafeExchange.Core
                 .ToContainer("SecretAuditAnchors")
                 .HasNoDiscriminator()
                 .HasPartitionKey(a => a.AuditInstanceId);
-            modelBuilder.Entity<SecretAuditAnchor>().HasKey(a => a.AuditInstanceId);
+            modelBuilder.Entity<SecretAuditAnchor>().HasKey(a => a.id);
 
             modelBuilder.Entity<SecretAuditEvent>()
                 .ToContainer("SecretAuditEvents")

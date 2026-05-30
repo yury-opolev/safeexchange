@@ -14,10 +14,13 @@ namespace SafeExchange.Core.Model
         public SecretAuditAnchor(string auditInstanceId, string secretObjectName, string createdBy)
         {
             this.AuditInstanceId = auditInstanceId ?? throw new ArgumentNullException(nameof(auditInstanceId));
+            this.id = auditInstanceId;
             this.SecretObjectName = secretObjectName ?? throw new ArgumentNullException(nameof(secretObjectName));
             this.CreatedAt = DateTimeProvider.UtcNow;
             this.CreatedBy = createdBy ?? string.Empty;
         }
+
+        public string id { get; set; } = string.Empty;
 
         public string AuditInstanceId { get; set; } = string.Empty;
 
