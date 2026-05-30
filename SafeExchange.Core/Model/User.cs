@@ -70,5 +70,9 @@ namespace SafeExchange.Core.Model
 
         /// <summary>UTC instant at/after which TelemetryId must rotate (next week boundary).</summary>
         public DateTime TelemetryIdExpiresAt { get; set; }
+
+        /// <summary>UTC instant the current TelemetryId was generated. Used as the
+        /// validFrom of a retired id when it rotates into the TelemetryIdMap.</summary>
+        public DateTime TelemetryIdIssuedAt { get; set; }
     }
 }
