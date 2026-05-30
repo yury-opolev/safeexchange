@@ -39,6 +39,13 @@ namespace SafeExchange.Core.Configuration
         /// </summary>
         public bool RequireApplicationOwnership { get; set; } = false;
 
+        /// <summary>
+        /// When true, email/UPN-shaped substrings are redacted from trace and exception
+        /// telemetry message text by <c>PiiRedactionTelemetryInitializer</c>.
+        /// Can be toggled without redeploy (read live via IOptionsMonitor).
+        /// </summary>
+        public bool RedactTelemetryPii { get; set; } = false;
+
         public Features Clone() => new Features()
         {
             UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
@@ -51,6 +58,7 @@ namespace SafeExchange.Core.Configuration
             AuditRetentionDays = this.AuditRetentionDays,
             S2SAppsSelfService = this.S2SAppsSelfService,
             RequireApplicationOwnership = this.RequireApplicationOwnership,
+            RedactTelemetryPii = this.RedactTelemetryPii,
         };
 
         public override bool Equals(object obj)
@@ -70,7 +78,8 @@ namespace SafeExchange.Core.Configuration
                 this.UseAccessGiveUp.Equals(other.UseAccessGiveUp) &&
                 this.AuditRetentionDays.Equals(other.AuditRetentionDays) &&
                 this.S2SAppsSelfService.Equals(other.S2SAppsSelfService) &&
-                this.RequireApplicationOwnership.Equals(other.RequireApplicationOwnership);
+                this.RequireApplicationOwnership.Equals(other.RequireApplicationOwnership) &&
+                this.RedactTelemetryPii.Equals(other.RedactTelemetryPii);
         }
 
         public override int GetHashCode() => HashCode.Combine(
@@ -79,6 +88,7 @@ namespace SafeExchange.Core.Configuration
                 this.UseGraphUserSearch, this.UseGraphGroupSearch,
                 this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader,
                 this.UseAccessGiveUp, this.AuditRetentionDays),
-            HashCode.Combine(this.S2SAppsSelfService, this.RequireApplicationOwnership));
+            HashCode.Combine(this.S2SAppsSelfService, this.RequireApplicationOwnership,
+                this.RedactTelemetryPii));
     }
 }
