@@ -6,6 +6,7 @@
 namespace SafeExchange.Core.Model.Dto.Output
 {
     using System;
+    using System.Collections.Generic;
 
     /// <summary>
     /// Full detail of a <see cref="SafeExchange.Core.Model.User"/> as returned by the admin user-detail endpoint.
@@ -45,5 +46,18 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         /// <summary>Gets or sets a value indicating whether the user is required to consent in AAD.</summary>
         public bool ConsentRequired { get; set; }
+
+        /// <summary>The user's current pseudonymous telemetry id (empty if never set).</summary>
+        public string CurrentTelemetryId { get; set; } = string.Empty;
+
+        /// <summary>UTC instant the current telemetry id was generated.</summary>
+        public DateTime TelemetryIdActiveSinceUtc { get; set; }
+
+        /// <summary>UTC instant the current telemetry id is due to rotate.</summary>
+        public DateTime TelemetryIdRotatesAtUtc { get; set; }
+
+        /// <summary>Recently retired telemetry ids still within the retention window,
+        /// newest first.</summary>
+        public List<TelemetryIdWindowOutput> RecentTelemetryIds { get; set; } = new();
     }
 }
