@@ -23,6 +23,9 @@ namespace SafeExchange.Core.Functions.Admin
 
     public class SafeExchangeAdminUsers
     {
+        private static readonly System.Text.RegularExpressions.Regex TelemetryIdPattern =
+            new("^[0-9a-f]{32}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
         private readonly SafeExchangeDbContext dbContext;
         private readonly ITokenHelper tokenHelper;
         private readonly GlobalFilters globalFilters;
@@ -108,6 +111,46 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
                     new BaseResponseObject<UserDetailOutput> { Status = "ok", Result = detail });
             }, nameof(RunDetail), log);
+        }
+
+        public async Task<HttpResponseData> RunByTelemetryId(HttpRequestData request, string telemetryId, ClaimsPrincipal principal, ILogger log)
+        {
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var id = (telemetryId ?? string.Empty).Trim().ToLowerInvariant();
+                if (!TelemetryIdPattern.IsMatch(id))
+                {
+                    return await ActionResults.CreateResponseAsync(request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Telemetry id must be 32 hex characters." });
+                }
+
+                // Current id first (lives on the user); then the retention map (cross-partition).
+                var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.TelemetryId == id);
+                if (user is null)
+                {
+                    var entry = await this.dbContext.Set<TelemetryIdMapEntry>().FirstOrDefaultAsync(e => e.id == id);
+                    if (entry is not null)
+                    {
+                        user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.Id == entry.UserId);
+                    }
+                }
+
+                if (user is null)
+                {
+                    return await ActionResults.CreateResponseAsync(request, HttpStatusCode.NotFound,
+                        new BaseResponseObject<object> { Status = "not_found", Error = "No user resolves to that telemetry id (it may be older than the retention window)." });
+                }
+
+                var detail = await this.BuildUserDetailAsync(user);
+                return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                    new BaseResponseObject<UserDetailOutput> { Status = "ok", Result = detail });
+            }, nameof(RunByTelemetryId), log);
         }
 
         private async Task<UserDetailOutput> BuildUserDetailAsync(User user)

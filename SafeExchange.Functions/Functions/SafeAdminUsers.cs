@@ -48,6 +48,16 @@ namespace SafeExchange.Functions
             return await this.handler.RunDetail(request, upn, principal, this.log);
         }
 
+        [Function("SafeExchange-Admin-Users-ByTelemetryId")]
+        public async Task<HttpResponseData> RunByTelemetryId(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/admin/users/by-telemetry-id/{{telemetryId}}")]
+            HttpRequestData request,
+            string telemetryId)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunByTelemetryId(request, telemetryId, principal, this.log);
+        }
+
         [Function("SafeExchange-Admin-Users-ToggleEnabled")]
         public async Task<HttpResponseData> RunToggleEnabled(
             [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/admin/users/{{upn}}/enabled")]

@@ -170,6 +170,27 @@ namespace SafeExchange.Tests
             return body!.Result!;
         }
 
+        private async Task<UserDetailOutput> GetByTelemetryIdAsync(string telemetryId)
+        {
+            var request = TestFactory.CreateHttpRequestData("get");
+            var principal = new ClaimsPrincipal(this.adminIdentity);
+            var response = await this.handler.RunByTelemetryId(request, telemetryId, principal, this.logger) as TestHttpResponseData;
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var body = response.ReadBodyAsJson<BaseResponseObject<UserDetailOutput>>();
+            Assert.That(body?.Status, Is.EqualTo("ok"));
+            return body!.Result!;
+        }
+
+        private async Task<HttpStatusCode> GetByTelemetryIdStatusAsync(string telemetryId)
+        {
+            var request = TestFactory.CreateHttpRequestData("get");
+            var principal = new ClaimsPrincipal(this.adminIdentity);
+            var response = await this.handler.RunByTelemetryId(request, telemetryId, principal, this.logger) as TestHttpResponseData;
+            Assert.That(response, Is.Not.Null);
+            return response!.StatusCode;
+        }
+
         // -----------------------------------------------------------------------
         // 1. RunDetail returns all required fields for an existing user;
         //    Groups are NOT exposed.
@@ -307,6 +328,48 @@ namespace SafeExchange.Tests
             Assert.That(detail.RecentTelemetryIds.Count, Is.EqualTo(2));
             Assert.That(detail.RecentTelemetryIds[0].Id, Is.EqualTo("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")); // newest ValidToUtc first
             Assert.That(detail.RecentTelemetryIds[1].Id, Is.EqualTo("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        }
+
+        [Test]
+        public async Task RunByTelemetryId_ResolvesCurrentId()
+        {
+            var user = await this.SeedUserAsync("byid-current@test.test");
+            user.TelemetryId = "11111111111111111111111111111111";
+            await this.dbContext.SaveChangesAsync();
+
+            var detail = await this.GetByTelemetryIdAsync("11111111111111111111111111111111");
+            Assert.That(detail.AadUpn, Is.EqualTo("byid-current@test.test"));
+        }
+
+        [Test]
+        public async Task RunByTelemetryId_ResolvesRetiredIdViaMap()
+        {
+            var user = await this.SeedUserAsync("byid-hist@test.test");
+            await this.dbContext.Set<TelemetryIdMapEntry>().AddAsync(new TelemetryIdMapEntry
+            {
+                id = "22222222222222222222222222222222",
+                UserId = user.Id,
+                ValidFromUtc = new DateTime(2026, 5, 18, 0, 0, 0, DateTimeKind.Utc),
+                ValidToUtc = new DateTime(2026, 5, 25, 0, 0, 0, DateTimeKind.Utc),
+            });
+            await this.dbContext.SaveChangesAsync();
+
+            var detail = await this.GetByTelemetryIdAsync("22222222222222222222222222222222");
+            Assert.That(detail.AadUpn, Is.EqualTo("byid-hist@test.test"));
+        }
+
+        [Test]
+        public async Task RunByTelemetryId_Unknown_Returns404()
+        {
+            var status = await this.GetByTelemetryIdStatusAsync("33333333333333333333333333333333");
+            Assert.That(status, Is.EqualTo(System.Net.HttpStatusCode.NotFound));
+        }
+
+        [Test]
+        public async Task RunByTelemetryId_Malformed_Returns400()
+        {
+            var status = await this.GetByTelemetryIdStatusAsync("not-a-valid-id");
+            Assert.That(status, Is.EqualTo(System.Net.HttpStatusCode.BadRequest));
         }
     }
 }
