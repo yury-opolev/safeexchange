@@ -99,6 +99,12 @@ namespace SafeExchange.Core.Migrations
                     return;
                 }
 
+                if ("00011".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00011Async();
+                    return;
+                }
+
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
@@ -672,6 +678,62 @@ namespace SafeExchange.Core.Migrations
                 // no-op
                 this.log.LogWarning($"{nameof(PinnedGroup)} upsert finished with {ex.GetType()}: '{ex.Message}'.");
             }
+        }
+
+        private async Task RunMigration00011Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer("Users");
+
+            // Only visit users whose TelemetryId is missing or empty; already-backfilled
+            // users (non-empty TelemetryId) are filtered out server-side so re-runs are cheap.
+            var query = new QueryDefinition(
+                "SELECT * FROM c WHERE NOT IS_DEFINED(c.TelemetryId) OR IS_NULL(c.TelemetryId) OR c.TelemetryId = \"\"");
+
+            using FeedIterator<MigrationItem00011_User> feed =
+                container.GetItemQueryIterator<MigrationItem00011_User>(queryDefinition: query);
+
+            var backfilled = 0;
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00011_User> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00011_User item in response)
+                {
+                    // Double-check idempotency: skip if TelemetryId was set between query and read.
+                    if (!string.IsNullOrEmpty(item.TelemetryId))
+                    {
+                        continue;
+                    }
+
+                    var streamResp = await container.ReadItemStreamAsync(
+                        item.id, new PartitionKey(item.PartitionKey));
+
+                    string original;
+                    using (var reader = new StreamReader(streamResp.Content))
+                    {
+                        original = await reader.ReadToEndAsync();
+                    }
+
+                    var newTelemetryId = Guid.NewGuid().ToString("n");
+                    var newExpiry = SafeExchange.Core.Telemetry.TelemetryIdRotator.NextWeekBoundaryUtc(DateTimeProvider.UtcNow);
+                    var rewritten = TelemetryIdBackfill.BackfillIfMissing(original, newTelemetryId, newExpiry);
+                    if (rewritten is null)
+                    {
+                        continue;
+                    }
+
+                    using var ms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(rewritten));
+                    await container.ReplaceItemStreamAsync(
+                        ms, item.id, new PartitionKey(item.PartitionKey));
+                    backfilled++;
+                    this.log.LogInformation(
+                        $"Backfilled TelemetryId on User '{item.id}'.");
+                }
+            }
+
+            this.log.LogInformation(
+                $"Migration 00011 complete. Backfilled {backfilled} document(s).");
         }
     }
 }
