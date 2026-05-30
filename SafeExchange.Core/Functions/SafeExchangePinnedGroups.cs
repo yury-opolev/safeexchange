@@ -228,7 +228,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<GroupDictionaryItem> RegisterGroupAsync(string groupId, PinnedGroupInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} (tid {TelemetryContext.Current})");
+            var groupItem = new GroupDictionaryItem(groupId, registrationInput, $"{subjectType} {subjectId}");
             return await DbUtils.TryAddOrGetEntityAsync(
                 async () =>
                 {

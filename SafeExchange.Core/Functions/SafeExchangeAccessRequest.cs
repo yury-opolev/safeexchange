@@ -320,7 +320,7 @@ namespace SafeExchange.Core.Functions
                 existingRequest.Status = RequestStatus.Rejected;
             }
 
-            existingRequest.FinishedBy = $"{subjectType} (tid {TelemetryContext.Current})";
+            existingRequest.FinishedBy = $"{subjectType} {subjectId}";
             existingRequest.FinishedAt = DateTimeProvider.UtcNow;
 
             await this.dbContext.SaveChangesAsync();

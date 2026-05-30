@@ -284,7 +284,7 @@ namespace SafeExchange.Core.Functions.Admin
 
         private async Task<Application> RegisterApplicationAsync(string applicationId, ApplicationRegistrationInput registrationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var appRegistration = new Application(applicationId, registrationInput, $"{subjectType} (tid {TelemetryContext.Current})");
+            var appRegistration = new Application(applicationId, registrationInput, $"{subjectType} {subjectId}");
             var entity = await this.dbContext.Applications.AddAsync(appRegistration);
 
             await this.dbContext.SaveChangesAsync();

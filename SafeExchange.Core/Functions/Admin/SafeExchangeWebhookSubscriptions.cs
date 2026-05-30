@@ -269,7 +269,7 @@ namespace SafeExchange.Core.Functions.Admin
 
         private async Task<WebhookSubscription> CreateWebhookSubscriptionAsync(WebhookSubscriptionCreationInput creationInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var webhookSubscription = new WebhookSubscription(creationInput, $"{subjectType} (tid {TelemetryContext.Current})");
+            var webhookSubscription = new WebhookSubscription(creationInput, $"{subjectType} {subjectId}");
             var entity = await this.dbContext.WebhookSubscriptions.AddAsync(webhookSubscription);
 
             await this.dbContext.SaveChangesAsync();

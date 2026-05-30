@@ -440,7 +440,7 @@ namespace SafeExchange.Core.Functions
 
         private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, SubjectType subjectType, string subjectId, ILogger log)
         {
-            var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} (tid {TelemetryContext.Current})");
+            var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} {subjectId}");
             var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
 
             var subjectName = subjectId;
