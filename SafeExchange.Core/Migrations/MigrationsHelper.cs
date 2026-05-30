@@ -105,6 +105,12 @@ namespace SafeExchange.Core.Migrations
                     return;
                 }
 
+                if ("00012".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00012Async();
+                    return;
+                }
+
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
@@ -734,6 +740,61 @@ namespace SafeExchange.Core.Migrations
 
             this.log.LogInformation(
                 $"Migration 00011 complete. Backfilled {backfilled} document(s).");
+        }
+
+        private async Task RunMigration00012Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer("Users");
+
+            // Visit users that have a telemetry id but no issued-at yet; already-backfilled
+            // users are filtered server-side so re-runs are cheap.
+            var query = new QueryDefinition(
+                "SELECT * FROM c WHERE IS_DEFINED(c.TelemetryId) AND NOT IS_NULL(c.TelemetryId) AND c.TelemetryId != \"\" AND (NOT IS_DEFINED(c.TelemetryIdIssuedAt) OR IS_NULL(c.TelemetryIdIssuedAt))");
+
+            using FeedIterator<MigrationItem00012_User> feed =
+                container.GetItemQueryIterator<MigrationItem00012_User>(queryDefinition: query);
+
+            var backfilled = 0;
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00012_User> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00012_User item in response)
+                {
+                    if (!string.IsNullOrEmpty(item.TelemetryIdIssuedAt))
+                    {
+                        continue;
+                    }
+
+                    var streamResp = await container.ReadItemStreamAsync(item.id, new PartitionKey(item.PartitionKey));
+                    string original;
+                    using (var reader = new StreamReader(streamResp.Content))
+                    {
+                        original = await reader.ReadToEndAsync();
+                    }
+
+                    var node = System.Text.Json.Nodes.JsonNode.Parse(original);
+                    var expiresRaw = node?["TelemetryIdExpiresAt"]?.GetValue<string>();
+                    if (!DateTime.TryParse(expiresRaw, out var expiresAt))
+                    {
+                        continue;
+                    }
+
+                    var rewritten = IssuedAtBackfill.BackfillIfMissing(original, expiresAt.ToUniversalTime());
+                    if (rewritten is null)
+                    {
+                        continue;
+                    }
+
+                    using var ms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(rewritten));
+                    await container.ReplaceItemStreamAsync(ms, item.id, new PartitionKey(item.PartitionKey));
+                    backfilled++;
+                    this.log.LogInformation($"Backfilled TelemetryIdIssuedAt on User '{item.id}'.");
+                }
+            }
+
+            this.log.LogInformation($"Migration 00012 complete. Backfilled {backfilled} document(s).");
         }
     }
 }
