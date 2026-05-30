@@ -12,6 +12,7 @@ namespace SafeExchange.Core.Middleware
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Model;
+    using SafeExchange.Core.Telemetry;
     using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
@@ -31,9 +32,11 @@ namespace SafeExchange.Core.Middleware
 
         private readonly IGraphDataProvider graphDataProvider;
 
+        private readonly TelemetryIdRotator telemetryIdRotator;
+
         private readonly ILogger log;
 
-        public TokenMiddlewareCore(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, IGraphDataProvider graphDataProvider, ILogger<TokenMiddlewareCore> log)
+        public TokenMiddlewareCore(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, IGraphDataProvider graphDataProvider, TelemetryIdRotator telemetryIdRotator, ILogger<TokenMiddlewareCore> log)
         {
             var features = new Features();
             configuration.GetSection("Features").Bind(features);
@@ -53,6 +56,7 @@ namespace SafeExchange.Core.Middleware
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.useGroups = useGroups;
             this.graphDataProvider = graphDataProvider ?? throw new ArgumentNullException(nameof(graphDataProvider));
+            this.telemetryIdRotator = telemetryIdRotator ?? throw new ArgumentNullException(nameof(telemetryIdRotator));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -72,7 +76,7 @@ namespace SafeExchange.Core.Middleware
                 var objectId = this.tokenHelper.GetObjectId(principal);
                 var clientId = this.tokenHelper.GetApplicationClientId(principal);
 
-                this.log.LogInformation($"Caller [{clientId}] '{tenantId}.{objectId}' is not authenticated with user token or a token from registered application.");
+                this.log.LogInformation("Caller is not authenticated with user token or a token from registered application.");
                 result.shouldReturn = true;
                 result.response = await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.Forbidden,
@@ -90,6 +94,13 @@ namespace SafeExchange.Core.Middleware
                     request, HttpStatusCode.Forbidden,
                     new BaseResponseObject<object> { Status = "forbidden", Error = "User token is invalid." });
                 return result;
+            }
+
+            var telemetryIdChanged = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
+            TelemetryContext.Current = user.TelemetryId;
+            if (telemetryIdChanged)
+            {
+                await this.dbContext.SaveChangesAsync();
             }
 
             request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = user.Id;
@@ -122,9 +133,9 @@ namespace SafeExchange.Core.Middleware
             var userUpn = this.tokenHelper.GetUpn(principal);
             var displayName = this.tokenHelper.GetDisplayName(principal);
 
-            this.log.LogInformation($"Creating user '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}'.");
-
             var user = new User(displayName, objectId, tenantId, userUpn, userUpn);
+            this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
+            this.log.LogInformation("Creating user (tid {TelemetryId}).", user.TelemetryId);
             return await DbUtils.TryAddOrGetEntityAsync(
                 async () =>
                 {
@@ -134,12 +145,12 @@ namespace SafeExchange.Core.Middleware
                 },
                 async () =>
                 {
-                    this.log.LogInformation($"User '{userUpn}', account id: '{objectId}.{tenantId}', display name: '{displayName}' was created in a different process, returning existing entity.");
+                    this.log.LogInformation("User (tid {TelemetryId}) was created in a different process, returning existing entity.", user.TelemetryId);
 
                     this.dbContext.Users.Remove(user);
                     var existingUser = await this.dbContext.Users.WithPartitionKey(User.DefaultPartitionKey).FirstOrDefaultAsync(u => u.AadTenantId.Equals(tenantId) && u.AadObjectId.Equals(objectId));
 
-                    this.log.LogInformation($"User '{userUpn}' already exists with Id '{existingUser.Id}'.");
+                    this.log.LogInformation("User (tid {TelemetryId}) already exists.", user.TelemetryId);
                     return existingUser;
                 },
                 this.log);
@@ -174,9 +185,9 @@ namespace SafeExchange.Core.Middleware
                 user.Groups = userGroupsResult.GroupIds.Select(g => new UserGroup() { AadGroupId = g }).ToList();
             }
 
-            this.log.LogInformation($"Updating groups for user '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}), Id {user.Id}.");
+            this.log.LogInformation("Updating groups for user (tid {TelemetryId}).", user.TelemetryId);
             await this.dbContext.SaveChangesAsync();
-            this.log.LogInformation($"User '{user.AadUpn}' ({user.AadTenantId}.{user.AadObjectId}) groups synced from graph.");
+            this.log.LogInformation("User groups synced from graph (tid {TelemetryId}).", user.TelemetryId);
         }
 
         private async Task<bool> IsRegisteredApplicationAsync(ClaimsPrincipal principal)

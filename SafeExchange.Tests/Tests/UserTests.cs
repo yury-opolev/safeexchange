@@ -22,6 +22,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Telemetry;
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -134,7 +135,7 @@ namespace SafeExchange.Tests
             this.middlewareLogger = TestFactory.CreateLogger<TokenMiddlewareCore>();
             this.tokenMiddleware = new TokenMiddlewareCore(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
-                this.graphDataProvider, this.middlewareLogger);
+                this.graphDataProvider, new TelemetryIdRotator(), this.middlewareLogger);
 
             this.secretMeta = new SafeExchangeSecretMeta(
                 this.testConfiguration, this.dbContext, this.tokenHelper,
@@ -211,7 +212,7 @@ namespace SafeExchange.Tests
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
             var tokenMiddleware1 = new TokenMiddlewareCore(
                 this.testConfiguration, new SafeExchangeDbContext(dbContextOptionsLocal), this.tokenHelper,
-                graphDataProvider1, TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
+                graphDataProvider1, new TelemetryIdRotator(), TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
 
             var graphDataProvider2 = new TestGraphDataProvider(TimeSpan.FromMilliseconds(100));
             graphDataProvider2.GroupMemberships
@@ -219,7 +220,7 @@ namespace SafeExchange.Tests
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
             var tokenMiddleware2 = new TokenMiddlewareCore(
                 this.testConfiguration, new SafeExchangeDbContext(dbContextOptionsLocal), this.tokenHelper,
-                graphDataProvider2, TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
+                graphDataProvider2, new TelemetryIdRotator(), TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
 
             var graphDataProvider3 = new TestGraphDataProvider(TimeSpan.FromMilliseconds(100));
             graphDataProvider3.GroupMemberships
@@ -227,7 +228,7 @@ namespace SafeExchange.Tests
                 new List<string> { "00000000-0000-0000-9999-000000000001", "00000000-0000-0000-9999-000000009999" };
             var tokenMiddleware3 = new TokenMiddlewareCore(
                 this.testConfiguration, new SafeExchangeDbContext(dbContextOptionsLocal), this.tokenHelper,
-                graphDataProvider3, TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
+                graphDataProvider3, new TelemetryIdRotator(), TestFactory.CreateLogger<TokenMiddlewareCore>(LoggerTypes.Console));
 
             var request = TestFactory.CreateHttpRequestData("get");
 
@@ -304,7 +305,7 @@ namespace SafeExchange.Tests
 
             var localTokenMiddleware = new TokenMiddlewareCore(
                 localConfiguration, this.dbContext, this.tokenHelper,
-                this.graphDataProvider, this.middlewareLogger);
+                this.graphDataProvider, new TelemetryIdRotator(), this.middlewareLogger);
 
             // [GIVEN] A user with valid credentials, is member of several groups in AAD
             var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);

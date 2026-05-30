@@ -32,6 +32,7 @@ namespace SafeExchange.Core
     using Microsoft.Extensions.Options;
     using System.Configuration;
     using SafeExchange.Core.Groups;
+    using SafeExchange.Core.Telemetry;
     using Microsoft.ApplicationInsights.Extensibility;
 
     public class SafeExchangeStartup
@@ -216,6 +217,13 @@ namespace SafeExchange.Core
             // in tandem with SessionCorrelationMiddleware (which sets the
             // AsyncLocal for the duration of the request handler).
             services.AddSingleton<ITelemetryInitializer, SessionCorrelationTelemetryInitializer>();
+
+            // Stamps customDimensions.saex.telemetryId — a pseudonymous, weekly-rotating
+            // id — on every telemetry item so traces can be correlated per user without
+            // exposing UPNs or Entra object ids.
+            services.AddSingleton<ITelemetryInitializer, TelemetryIdTelemetryInitializer>();
+            services.AddSingleton<ITelemetryInitializer, PiiRedactionTelemetryInitializer>();
+            services.AddSingleton<TelemetryIdRotator>();
         }
     }
 }
