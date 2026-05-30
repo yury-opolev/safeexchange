@@ -205,6 +205,17 @@
                 "description": "Enforces the ApplicationOwner invariant on register/replace-owners (>=2 distinct principals, >=1 must be a User). Default True; disabling is a spike-only escape hatch."
             }
         },
+        "settings-features-redactTelemetryPii": {
+            "defaultValue": "False",
+            "type": "string",
+            "allowedValues": [
+                "True",
+                "False"
+            ],
+            "metadata": {
+                "description": "When True, email/UPN-shaped substrings are redacted from App Insights trace and exception messages. Staging: True, Production: False."
+            }
+        },
         "settings-limits-maxAppsPerRegistrar": {
             "defaultValue": "3",
             "type": "string",
@@ -1968,6 +1979,22 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-features-auditRetentionDays')]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Features--RedactTelemetryPii')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-features-redactTelemetryPii')]"
             }
         },
         {

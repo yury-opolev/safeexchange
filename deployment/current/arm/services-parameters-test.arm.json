@@ -41,6 +41,9 @@
         "settings-features-s2sAppsSelfService": {
             "value": "True"
         },
+        "settings-features-redactTelemetryPii": {
+            "value": "True"
+        },
         "deployer_ip_addresses": {
             "value": []
         },
