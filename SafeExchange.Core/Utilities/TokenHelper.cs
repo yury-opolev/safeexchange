@@ -49,7 +49,13 @@ namespace SafeExchange.Core
         /// <inheritdoc/>
         public TokenType GetTokenType(ClaimsPrincipal principal)
         {
-            if (HasClaim(principal, "appid") && HasClaim(principal, "appidacr"))
+            // AAD v1 app tokens carry appid/appidacr; AAD v2 app tokens (including
+            // client-credentials / app-only) carry azp/azpacr instead. Classify both
+            // as access tokens so v2 app principals are not misclassified as users
+            // and thus bypass the registered-application gate (CWE-287). This stays
+            // consistent with GetApplicationClientId, which reads azp before appid.
+            if ((HasClaim(principal, "appid") && HasClaim(principal, "appidacr")) ||
+                (HasClaim(principal, "azp") && HasClaim(principal, "azpacr")))
             {
                 return TokenType.AccessToken;
             }
