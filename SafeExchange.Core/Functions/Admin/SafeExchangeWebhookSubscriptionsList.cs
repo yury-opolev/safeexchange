@@ -30,7 +30,7 @@ namespace SafeExchange.Core.Functions
         public async Task<HttpResponseData> RunList(
             HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
             {
                 return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
