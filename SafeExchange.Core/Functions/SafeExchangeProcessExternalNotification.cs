@@ -11,6 +11,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net.Http.Json;
     using System.Text;
@@ -101,6 +102,13 @@ namespace SafeExchange.Core.Functions
         private async Task TryProcessExternalNotificationAsync(AccessRequest accessRequest, WebhookSubscription webhookSubscription, string notificationDataId, ILogger log)
         {
             log.LogInformation($"Processing notification, webhook subscription url '{webhookSubscription.Url}', access request {accessRequest.Id} to {accessRequest.ObjectName}, permission {accessRequest.Permission}.");
+
+            if (!WebhookUrlValidator.TryValidate(webhookSubscription.Url, out var urlValidationReason))
+            {
+                log.LogWarning($"Aborting webhook notification: subscription url '{webhookSubscription.Url}' is not allowed: {urlValidationReason}. Notification data will be removed.");
+                await this.purger.PurgeNotificationDataAsync(notificationDataId, this.dbContext);
+                return;
+            }
 
             try
             {
