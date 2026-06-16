@@ -24,6 +24,8 @@ namespace SafeExchange.Core.Functions
 
     public class SafeExchangeSecretContentMeta
     {
+        private const int MaxContentTypeLength = 255;
+
         private readonly Features features;
 
         private readonly AccessTicketConfiguration accessTicketConfiguration;
@@ -180,6 +182,14 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
             }
 
+            if (!IsAcceptableContentType(contentMetadataInput.ContentType))
+            {
+                log.LogInformation($"Content type for '{secretId}' new content is in incorrect format.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content type is in incorrect format." });
+            }
+
             var newContent = new ContentMetadata(contentMetadataInput);
             existingMetadata.Content.Add(newContent);
             existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
@@ -248,6 +258,14 @@ namespace SafeExchange.Core.Functions
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
+            }
+
+            if (!IsAcceptableContentType(contentMetadataInput.ContentType))
+            {
+                log.LogInformation($"Content type for '{secretId}' content '{contentId}' is in incorrect format.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content type is in incorrect format." });
             }
 
             var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
@@ -450,6 +468,24 @@ namespace SafeExchange.Core.Functions
             }
 
             return content.AccessTicket;
+        }
+
+        private static bool IsAcceptableContentType(string contentType)
+        {
+            if (string.IsNullOrEmpty(contentType) || contentType.Length > MaxContentTypeLength)
+            {
+                return false;
+            }
+
+            foreach (var ch in contentType)
+            {
+                if (char.IsControl(ch))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
     }
