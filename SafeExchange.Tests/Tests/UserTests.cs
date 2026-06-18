@@ -221,6 +221,58 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task RotationRace_DuplicateRetiredIdMapEntry_IsSwallowed_RequestSucceeds()
+        {
+            // [GIVEN] An existing user whose telemetry id has already expired, so the
+            // next authenticated request rotates it and records the retired id.
+            const string retiredId = "retiredtelemetryid00000000racetest";
+            var existingUser = new SafeExchange.Core.Model.User(
+                "First User",
+                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000001",
+                "first@test.test", "first@test.test")
+            {
+                TelemetryId = retiredId,
+                TelemetryIdIssuedAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                TelemetryIdExpiresAt = new DateTime(2020, 1, 8, 0, 0, 0, DateTimeKind.Utc),
+            };
+            await this.dbContext.Users.AddAsync(existingUser);
+
+            // [GIVEN] A concurrent request (the race "winner") has already written the
+            // TelemetryIdMap entry for that retired id.
+            await this.dbContext.Set<TelemetryIdMapEntry>().AddAsync(new TelemetryIdMapEntry
+            {
+                id = retiredId,
+                UserId = existingUser.Id,
+                ValidFromUtc = existingUser.TelemetryIdIssuedAt,
+                ValidToUtc = existingUser.TelemetryIdExpiresAt,
+            });
+            await this.dbContext.SaveChangesAsync();
+
+            // A second, independent request runs on its own DbContext (as it would in a
+            // separate function invocation), so the duplicate insert reaches Cosmos and
+            // comes back as a 409 Conflict rather than being caught by local tracking.
+            var racingMiddleware = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper,
+                this.graphDataProvider, new TelemetryIdRotator(), this.middlewareLogger);
+
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var request = TestFactory.CreateHttpRequestData("get");
+
+            // [WHEN] The racing request runs the auth middleware (which rotates and
+            // re-inserts the same retired-id entry, hitting the Cosmos 409).
+            var result = await racingMiddleware.RunAsync(request, claimsPrincipal);
+
+            // [THEN] The 409 is swallowed — the request is allowed to proceed (no 500) ...
+            Assert.That(result.shouldReturn, Is.False);
+
+            // ... and still carries a freshly-rotated telemetry id distinct from the retired one.
+            var stampedTelemetryId = request.FunctionContext.GetTelemetryId();
+            Assert.That(stampedTelemetryId, Is.Not.Empty);
+            Assert.That(stampedTelemetryId, Is.Not.EqualTo(retiredId));
+        }
+
+        [Test]
         public async Task SimultaneousUserCalls_WithGroups()
         {
             var builder = new ConfigurationBuilder().AddUserSecrets<UserTests>();
