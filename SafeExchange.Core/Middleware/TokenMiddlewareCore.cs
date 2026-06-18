@@ -15,6 +15,7 @@ namespace SafeExchange.Core.Middleware
     using SafeExchange.Core.Telemetry;
     using SafeExchange.Core.Utilities;
     using System;
+    using System.Linq;
     using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
@@ -110,7 +111,23 @@ namespace SafeExchange.Core.Middleware
                     });
                 }
 
-                await this.dbContext.SaveChangesAsync();
+                // Recording the rotated telemetry id is best-effort bookkeeping: when the
+                // web client fires several requests in parallel at the rotation boundary,
+                // they race to insert the same retired-id map entry and all but one get a
+                // Cosmos 409 Conflict. That must never fail the user's actual request, so
+                // the conflict (and any other failure) is swallowed here.
+                var saveResult = await DbUtils.TrySaveBestEffortAsync(
+                    () => this.dbContext.SaveChangesAsync(),
+                    this.log,
+                    "persisting rotated telemetry id");
+
+                if (saveResult != BestEffortSaveResult.Saved)
+                {
+                    // The request-scoped DbContext is shared with the function handler, so
+                    // drop the un-persisted map entry; otherwise a later SaveChanges in the
+                    // handler would re-attempt the conflicting insert and surface the 500.
+                    this.DetachTrackedTelemetryMapEntries();
+                }
             }
 
             // Stamp the telemetry id onto this request's frame so logs emitted within
@@ -123,6 +140,14 @@ namespace SafeExchange.Core.Middleware
             request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = user.Id;
             await this.UpdateGroupsAsync(user, request, principal);
             return result;
+        }
+
+        private void DetachTrackedTelemetryMapEntries()
+        {
+            foreach (var entry in this.dbContext.ChangeTracker.Entries<TelemetryIdMapEntry>().ToList())
+            {
+                entry.State = EntityState.Detached;
+            }
         }
 
         private async Task<User?> GetOrCreateUserAsync(ClaimsPrincipal principal)
