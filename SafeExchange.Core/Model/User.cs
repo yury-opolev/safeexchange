@@ -74,5 +74,13 @@ namespace SafeExchange.Core.Model
         /// <summary>UTC instant the current TelemetryId was generated. Used as the
         /// validFrom of a retired id when it rotates into the TelemetryIdMap.</summary>
         public DateTime TelemetryIdIssuedAt { get; set; }
+
+        /// <summary>Maps to the Cosmos system-maintained <c>_etag</c>. Configured as an
+        /// optimistic-concurrency token so concurrent writers to the same user document
+        /// (e.g. several requests rotating the telemetry id at the same week boundary)
+        /// serialize: exactly one write wins, the rest observe a concurrency conflict and
+        /// re-read to adopt the winning state. Null only for an in-memory, not-yet-persisted
+        /// user.</summary>
+        public string? ETag { get; set; }
     }
 }

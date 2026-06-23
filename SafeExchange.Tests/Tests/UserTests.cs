@@ -493,6 +493,107 @@ namespace SafeExchange.Tests
             Assert.That(entry.ValidToUtc, Is.EqualTo(DateTimeProvider.SpecifiedDateTime));
         }
 
+        [Test]
+        public async Task Rotation_DuplicateRetiredId_IsSwallowed_NoThrow()
+        {
+            // [GIVEN] A created user with an active telemetry id
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var request = TestFactory.CreateHttpRequestData("get");
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
+
+            var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
+            Assert.That(user, Is.Not.Null);
+            var retiredId = user!.TelemetryId;
+            Assert.That(retiredId, Is.Not.Empty);
+
+            // [GIVEN] A concurrent process already recorded that exact id in the map. A separate
+            // DbContext is used so this is a real Cosmos document (not an EF-tracked duplicate),
+            // guaranteeing the middleware's later insert hits a server-side 409.
+            using (var seedContext = new SafeExchangeDbContext(this.dbContextOptions))
+            {
+                await seedContext.Set<TelemetryIdMapEntry>().AddAsync(new TelemetryIdMapEntry
+                {
+                    id = retiredId,
+                    UserId = user.Id,
+                    ValidFromUtc = user.TelemetryIdIssuedAt,
+                    ValidToUtc = user.TelemetryIdExpiresAt,
+                });
+                await seedContext.SaveChangesAsync();
+            }
+
+            // [WHEN] The boundary is crossed and the same user calls again -> rotation retires the
+            // same id and races to insert the map document that already exists.
+            DateTimeProvider.SpecifiedDateTime = user.TelemetryIdExpiresAt.AddSeconds(1);
+
+            // [THEN] The benign 409 is swallowed: the request does not throw (no 500).
+            Assert.DoesNotThrowAsync(async () => await this.tokenMiddleware.RunAsync(request, claimsPrincipal));
+
+            // [THEN] Exactly one map document exists for the retired id and the user rotated away from it.
+            using (var verifyContext = new SafeExchangeDbContext(this.dbContextOptions))
+            {
+                var entries = await verifyContext.Set<TelemetryIdMapEntry>()
+                    .Where(e => e.id == retiredId)
+                    .ToListAsync();
+                Assert.That(entries.Count, Is.EqualTo(1));
+
+                var rotatedUser = await verifyContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
+                Assert.That(rotatedUser!.TelemetryId, Is.Not.EqualTo(retiredId));
+            }
+
+            // This test mutates the user through separate DbContexts, so the shared fixture
+            // context now tracks a stale etag. Clear it so TearDown re-reads current etags
+            // instead of failing its delete with a 412 precondition mismatch.
+            this.dbContext.ChangeTracker.Clear();
+        }
+
+        [Test]
+        public async Task Rotation_ConcurrentBoundaryCrossing_DoesNotThrow_AndDeduplicates()
+        {
+            // [GIVEN] A created user with an active telemetry id
+            var claimsPrincipal = new ClaimsPrincipal(this.firstIdentity);
+            var request = TestFactory.CreateHttpRequestData("get");
+            await this.tokenMiddleware.RunAsync(request, claimsPrincipal);
+
+            var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals("first@test.test"));
+            Assert.That(user, Is.Not.Null);
+            var retiredId = user!.TelemetryId;
+
+            // [GIVEN] Three middleware instances, each with its own DbContext (separate request scopes),
+            // all observing the user just past the rotation boundary.
+            DateTimeProvider.SpecifiedDateTime = user.TelemetryIdExpiresAt.AddSeconds(1);
+
+            var middleware1 = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper,
+                this.graphDataProvider, new TelemetryIdRotator(), this.middlewareLogger);
+            var middleware2 = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper,
+                this.graphDataProvider, new TelemetryIdRotator(), this.middlewareLogger);
+            var middleware3 = new TokenMiddlewareCore(
+                this.testConfiguration, new SafeExchangeDbContext(this.dbContextOptions), this.tokenHelper,
+                this.graphDataProvider, new TelemetryIdRotator(), this.middlewareLogger);
+
+            // [WHEN] All three requests rotate simultaneously and race to record the same retired id.
+            // [THEN] None of them throw (the duplicate inserts are swallowed instead of becoming 500s).
+            Assert.DoesNotThrowAsync(async () => await Task.WhenAll(
+                Task.Run(async () => await middleware1.RunAsync(TestFactory.CreateHttpRequestData("get"), claimsPrincipal)),
+                Task.Run(async () => await middleware2.RunAsync(TestFactory.CreateHttpRequestData("get"), claimsPrincipal)),
+                Task.Run(async () => await middleware3.RunAsync(TestFactory.CreateHttpRequestData("get"), claimsPrincipal))));
+
+            // [THEN] At most one map document was written for the retired id (no duplicates persisted).
+            using (var verifyContext = new SafeExchangeDbContext(this.dbContextOptions))
+            {
+                var entries = await verifyContext.Set<TelemetryIdMapEntry>()
+                    .Where(e => e.id == retiredId)
+                    .ToListAsync();
+                Assert.That(entries.Count, Is.LessThanOrEqualTo(1));
+            }
+
+            // The parallel rotations ran on separate DbContexts, leaving the shared fixture
+            // context with a stale user etag. Clear it so TearDown re-reads current etags
+            // instead of failing its delete with a 412 precondition mismatch.
+            this.dbContext.ChangeTracker.Clear();
+        }
+
         private void CreateDefaultTestConfiguration()
         {
             var configurationValues = new Dictionary<string, string>

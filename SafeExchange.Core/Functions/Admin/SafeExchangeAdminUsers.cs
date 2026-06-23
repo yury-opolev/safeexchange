@@ -219,7 +219,26 @@ namespace SafeExchange.Core.Functions.Admin
 
                 user.Enabled = input.Enabled;
                 user.ModifiedAt = DateTimeProvider.UtcNow;
-                await this.dbContext.SaveChangesAsync();
+
+                // The user document may be updated concurrently (e.g. the user's own request
+                // rotating its telemetry id under the etag concurrency token). The admin intent
+                // is authoritative, so on a conflict reload the latest document, re-apply the
+                // enabled flag, and save again.
+                const int maxAttempts = 4;
+                for (var attempt = 1; ; attempt++)
+                {
+                    try
+                    {
+                        await this.dbContext.SaveChangesAsync();
+                        break;
+                    }
+                    catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
+                    {
+                        await this.dbContext.Entry(user).ReloadAsync();
+                        user.Enabled = input.Enabled;
+                        user.ModifiedAt = DateTimeProvider.UtcNow;
+                    }
+                }
 
                 log.LogInformation("Admin toggled User '{Upn}' Enabled to {Enabled}.", upn, input.Enabled);
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,

@@ -114,6 +114,10 @@ namespace SafeExchange.Core
                 .HasNoDiscriminator()
                 .HasPartitionKey(u => u.PartitionKey);
 
+            modelBuilder.Entity<User>()
+                .Property(u => u.ETag)
+                .IsETagConcurrency();
+
             modelBuilder.Entity<Application>()
                 .ToContainer("Applications")
                 .HasNoDiscriminator()
