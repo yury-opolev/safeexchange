@@ -138,6 +138,14 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "error", Error = "Pinned group details are not provided." });
             }
 
+            if (!string.Equals(registrationInput.GroupId, pinnedGroupId, StringComparison.OrdinalIgnoreCase))
+            {
+                log.LogInformation($"{nameof(registrationInput.GroupId)} in the request body does not match the pinned group id '{pinnedGroupId}' in the route.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = "Group id in the request body must match the pinned group id in the route." });
+            }
+
             if (!string.IsNullOrEmpty(registrationInput.GroupMail))
             {
                 if (registrationInput.GroupMail.Length > SafeExchangePinnedGroups.MaxEmailLength)

@@ -15,7 +15,6 @@ namespace SafeExchange.Core.Middleware
     using SafeExchange.Core.Telemetry;
     using SafeExchange.Core.Utilities;
     using System;
-    using System.Linq;
     using System.Net;
     using System.Security.Claims;
     using System.Threading.Tasks;
@@ -97,38 +96,7 @@ namespace SafeExchange.Core.Middleware
                 return result;
             }
 
-            var rotation = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
-            if (rotation.Rotated)
-            {
-                if (rotation.RetiredTelemetryId is not null)
-                {
-                    await this.dbContext.Set<TelemetryIdMapEntry>().AddAsync(new TelemetryIdMapEntry
-                    {
-                        id = rotation.RetiredTelemetryId,
-                        UserId = user.Id,
-                        ValidFromUtc = rotation.RetiredValidFromUtc,
-                        ValidToUtc = rotation.RetiredValidToUtc,
-                    });
-                }
-
-                // Recording the rotated telemetry id is best-effort bookkeeping: when the
-                // web client fires several requests in parallel at the rotation boundary,
-                // they race to insert the same retired-id map entry and all but one get a
-                // Cosmos 409 Conflict. That must never fail the user's actual request, so
-                // the conflict (and any other failure) is swallowed here.
-                var saveResult = await DbUtils.TrySaveBestEffortAsync(
-                    () => this.dbContext.SaveChangesAsync(),
-                    this.log,
-                    "persisting rotated telemetry id");
-
-                if (saveResult != BestEffortSaveResult.Saved)
-                {
-                    // The request-scoped DbContext is shared with the function handler, so
-                    // drop the un-persisted map entry; otherwise a later SaveChanges in the
-                    // handler would re-attempt the conflicting insert and surface the 500.
-                    this.DetachTrackedTelemetryMapEntries();
-                }
-            }
+            await this.EnsureTelemetryIdAsync(user);
 
             // Stamp the telemetry id onto this request's frame so logs emitted within
             // RunAsync (e.g. the group-sync traces) carry the saex.telemetryId dimension,
@@ -142,11 +110,78 @@ namespace SafeExchange.Core.Middleware
             return result;
         }
 
-        private void DetachTrackedTelemetryMapEntries()
+        /// <summary>
+        /// Ensures the user has a current telemetry id, rotating it when expired. Rotation
+        /// persists the new id onto the user document under the <c>_etag</c> concurrency
+        /// token, so when several requests cross the weekly boundary together (possibly on
+        /// different function instances) exactly one write wins. The losers observe a
+        /// concurrency conflict, reload the user to adopt the winner's id, and skip the
+        /// retired-id bookkeeping. Only the winner records the retired id into the
+        /// TelemetryIdMap; a duplicate there is still swallowed as a safety net.
+        /// </summary>
+        private async Task EnsureTelemetryIdAsync(User user)
         {
-            foreach (var entry in this.dbContext.ChangeTracker.Entries<TelemetryIdMapEntry>().ToList())
+            const int maxAttempts = 3;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                entry.State = EntityState.Detached;
+                var rotation = this.telemetryIdRotator.EnsureCurrent(user, DateTimeProvider.UtcNow);
+                if (!rotation.Rotated)
+                {
+                    // Id is already current — it either never expired, or we adopted a
+                    // concurrent winner's id on the reload below. Nothing to persist.
+                    return;
+                }
+
+                try
+                {
+                    await this.dbContext.SaveChangesAsync();
+                }
+                catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
+                {
+                    // Another writer rotated first. Reload to discard our rejected id and adopt
+                    // the winner's persisted id (and fresh etag); the next loop iteration sees a
+                    // current id, returns Rotated=false, and we end up using the winner's id.
+                    this.log.LogInformation("Telemetry id rotation lost the race for user '{UserId}'; reloading to adopt the winning id.", user.Id);
+
+                    // Small randomized backoff so a boundary burst doesn't re-collide in lockstep.
+                    // Kept tiny (tens of ms) because this is on the hot auth path and the conflict
+                    // usually clears on the first reload (the loser adopts the winner's id).
+                    await Task.Delay(Random.Shared.Next(20, 101));
+                    await this.dbContext.Entry(user).ReloadAsync();
+                    continue;
+                }
+
+                if (rotation.RetiredTelemetryId is not null)
+                {
+                    var retiredEntry = new TelemetryIdMapEntry
+                    {
+                        id = rotation.RetiredTelemetryId,
+                        UserId = user.Id,
+                        ValidFromUtc = rotation.RetiredValidFromUtc,
+                        ValidToUtc = rotation.RetiredValidToUtc,
+                    };
+
+                    // Defence in depth: the etag race above already elects a single rotation
+                    // winner, so normally only this instance inserts the retired id. Should two
+                    // winners ever coincide, the document is deterministic, so treat the Cosmos
+                    // 409 as success instead of surfacing a 500.
+                    await DbUtils.TryAddOrGetEntityAsync(
+                        async () =>
+                        {
+                            var entity = await this.dbContext.Set<TelemetryIdMapEntry>().AddAsync(retiredEntry);
+                            await this.dbContext.SaveChangesAsync();
+                            return entity.Entity;
+                        },
+                        () =>
+                        {
+                            this.log.LogInformation("Retired telemetry id (tid {RetiredTelemetryId}) was already recorded by a concurrent process.", retiredEntry.id);
+                            this.dbContext.Set<TelemetryIdMapEntry>().Remove(retiredEntry);
+                            return Task.FromResult(retiredEntry);
+                        },
+                        this.log);
+                }
+
+                return;
             }
         }
 
@@ -228,8 +263,20 @@ namespace SafeExchange.Core.Middleware
             }
 
             this.log.LogInformation("Updating groups for user (tid {TelemetryId}).", user.TelemetryId);
-            await this.dbContext.SaveChangesAsync();
-            this.log.LogInformation("User groups synced from graph (tid {TelemetryId}).", user.TelemetryId);
+            try
+            {
+                await this.dbContext.SaveChangesAsync();
+                this.log.LogInformation("User groups synced from graph (tid {TelemetryId}).", user.TelemetryId);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // A concurrent request already updated this user document (e.g. telemetry-id
+                // rotation or its own group sync). Group sync is advisory and re-runs on the
+                // next request after GroupSyncNotBefore, so drop this redundant write rather
+                // than surface a 500.
+                this.log.LogInformation("User group sync skipped due to a concurrent update (tid {TelemetryId}).", user.TelemetryId);
+                this.dbContext.Entry(user).State = EntityState.Detached;
+            }
         }
 
         private async Task<bool> IsRegisteredApplicationAsync(ClaimsPrincipal principal)

@@ -23,32 +23,5 @@ namespace SafeExchange.Core.Utilities
                 return await getAsync();
             }
         }
-
-        /// <summary>
-        /// Runs a non-critical, side-effect persistence (e.g. telemetry bookkeeping)
-        /// that must never fail the caller's primary operation. A Cosmos 409 Conflict
-        /// is swallowed as success-by-idempotency (a concurrent request already wrote
-        /// the same item); any other failure is logged and swallowed.
-        /// </summary>
-        public static async Task<BestEffortSaveResult> TrySaveBestEffortAsync(Func<Task> saveAsync, ILogger log, string description)
-        {
-            try
-            {
-                await saveAsync();
-                return BestEffortSaveResult.Saved;
-            }
-            catch (DbUpdateException dbUpdateException)
-                when (dbUpdateException.InnerException is CosmosException cosmosException &&
-                      cosmosException.StatusCode == HttpStatusCode.Conflict)
-            {
-                log.LogInformation("Conflict while {Description}; already written by a concurrent request.", description);
-                return BestEffortSaveResult.Conflict;
-            }
-            catch (Exception exception)
-            {
-                log.LogWarning(exception, "Best-effort operation '{Description}' failed; continuing without failing the request.", description);
-                return BestEffortSaveResult.Failed;
-            }
-        }
     }
 }

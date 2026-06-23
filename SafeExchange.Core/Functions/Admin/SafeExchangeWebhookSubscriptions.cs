@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Telemetry;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -141,6 +142,14 @@ namespace SafeExchange.Core.Functions.Admin
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
                     new BaseResponseObject<object> { Status = "error", Error = "Url is not provided." });
+            }
+
+            if (!WebhookUrlValidator.TryValidate(creationInput.Url, out var urlValidationReason))
+            {
+                log.LogInformation($"{nameof(WebhookSubscriptionCreationInput.Url)} for webhook subscription rejected: {urlValidationReason}");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "error", Error = $"Url is not allowed: {urlValidationReason}" });
             }
 
             var existingSubscription = await this.dbContext.WebhookSubscriptions.FirstOrDefaultAsync(whs => whs.EventType.Equals(eventType) && whs.Url.Equals(creationInput.Url));
