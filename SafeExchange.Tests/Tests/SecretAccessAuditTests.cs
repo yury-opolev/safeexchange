@@ -294,6 +294,26 @@ namespace SafeExchange.Tests
             Assert.That(entries.Count(e => e.EventType == SecretAuditEventType.PermissionRevoked), Is.EqualTo(1));
         }
 
+        [Test]
+        public async Task Patch_RemoveAndReAddSameSubject_EmitsSingleNetGrantedEvent()
+        {
+            // The "delete then re-add to widen permissions" flow: second@ has Read, and one PATCH both
+            // removes Read and re-adds Read+Write. The net effect is a single broadening, so exactly one
+            // PermissionGranted event must fire (not a Revoked+Granted pair).
+            await this.CreateAuditedSecret(this.firstIdentity, "auditNet");
+            await this.PostGrant(this.firstIdentity, "auditNet", "second@test.test", read: true, write: false, grant: false, revoke: false);
+            this.accessAuditWriter.Entries.Clear();
+
+            await this.PatchRequest(this.firstIdentity, "auditNet",
+                add: new() { MakeInput(SubjectTypeInput.User, null, "second@test.test", read: true, write: true) },
+                remove: new() { MakeInput(SubjectTypeInput.User, null, "second@test.test", read: true) });
+
+            var entries = this.accessAuditWriter.Entries.Where(e => e.SecretId == "auditNet").ToList();
+            Assert.That(entries.Count, Is.EqualTo(1));
+            Assert.That(entries[0].EventType, Is.EqualTo(SecretAuditEventType.PermissionGranted));
+            Assert.That(entries[0].ActorId, Is.EqualTo("first@test.test"));
+        }
+
         // ---- Give-up — regression for the audit gap fixed in SafeExchangeAccessGiveUp.cs ----
 
         [Test]

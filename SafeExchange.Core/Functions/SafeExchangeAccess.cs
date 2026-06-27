@@ -280,6 +280,35 @@ namespace SafeExchange.Core.Functions
             return (subjectId, subjectName, AuditPayloads.ToPermissionType(existing));
         }
 
+        /// <summary>
+        /// Resolves the canonical (subjectId, subjectName) for an add target, mirroring the grant path:
+        /// GUID groups are ensured to exist and keyed by GUID; mail groups resolve to the registered
+        /// GroupId (returns null — a no-op — when the mail group is not registered); users and
+        /// applications key off SubjectName.
+        /// </summary>
+        private async Task<(string subjectId, string subjectName)?> ResolveAddTargetAsync(
+            SubjectType targetSubjectType, SubjectPermissionsInput add, SubjectType actorType, string actorId, ILogger log)
+        {
+            if (targetSubjectType != SubjectType.Group)
+            {
+                return (add.SubjectName, add.SubjectName);
+            }
+
+            if (Guid.TryParse(add.SubjectId, out _))
+            {
+                await this.EnsureGroupExistsAsync(add, actorType, actorId);
+                return (add.SubjectId, add.SubjectName);
+            }
+
+            var existingGroup = await this.groupsManager.TryFindGroupByMailAsync(add.SubjectName);
+            if (existingGroup == default)
+            {
+                return null;
+            }
+
+            return (existingGroup.GroupId, existingGroup.DisplayName);
+        }
+
         private async Task GrantAccessToGroupAsync(string secretId, SubjectPermissionsInput permissionInput, PermissionType permission, SubjectType actorType, string actorId, ILogger log)
         {
             if (Guid.TryParse(permissionInput.SubjectId, out _))
@@ -396,14 +425,84 @@ namespace SafeExchange.Core.Functions
             var userCanRevokeAccess = removeCount > 0
                 || await this.permissionsManager.IsAuthorizedAsync(actorType, actorId, secretId, PermissionType.RevokeAccess);
 
+            // Coalesce every remove and add into a single net change per resolved subject, then apply
+            // each once. Removing then re-adding the SAME subject in one request must NOT delete-then-
+            // re-insert the same row inside one unit of work — Entity Framework would resolve that to a
+            // delete and the subject would silently vanish from the access list. Instead we compute
+            // '(existing & ~removed) | added' and write the result a single time.
+            // (The older separate POST-grant / DELETE-revoke endpoints are intentionally left untouched.)
+            var netChanges = new Dictionary<(SubjectType SubjectType, string SubjectId), PermissionNetChange>();
+
+            PermissionNetChange GetNetChange(SubjectType targetSubjectType, string targetSubjectId, string targetSubjectName)
+            {
+                var key = (targetSubjectType, PermissionsManager.NormalizeSubjectId(targetSubjectType, targetSubjectId));
+                if (!netChanges.TryGetValue(key, out var netChange))
+                {
+                    netChange = new PermissionNetChange(targetSubjectType, targetSubjectId, targetSubjectName);
+                    netChanges[key] = netChange;
+                }
+
+                return netChange;
+            }
+
             foreach (var rem in input.Remove ?? new List<SubjectPermissionsInput>())
             {
-                await this.ApplyRevokeAsync(secret, rem, actorType, actorId, log);
+                var targetSubjectType = rem.SubjectType.ToModel();
+                var (targetSubjectId, targetSubjectName, _) = await this.ResolveTargetAndBeforeAsync(secretId, targetSubjectType, rem, log);
+                GetNetChange(targetSubjectType, targetSubjectId, targetSubjectName).Remove |= rem.GetPermissionType();
             }
 
             foreach (var add in input.Add ?? new List<SubjectPermissionsInput>())
             {
-                await this.ApplyGrantAsync(secret, add, userCanRevokeAccess, actorType, actorId, log);
+                var targetSubjectType = add.SubjectType.ToModel();
+                var permission = add.GetPermissionType();
+                if (!userCanRevokeAccess)
+                {
+                    permission &= ~PermissionType.RevokeAccess;
+                }
+
+                var resolved = await this.ResolveAddTargetAsync(targetSubjectType, add, actorType, actorId, log);
+                if (resolved is null)
+                {
+                    // e.g. a mail-only group that is not registered — same no-op as the POST grant path.
+                    continue;
+                }
+
+                var (targetSubjectId, targetSubjectName) = resolved.Value;
+                GetNetChange(targetSubjectType, targetSubjectId, targetSubjectName).Add |= permission;
+            }
+
+            foreach (var netChange in netChanges.Values)
+            {
+                var (beforePerm, afterPerm) = await this.permissionsManager.ApplyNetPermissionAsync(
+                    netChange.SubjectType, netChange.SubjectId, netChange.SubjectName, secretId, netChange.Remove, netChange.Add);
+
+                if (secret.AuditEnabled && afterPerm != beforePerm && !string.IsNullOrEmpty(netChange.SubjectId))
+                {
+                    // One audit event per subject reflecting the true net effect. Direction picks the type:
+                    // any newly-added flag -> Granted; otherwise (flags only removed) -> Revoked.
+                    var eventType = (afterPerm & ~beforePerm) != PermissionType.None
+                        ? SecretAuditEventType.PermissionGranted
+                        : SecretAuditEventType.PermissionRevoked;
+
+                    await this.auditWriter.AppendAsync(
+                        secret, eventType,
+                        actorType, actorId,
+                        new
+                        {
+                            target = new
+                            {
+                                subjectType = netChange.SubjectType.ToString(),
+                                subjectId = netChange.SubjectId,
+                                subjectName = netChange.SubjectName,
+                            },
+                            permissions = new
+                            {
+                                from = AuditPayloads.PermissionFlags(beforePerm),
+                                to = AuditPayloads.PermissionFlags(afterPerm),
+                            },
+                        }, log);
+                }
             }
 
             log.LogInformation($"Subject {actorType} '{actorId}' applied {addCount} adds and {removeCount} removes to '{secretId}'.");

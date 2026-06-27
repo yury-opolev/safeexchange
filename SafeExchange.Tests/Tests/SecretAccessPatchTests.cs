@@ -473,6 +473,66 @@ namespace SafeExchange.Tests
             Assert.That(metadata!.ExpirationMetadata.ScheduleExpiration, Is.False);
         }
 
+        [Test]
+        public async Task Patch_RemoveThenAddSameSubject_BroadensPermissions_DoesNotVanish()
+        {
+            // [GIVEN] firstIdentity owns the secret; secondIdentity has Read only.
+            await CreateSecret(this.firstIdentity, "secret-1");
+            this.dbContext.Permissions.Add(new SubjectPermissions("secret-1", SubjectType.User, "second@test.test")
+            {
+                CanRead = true,
+                CanWrite = false,
+                CanGrantAccess = false,
+                CanRevokeAccess = false
+            });
+            await this.dbContext.SaveChangesAsync();
+            this.dbContext.ChangeTracker.Clear();
+
+            // [WHEN] firstIdentity PATCHes: remove second@ (Read) and re-add the SAME second@ with broader
+            // Read+Write, in one atomic request — the "delete then re-add to widen permissions" UI flow.
+            var request = TestFactory.CreateHttpRequestData("patch");
+            request.SetBodyAsJson(new AccessUpdateInput
+            {
+                Remove = new List<SubjectPermissionsInput>
+                {
+                    new SubjectPermissionsInput
+                    {
+                        SubjectType = SubjectTypeInput.User,
+                        SubjectName = "second@test.test",
+                        SubjectId = "second@test.test",
+                        CanRead = true, CanWrite = false,
+                        CanGrantAccess = false, CanRevokeAccess = false
+                    }
+                },
+                Add = new List<SubjectPermissionsInput>
+                {
+                    new SubjectPermissionsInput
+                    {
+                        SubjectType = SubjectTypeInput.User,
+                        SubjectName = "second@test.test",
+                        SubjectId = "second@test.test",
+                        CanRead = true, CanWrite = true,
+                        CanGrantAccess = false, CanRevokeAccess = false
+                    }
+                }
+            });
+            var response = await this.secretAccess.Run(request, "secret-1",
+                new ClaimsPrincipal(this.firstIdentity), this.logger);
+
+            // [THEN] OK is returned.
+            Assert.That((response as TestHttpResponseData)?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            // [THEN] second@ is STILL present and now has the broadened Read+Write — it must not vanish.
+            this.dbContext.ChangeTracker.Clear();
+            var row = await this.dbContext.Permissions
+                .FirstOrDefaultAsync(p => p.SecretName == "secret-1" && p.SubjectId == "second@test.test");
+            Assert.That(row, Is.Not.Null, "subject must not disappear when removed and re-added in the same PATCH");
+            Assert.That(row!.CanRead, Is.True);
+            Assert.That(row.CanWrite, Is.True);
+            Assert.That(row.CanGrantAccess, Is.False);
+            Assert.That(row.CanRevokeAccess, Is.False);
+        }
+
         // ---- PATCH with Application target ----
 
         [Test]

@@ -98,6 +98,74 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public void ComputeNetPermission_AllCombinations_MatchPerBitSpecification()
+        {
+            var bits = new[]
+            {
+                PermissionType.Read,
+                PermissionType.Write,
+                PermissionType.GrantAccess,
+                PermissionType.RevokeAccess
+            };
+
+            // Exhaustively cover every (existing, remove, add) flag combination — 16 x 16 x 16 = 4096.
+            for (var e = 0; e < 16; e++)
+            {
+                for (var r = 0; r < 16; r++)
+                {
+                    for (var a = 0; a < 16; a++)
+                    {
+                        var existing = (PermissionType)e;
+                        var remove = (PermissionType)r;
+                        var add = (PermissionType)a;
+
+                        var net = PermissionsManager.ComputeNetPermission(existing, remove, add);
+
+                        foreach (var bit in bits)
+                        {
+                            var hasExisting = (existing & bit) == bit;
+                            var hasRemove = (remove & bit) == bit;
+                            var hasAdd = (add & bit) == bit;
+
+                            // Independent per-bit specification (not the formula under test):
+                            // a flag is present iff it was held and not removed, or it was added.
+                            var expected = (hasExisting && !hasRemove) || hasAdd;
+                            var actual = (net & bit) == bit;
+
+                            Assert.That(actual, Is.EqualTo(expected),
+                                $"bit {bit}: existing={existing}, remove={remove}, add={add} -> net={net}");
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void ComputeNetPermission_RemoveThenReAddSameSubject_BroadensInsteadOfVanishing()
+        {
+            // The production regression: a subject with Read is removed (Read) and re-added (Read+Write)
+            // in one atomic request. The net must be Read+Write — the row must NOT collapse to None.
+            var net = PermissionsManager.ComputeNetPermission(
+                PermissionType.Read,
+                PermissionType.Read,
+                PermissionType.Read | PermissionType.Write);
+
+            Assert.That(net, Is.EqualTo(PermissionType.Read | PermissionType.Write));
+        }
+
+        [Test]
+        public void ComputeNetPermission_RemoveOnly_CollapsesToNone()
+        {
+            // Pure removal with no re-add nets to None, signalling the row should be deleted.
+            var net = PermissionsManager.ComputeNetPermission(
+                PermissionType.Read | PermissionType.Write,
+                PermissionType.Read | PermissionType.Write,
+                PermissionType.None);
+
+            Assert.That(net, Is.EqualTo(PermissionType.None));
+        }
+
+        [Test]
         public void PartialPermissionSet()
         {
             var emptyPermissionSet = new SubjectPermissions()

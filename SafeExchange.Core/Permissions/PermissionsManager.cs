@@ -129,6 +129,96 @@ namespace SafeExchange.Core.Permissions
             }
         }
 
+        public static PermissionType ComputeNetPermission(PermissionType existing, PermissionType remove, PermissionType add)
+        {
+            return (existing & ~remove) | add;
+        }
+
+        internal static string NormalizeSubjectId(SubjectType subjectType, string subjectId)
+        {
+            return subjectType == SubjectType.User ? Normalize(subjectId) : subjectId;
+        }
+
+        public async Task<(PermissionType before, PermissionType after)> ApplyNetPermissionAsync(
+            SubjectType subjectType, string subjectId, string subjectName, string secretId,
+            PermissionType removeFlags, PermissionType addFlags)
+        {
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
+
+            var subjectPermissions = await this.GetSubjectPermissionsAsync(secretId, subjectType, subjectId);
+            var before = ToPermissionType(subjectPermissions);
+            var after = ComputeNetPermission(before, removeFlags, addFlags);
+
+            if (after == PermissionType.None)
+            {
+                if (subjectPermissions != null)
+                {
+                    this.dbContext.Permissions.Remove(subjectPermissions);
+                }
+
+                return (before, after);
+            }
+
+            var canRead = (after & PermissionType.Read) == PermissionType.Read;
+            var canWrite = (after & PermissionType.Write) == PermissionType.Write;
+            var canGrantAccess = (after & PermissionType.GrantAccess) == PermissionType.GrantAccess;
+            var canRevokeAccess = (after & PermissionType.RevokeAccess) == PermissionType.RevokeAccess;
+
+            if (subjectPermissions == null)
+            {
+                var newPermissions = new SubjectPermissions(secretId, subjectType, subjectName, subjectId)
+                {
+                    CanRead = canRead,
+                    CanWrite = canWrite,
+                    CanGrantAccess = canGrantAccess,
+                    CanRevokeAccess = canRevokeAccess
+                };
+
+                await this.dbContext.Permissions.AddAsync(newPermissions);
+            }
+            else
+            {
+                // Set the resulting flags exactly (not OR-merge): the net already folded in any removals.
+                subjectPermissions.CanRead = canRead;
+                subjectPermissions.CanWrite = canWrite;
+                subjectPermissions.CanGrantAccess = canGrantAccess;
+                subjectPermissions.CanRevokeAccess = canRevokeAccess;
+            }
+
+            return (before, after);
+        }
+
+        private static PermissionType ToPermissionType(SubjectPermissions? subjectPermissions)
+        {
+            if (subjectPermissions is null)
+            {
+                return PermissionType.None;
+            }
+
+            var permission = PermissionType.None;
+            if (subjectPermissions.CanRead)
+            {
+                permission |= PermissionType.Read;
+            }
+            if (subjectPermissions.CanWrite)
+            {
+                permission |= PermissionType.Write;
+            }
+            if (subjectPermissions.CanGrantAccess)
+            {
+                permission |= PermissionType.GrantAccess;
+            }
+            if (subjectPermissions.CanRevokeAccess)
+            {
+                permission |= PermissionType.RevokeAccess;
+            }
+
+            return permission;
+        }
+
         public static bool IsPresentPermission(SubjectPermissions permissionSet, PermissionType permission)
         {
             var result = true;

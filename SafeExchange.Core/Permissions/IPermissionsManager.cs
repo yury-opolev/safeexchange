@@ -49,6 +49,24 @@ namespace SafeExchange.Core.Permissions
         public Task SetPermissionAsync(SubjectType subjectType, string subjectId, string subjectName, string secretId, PermissionType permission);
 
         /// <summary>
+        /// Applies an atomic net permission change for a single subject on a secret: computes
+        /// '(existing &amp; ~removeFlags) | addFlags' and writes the result exactly once — creating,
+        /// updating or deleting the permission row as needed. Coalesces a same-request remove+add
+        /// for the same subject into one write so the row is never deleted-then-re-inserted within a
+        /// single unit of work. Does not commit changes, save explicitly afterwards.
+        /// </summary>
+        /// <param name="subjectType">Specified subject type.</param>
+        /// <param name="subjectId">Specified subject id.</param>
+        /// <param name="subjectName">Specified subject name.</param>
+        /// <param name="secretId">Specified secret id.</param>
+        /// <param name="removeFlags">Permission flags to remove.</param>
+        /// <param name="addFlags">Permission flags to add.</param>
+        /// <returns>The permission set before and after the change.</returns>
+        public Task<(PermissionType before, PermissionType after)> ApplyNetPermissionAsync(
+            SubjectType subjectType, string subjectId, string subjectName, string secretId,
+            PermissionType removeFlags, PermissionType addFlags);
+
+        /// <summary>
         /// remove permission for specified user to access specified secret. This does not commit changes, need to save explicitly afterwards.
         /// </summary>
         /// <param name="subjectType">Specified subject type.</param>
