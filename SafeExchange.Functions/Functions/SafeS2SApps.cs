@@ -32,9 +32,10 @@ namespace SafeExchange.Functions
             IApplicationOwnerService ownerService,
             IOptionsMonitor<Features> features,
             IOptionsMonitor<Limits> limits,
+            IOptionsMonitor<AuthenticationConfiguration> authConfig,
             ILogger<SafeS2SApps> log)
         {
-            this.handler = new SafeExchangeS2SApps(dbContext, tokenHelper, globalFilters, ownerService, features, limits);
+            this.handler = new SafeExchangeS2SApps(dbContext, tokenHelper, globalFilters, ownerService, features, limits, authConfig);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -45,6 +46,17 @@ namespace SafeExchange.Functions
         {
             var principal = request.FunctionContext.GetPrincipal();
             return await this.handler.RunRegister(request, principal, this.log);
+        }
+
+        [Function("SafeExchange-S2SApps-AllowedTenants")]
+        public async Task<HttpResponseData> RunListAllowedTenants(
+            // Sibling route (not under /s2sapps/{displayName}) so it can't be mistaken
+            // for an app display name by the route matcher.
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/s2sapps-allowed-tenants")]
+            HttpRequestData request)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunListAllowedTenants(request, principal, this.log);
         }
 
         [Function("SafeExchange-S2SApps-Mine")]
