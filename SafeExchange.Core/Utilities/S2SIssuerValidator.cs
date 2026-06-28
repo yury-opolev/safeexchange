@@ -28,7 +28,11 @@ namespace SafeExchange.Core.Utilities
             this.s2sIssuers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var tenant in allowedTenants ?? Array.Empty<S2SAllowedTenant>())
             {
-                // Both the AAD v2 and v1 issuer forms for the tenant.
+                // Both the AAD v2 and v1 issuer forms for the tenant, on the worldwide
+                // commercial cloud (which is what this feature targets). National clouds
+                // (.us/.cn) and CIAM/B2C (ciamlogin.com) issuers are intentionally not
+                // generated — a token from those simply fails closed (issuer not matched)
+                // rather than being wrongly accepted.
                 this.s2sIssuers.Add($"https://login.microsoftonline.com/{tenant.TenantId}/v2.0");
                 this.s2sIssuers.Add($"https://sts.windows.net/{tenant.TenantId}/");
             }

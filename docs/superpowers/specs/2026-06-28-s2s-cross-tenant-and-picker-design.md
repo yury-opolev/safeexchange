@@ -106,7 +106,7 @@ defense in depth. This trade-off is called out explicitly for security review.
 
 ### 3. Allowed-tenants endpoint (for the registration UI)
 
-`GET /v2/s2sapps/allowed-tenants` — authenticated user; gated by
+`GET /v2/s2sapps-allowed-tenants` — authenticated user; gated by
 `Features.S2SAppsSelfService` like the other `s2sapps` routes. Returns the
 `{ tenantId, displayName }` list (empty when the feature is off, so the UI can
 hide/disable the tenant control). Reads the parsed allowlist via
@@ -143,7 +143,7 @@ non-allowlisted tenant simply can't authenticate).
 
 ### 6. Tenant dropdown in `RegisterS2SApp.razor`
 
-- On init, call new `ApiClient.GetS2SAllowedTenantsAsync()` → `GET /v2/s2sapps/allowed-tenants`.
+- On init, call new `ApiClient.GetS2SAllowedTenantsAsync()` → `GET /v2/s2sapps-allowed-tenants`.
 - If the list is non-empty, render a required `<select>` of `{ displayName }`
   (value = tenantId); preselect when there is exactly one. Bind the choice into
   `S2SAppRegistrationRequest.AadTenantId` (the DTO already has the slot).
