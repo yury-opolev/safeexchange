@@ -9,7 +9,10 @@ namespace SafeExchange.Core
     using Microsoft.IdentityModel.Protocols;
     using Microsoft.IdentityModel.Tokens;
     using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Utilities;
     using System.Configuration;
+    using System.IdentityModel.Tokens.Jwt;
+    using System.Linq;
     using Microsoft.Extensions.Logging;
     using System.Text;
     using Microsoft.IdentityModel.Validators;
@@ -91,7 +94,36 @@ namespace SafeExchange.Core
                 },
             };
 
-            this.tokenValidationParameters.EnableAadSigningKeyIssuerValidation();
+            var allowedS2STenants = S2SAllowedTenant.ParseList(authConfig.S2SAllowedTenants, this.log);
+            if (allowedS2STenants.Count == 0)
+            {
+                // No S2S allowlist configured — preserve the existing single-tenant
+                // hardening exactly: the AAD signing-key↔issuer binding on top of the
+                // ValidIssuers allowlist. Behavior is byte-for-byte unchanged.
+                this.tokenValidationParameters.EnableAadSigningKeyIssuerValidation();
+            }
+            else
+            {
+                // Cross-tenant S2S. Accept APP-ONLY tokens from the configured home tenant
+                // OR any allowlisted tenant, while still restricting USER tokens to the home
+                // tenant. The signed `iss` claim + this fixed allowlist is the tenant gate.
+                // EnableAadSigningKeyIssuerValidation() binds the signing key to the single
+                // configured issuer and would reject allowlisted tenants, so it is intentionally
+                // not applied here; signature validation against the global AAD signing keys,
+                // audience validation, and the (clientId, tenantId) registration check in
+                // TokenMiddlewareCore all remain in force as defense in depth.
+                var s2sIssuerValidator = new S2SIssuerValidator(validIssuers, allowedS2STenants);
+                this.tokenValidationParameters.IssuerValidator = (issuer, securityToken, _) =>
+                {
+                    var isAppOnly = securityToken is JwtSecurityToken jwt
+                        && TokenClassification.IsAppOnlyToken(type => jwt.Claims.Any(claim => claim.Type == type));
+                    return s2sIssuerValidator.Validate(issuer, isAppOnly);
+                };
+
+                this.log.LogInformation(
+                    "S2S cross-tenant issuer validation enabled for {Count} allowlisted tenant(s).",
+                    allowedS2STenants.Count);
+            }
 
             this.openIdConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
                 authConfig.MetadataAddress, new OpenIdConnectConfigurationRetriever());
