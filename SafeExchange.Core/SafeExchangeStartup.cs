@@ -205,6 +205,7 @@ namespace SafeExchange.Core
 
             services.Configure<Features>(configuration.GetSection("Features"));
             services.Configure<Limits>(configuration.GetSection("Limits"));
+            services.Configure<AuthenticationConfiguration>(configuration.GetSection("Authentication"));
             services.Configure<OrphanedSecretConfiguration>(configuration.GetSection("OrphanedSecret"));
             services.Configure<PinnedSecretsConfiguration>(configuration.GetSection("PinnedSecrets"));
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));

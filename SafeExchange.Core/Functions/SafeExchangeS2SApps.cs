@@ -37,6 +37,7 @@ namespace SafeExchange.Core.Functions
         private readonly IApplicationOwnerService ownerService;
         private readonly IOptionsMonitor<Features> features;
         private readonly IOptionsMonitor<Limits> limits;
+        private readonly IOptionsMonitor<AuthenticationConfiguration> authConfig;
 
         public SafeExchangeS2SApps(
             SafeExchangeDbContext dbContext,
@@ -44,7 +45,8 @@ namespace SafeExchange.Core.Functions
             GlobalFilters globalFilters,
             IApplicationOwnerService ownerService,
             IOptionsMonitor<Features> features,
-            IOptionsMonitor<Limits> limits)
+            IOptionsMonitor<Limits> limits,
+            IOptionsMonitor<AuthenticationConfiguration> authConfig)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
@@ -52,6 +54,7 @@ namespace SafeExchange.Core.Functions
             this.ownerService = ownerService ?? throw new ArgumentNullException(nameof(ownerService));
             this.features = features ?? throw new ArgumentNullException(nameof(features));
             this.limits = limits ?? throw new ArgumentNullException(nameof(limits));
+            this.authConfig = authConfig ?? throw new ArgumentNullException(nameof(authConfig));
         }
 
         private string RegistrarCreatedBy(string upn) => $"User {upn}";
@@ -130,6 +133,16 @@ namespace SafeExchange.Core.Functions
                 if (string.IsNullOrWhiteSpace(tenantId) || !Regex.IsMatch(tenantId, GuidRegex))
                 {
                     return await BadRequestAsync(request, "AadTenantId is missing or not a GUID; pass it explicitly if the caller's token does not carry one.");
+                }
+
+                // When the operator has configured an S2S tenant allowlist, registration is
+                // restricted to those tenants — an app registered for a tenant we don't accept
+                // app tokens from could never authenticate. An empty allowlist (feature off)
+                // keeps the legacy behavior (any tenant, defaulting to the caller's home tenant).
+                var allowedTenants = S2SAllowedTenant.ParseList(this.authConfig.CurrentValue.S2SAllowedTenants);
+                if (allowedTenants.Count > 0 && !S2SAllowedTenant.Contains(allowedTenants, tenantId))
+                {
+                    return await BadRequestAsync(request, "The selected tenant is not in the configured list of tenants allowed for S2S applications.");
                 }
 
                 var contactEmail = string.IsNullOrWhiteSpace(input.ContactEmail) ? subjectId : input.ContactEmail;
@@ -265,6 +278,32 @@ namespace SafeExchange.Core.Functions
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<List<S2SAppOverviewOutput>> { Status = "ok", Result = overviews });
             }, nameof(RunListMine), log);
+        }
+
+        /// <summary>
+        /// GET /s2sapps-allowed-tenants — the operator-configured tenants a user may pick
+        /// when registering an S2S app. Empty list when the allowlist is not configured, so
+        /// the client can hide/disable the tenant control and fall back to the home tenant.
+        /// </summary>
+        public async Task<HttpResponseData> RunListAllowedTenants(HttpRequestData request, ClaimsPrincipal principal, ILogger log)
+        {
+            var gate = await this.GateAsync(request, principal);
+            if (gate.shouldReturn)
+            {
+                return gate.response!;
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var allowed = S2SAllowedTenant.ParseList(this.authConfig.CurrentValue.S2SAllowedTenants);
+                var dto = allowed
+                    .Select(t => new S2SAllowedTenantOutput { TenantId = t.TenantId, DisplayName = t.DisplayName })
+                    .ToList();
+
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<List<S2SAllowedTenantOutput>> { Status = "ok", Result = dto });
+            }, nameof(RunListAllowedTenants), log);
         }
 
         internal static S2SAppOutput ToDto(Application app, IReadOnlyCollection<ApplicationOwner> owners) => new()

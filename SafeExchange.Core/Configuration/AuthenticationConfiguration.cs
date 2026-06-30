@@ -26,6 +26,16 @@ namespace SafeExchange.Core.Configuration
         public string ValidIssuers { get; set; } = string.Empty;
 
         /// <summary>
+        /// Optional JSON array of tenants from which APP-ONLY (S2S / client-credentials)
+        /// tokens are accepted, IN ADDITION to the configured home tenant. Each entry is
+        /// <c>{ "tenantId": "&lt;guid&gt;", "displayName": "&lt;label&gt;" }</c>. Empty /
+        /// missing ⇒ the feature is off and token validation is byte-for-byte unchanged.
+        /// User (delegated) tokens are unaffected — they are still accepted only from the
+        /// configured home tenant. Parsed by <see cref="S2SAllowedTenant.ParseList"/>.
+        /// </summary>
+        public string S2SAllowedTenants { get; set; } = string.Empty;
+
+        /// <summary>
         /// Comma-separated list of claim types, in order of preference, that
         /// <see cref="TokenHelper.GetUpn"/> will try when resolving the caller's
         /// UPN. The first non-empty claim wins.

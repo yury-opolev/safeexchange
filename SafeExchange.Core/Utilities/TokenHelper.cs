@@ -12,6 +12,7 @@ namespace SafeExchange.Core
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Utilities;
 
     public class TokenHelper : ITokenHelper
     {
@@ -48,29 +49,20 @@ namespace SafeExchange.Core
 
         /// <inheritdoc/>
         public TokenType GetTokenType(ClaimsPrincipal principal)
-        {
             // AAD v1 app tokens carry appid/appidacr; AAD v2 app tokens (including
             // client-credentials / app-only) carry azp/azpacr instead. Classify both
             // as access tokens so v2 app principals are not misclassified as users
-            // and thus bypass the registered-application gate (CWE-287). This stays
-            // consistent with GetApplicationClientId, which reads azp before appid.
-            if ((HasClaim(principal, "appid") && HasClaim(principal, "appidacr")) ||
-                (HasClaim(principal, "azp") && HasClaim(principal, "azpacr")))
-            {
-                return TokenType.AccessToken;
-            }
-
-            return TokenType.IdToken;
-        }
+            // and thus bypass the registered-application gate (CWE-287). Shared with
+            // the S2S issuer validator via TokenClassification so the two cannot drift.
+            => TokenClassification.HasAppCredentialClaims(type => HasClaim(principal, type))
+                ? TokenType.AccessToken
+                : TokenType.IdToken;
 
         /// <inheritdoc/>
         public bool IsUserToken(ClaimsPrincipal principal)
         {
             var tokenType = this.GetTokenType(principal);
-            var result = (tokenType == TokenType.IdToken) ||
-                (HasClaim(principal, "http://schemas.microsoft.com/identity/claims/scope") ||
-                HasClaim(principal, "scope") ||
-                HasClaim(principal, "scp"));
+            var result = !TokenClassification.IsAppOnlyToken(type => HasClaim(principal, type));
 
             this.log.LogInformation("Principal is authenticated as {AuthKind} with {TokenType}.", result ? "a user" : "an app", tokenType);
             return result;

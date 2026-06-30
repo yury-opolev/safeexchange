@@ -12,7 +12,9 @@ namespace SafeExchange.Tests
     using SafeExchange.Core;
     using System.Collections.Generic;
     using System.Configuration;
+    using System.IdentityModel.Tokens.Jwt;
     using System.Linq;
+    using System.Security.Claims;
 
     /// <summary>
     /// Tests for <see cref="TokenValidationParametersProvider"/>'s startup
@@ -186,6 +188,60 @@ namespace SafeExchange.Tests
             Assert.That(tvp.ValidAlgorithms, Does.Contain(SecurityAlgorithms.RsaSha256));
 
             await System.Threading.Tasks.Task.CompletedTask;
+        }
+
+        [Test]
+        public void Ctor_WithS2SAllowedTenants_InstallsTokenKindAwareIssuerValidator()
+        {
+            const string allowedTid = "11111111-1111-1111-1111-111111111111";
+            var configuration = BuildConfiguration(
+                ("Authentication:MetadataAddress", "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"),
+                ("Authentication:ValidateAudience", "true"),
+                ("Authentication:ValidAudiences", "api://app"),
+                ("Authentication:ValidateIssuer", "true"),
+                ("Authentication:ValidIssuers", "https://login.microsoftonline.com/00000000-0000-0000-0000-0000000000aa/v2.0"),
+                ("Authentication:S2SAllowedTenants", $"[{{\"tenantId\":\"{allowedTid}\",\"displayName\":\"Dev\"}}]"));
+
+            var provider = new TokenValidationParametersProvider(configuration, this.logger);
+            var tvp = ReadParameters(provider);
+
+            Assert.That(tvp.IssuerValidator, Is.Not.Null, "a custom issuer validator must be installed when the allowlist is non-empty.");
+
+            var allowedIssuer = $"https://login.microsoftonline.com/{allowedTid}/v2.0";
+
+            // App-only token (azp/azpacr, no scope) from an allowlisted tenant: accepted.
+            var appToken = new JwtSecurityToken(claims: new[] { new Claim("azp", "x"), new Claim("azpacr", "1") });
+            Assert.That(tvp.IssuerValidator(allowedIssuer, appToken, tvp), Is.EqualTo(allowedIssuer));
+
+            // User token (carries scope) from the same allowlisted tenant: rejected.
+            var userToken = new JwtSecurityToken(claims: new[] { new Claim("azp", "x"), new Claim("azpacr", "1"), new Claim("scp", "user_impersonation") });
+            Assert.Throws<SecurityTokenInvalidIssuerException>(
+                () => tvp.IssuerValidator(allowedIssuer, userToken, tvp));
+        }
+
+        [Test]
+        public void Ctor_WithoutS2SAllowedTenants_NoCustomIssuerValidator()
+        {
+            var configuration = BuildConfiguration(
+                ("Authentication:MetadataAddress", "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"),
+                ("Authentication:ValidateAudience", "true"),
+                ("Authentication:ValidAudiences", "api://app"),
+                ("Authentication:ValidateIssuer", "true"),
+                ("Authentication:ValidIssuers", "https://login.microsoftonline.com/00000000-0000-0000-0000-0000000000aa/v2.0"));
+
+            var provider = new TokenValidationParametersProvider(configuration, this.logger);
+            var tvp = ReadParameters(provider);
+
+            Assert.That(tvp.IssuerValidator, Is.Null, "no custom issuer validator when the allowlist is empty — the default ValidIssuers path is preserved.");
+        }
+
+        private static TokenValidationParameters ReadParameters(TokenValidationParametersProvider provider)
+        {
+            var field = typeof(TokenValidationParametersProvider).GetField(
+                "tokenValidationParameters",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.That(field, Is.Not.Null, "Expected private field tokenValidationParameters.");
+            return (TokenValidationParameters)field!.GetValue(provider)!;
         }
 
         private static IConfiguration BuildConfiguration(params (string key, string value)[] entries)
