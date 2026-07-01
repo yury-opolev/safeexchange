@@ -28,6 +28,12 @@ namespace SafeExchange.Core.Functions
         /// <summary>Upper bound on returned hits — the picker is for narrowing by name, not bulk listing.</summary>
         public const int MaxResults = 50;
 
+        /// <summary>
+        /// Upper bound on rows the candidate scan may materialize before the in-memory order/cap.
+        /// Bounds worst-case RU/latency for a very short/broad term; must be &gt;= <see cref="MaxResults"/>.
+        /// </summary>
+        internal const int ScanCap = 500;
+
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -92,12 +98,7 @@ namespace SafeExchange.Core.Functions
 
                 var term = searchInput.SearchString.Trim().ToLower();
 
-                // Filter server-side (enabled + name match), then order/cap in memory to
-                // avoid Cosmos composite-index requirements for OrderBy. The name match
-                // mirrors the admin application search.
-                var matches = await this.dbContext.Applications
-                    .Where(a => a.Enabled && a.DisplayName.ToLower().Contains(term))
-                    .ToListAsync();
+                var matches = await this.ScanMatchingApplicationsAsync(term);
 
                 var results = matches
                     .OrderBy(a => a.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -114,6 +115,17 @@ namespace SafeExchange.Core.Functions
                     request, HttpStatusCode.OK,
                     new BaseResponseObject<List<ApplicationSearchOutput>> { Status = "ok", Result = results });
             }, nameof(HandleSearchApplication), log);
+
+        /// <summary>
+        /// Server-side candidate scan: enabled applications whose display name contains the
+        /// (already trimmed/lowercased) <paramref name="term"/>. Filtered server-side to avoid a
+        /// Cosmos composite index for OrderBy; the caller orders and caps the result in memory.
+        /// </summary>
+        internal async Task<List<Application>> ScanMatchingApplicationsAsync(string term)
+            => await this.dbContext.Applications
+                .Where(a => a.Enabled && a.DisplayName.ToLower().Contains(term))
+                .Take(ScanCap)
+                .ToListAsync();
 
         private async Task<SearchInput?> TryGetSearchInputAsync(HttpRequestData request, ILogger log)
         {

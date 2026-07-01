@@ -139,7 +139,7 @@ namespace SafeExchange.Core.Functions
                 // restricted to those tenants — an app registered for a tenant we don't accept
                 // app tokens from could never authenticate. An empty allowlist (feature off)
                 // keeps the legacy behavior (any tenant, defaulting to the caller's home tenant).
-                var allowedTenants = S2SAllowedTenant.ParseList(this.authConfig.CurrentValue.S2SAllowedTenants);
+                var allowedTenants = S2SAllowedTenant.ParseList(this.authConfig.CurrentValue.S2SAllowedTenants, log);
                 if (allowedTenants.Count > 0 && !S2SAllowedTenant.Contains(allowedTenants, tenantId))
                 {
                     return await BadRequestAsync(request, "The selected tenant is not in the configured list of tenants allowed for S2S applications.");
@@ -295,7 +295,7 @@ namespace SafeExchange.Core.Functions
 
             return await ActionResults.TryCatchAsync(request, async () =>
             {
-                var allowed = S2SAllowedTenant.ParseList(this.authConfig.CurrentValue.S2SAllowedTenants);
+                var allowed = S2SAllowedTenant.ParseList(this.authConfig.CurrentValue.S2SAllowedTenants, log);
                 var dto = allowed
                     .Select(t => new S2SAllowedTenantOutput { TenantId = t.TenantId, DisplayName = t.DisplayName })
                     .ToList();
