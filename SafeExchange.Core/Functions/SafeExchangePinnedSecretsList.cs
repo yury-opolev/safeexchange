@@ -11,6 +11,7 @@ namespace SafeExchange.Core.Functions
     using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Utilities;
     using SafeExchange.Core.Telemetry;
     using System;
@@ -28,18 +29,22 @@ namespace SafeExchange.Core.Functions
 
         private readonly GlobalFilters globalFilters;
 
+        private readonly IPermissionsManager permissionsManager;
+
         public SafeExchangePinnedSecretsList(
             SafeExchangeDbContext dbContext,
             ITokenHelper tokenHelper,
-            GlobalFilters globalFilters)
+            GlobalFilters globalFilters,
+            IPermissionsManager permissionsManager)
         {
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
+            this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
         }
 
         public async Task<HttpResponseData> RunList(
-            HttpRequestData request, ClaimsPrincipal principal, ILogger log)
+            HttpRequestData request, ClaimsPrincipal principal, ILogger log, bool effective = false)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
@@ -59,7 +64,9 @@ namespace SafeExchange.Core.Functions
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleList(request, userId, subjectType, subjectId, log);
+                    return effective
+                        ? await this.HandleListV3(request, userId, subjectType, subjectId, log)
+                        : await this.HandleList(request, userId, subjectType, subjectId, log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -139,5 +146,75 @@ namespace SafeExchange.Core.Functions
                 new BaseResponseObject<List<PinnedSecretOutput>> { Status = "ok", Result = result });
 
         }, nameof(HandleList), log);
+
+        private async Task<HttpResponseData> HandleListV3(
+            HttpRequestData request, string userId,
+            SubjectType subjectType, string subjectId, ILogger log)
+            => await ActionResults.TryCatchAsync(request, async () =>
+        {
+            var pins = await this.dbContext.PinnedSecrets
+                .Where(p => p.UserId.Equals(userId))
+                .ToListAsync();
+
+            if (pins.Count == 0)
+            {
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.OK,
+                    new BaseResponseObject<List<PinnedSecretListItemOutput>>
+                    {
+                        Status = "no_content",
+                        Result = new List<PinnedSecretListItemOutput>()
+                    });
+            }
+
+            pins = pins.OrderByDescending(p => p.CreatedAt).ToList();
+
+            var names = pins.Select(p => p.SecretName).Distinct().ToList();
+
+            var metadataByName = (await this.dbContext.Objects
+                    .Where(o => names.Contains(o.ObjectName))
+                    .ToListAsync())
+                .ToDictionary(o => o.ObjectName, o => o);
+
+            var directByName = (await this.dbContext.Permissions
+                    .Where(p => names.Contains(p.SecretName)
+                             && p.SubjectType.Equals(subjectType)
+                             && p.SubjectId.Equals(subjectId))
+                    .ToListAsync())
+                .ToDictionary(p => p.SecretName, p => p);
+
+            var result = new List<PinnedSecretListItemOutput>(pins.Count);
+            foreach (var pin in pins)
+            {
+                metadataByName.TryGetValue(pin.SecretName, out var meta);
+                directByName.TryGetValue(pin.SecretName, out var direct);
+
+                var effective = await this.permissionsManager.GetEffectivePermissionsAsync(subjectType, subjectId, pin.SecretName);
+                var callerEffective = EffectivePermissionsOutput.FromPermissionType(effective);
+
+                var dto = new PinnedSecretListItemOutput
+                {
+                    SecretName = pin.SecretName,
+                    Exists = meta is not null,
+                    CanRead = direct?.CanRead ?? false,
+                    CanWrite = direct?.CanWrite ?? false,
+                    CanGrantAccess = direct?.CanGrantAccess ?? false,
+                    CanRevokeAccess = direct?.CanRevokeAccess ?? false,
+                    CallerEffectivePermissions = callerEffective,
+                };
+
+                if (dto.Exists && callerEffective.CanRead)
+                {
+                    dto.Tags = meta!.Tags?.ToList() ?? new List<string>();
+                }
+
+                result.Add(dto);
+            }
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<PinnedSecretListItemOutput>> { Status = "ok", Result = result });
+
+        }, nameof(HandleListV3), log);
     }
 }

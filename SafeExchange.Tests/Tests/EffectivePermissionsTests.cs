@@ -28,6 +28,7 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Groups;
+    using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
@@ -66,6 +67,7 @@ namespace SafeExchange.Tests
 
         private SafeExchangeSecretMeta secretMeta = null!;
         private SafeExchangeAccess secretAccess = null!;
+        private SafeExchangePinnedSecretsList pinnedList = null!;
 
         private CaseSensitiveClaimsIdentity ownerIdentity = null!;
         private CaseSensitiveClaimsIdentity memberIdentity = null!;
@@ -143,6 +145,9 @@ namespace SafeExchange.Tests
                 this.dbContext, this.groupsManager, this.tokenHelper,
                 this.globalFilters, this.purger, this.permissionsManager,
                 new NoOpAuditWriter(), Mock.Of<IOrphanedSecretManager>());
+
+            this.pinnedList = new SafeExchangePinnedSecretsList(
+                this.dbContext, this.tokenHelper, this.globalFilters, this.permissionsManager);
         }
 
         [TearDown]
@@ -154,6 +159,7 @@ namespace SafeExchange.Tests
             this.dbContext.Objects.RemoveRange(this.dbContext.Objects.ToList());
             this.dbContext.Permissions.RemoveRange(this.dbContext.Permissions.ToList());
             this.dbContext.GroupDictionary.RemoveRange(this.dbContext.GroupDictionary.ToList());
+            this.dbContext.PinnedSecrets.RemoveRange(this.dbContext.PinnedSecrets.ToList());
             this.dbContext.SaveChanges();
         }
 
@@ -521,6 +527,32 @@ namespace SafeExchange.Tests
             var body = response.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.That(body?.Result, Is.Not.Null, "v2 access must return a plain array of subject permissions.");
             Assert.That(body!.Result!.Any(p => p.SubjectId == "owner@test.test" && p.CanWrite), Is.True);
+        }
+
+        [Test]
+        public async Task PinnedListV3_GroupOnlyReadableSecret_ShowsEffectiveRead()
+        {
+            const string secret = "pinned-grouponly";
+            const string memberUserId = "member-user-id";
+            await this.CreateSecret(this.ownerIdentity, secret);
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Read | PermissionType.Write);
+            this.dbContext.PinnedSecrets.Add(new PinnedSecret(memberUserId, secret));
+            this.dbContext.SaveChanges();
+
+            var request = TestFactory.CreateHttpRequestData("get");
+            request.FunctionContext.Items[DefaultAuthenticationMiddleware.InvocationContextUserIdKey] = memberUserId;
+            var response = await this.pinnedList.RunList(request, new ClaimsPrincipal(this.memberIdentity), this.logger, effective: true) as TestHttpResponseData;
+
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+            var item = response.ReadBodyAsJson<BaseResponseObject<List<PinnedSecretListItemOutput>>>()?.Result?.SingleOrDefault(p => p.SecretName == secret);
+            Assert.That(item, Is.Not.Null, "Group-only readable pinned secret must appear.");
+            Assert.That(item!.CanRead, Is.False, "Actual direct permissions are empty for a group-only secret.");
+            Assert.That(item.CallerEffectivePermissions.CanRead, Is.True, "Group-derived read is reflected in effective permissions.");
+            Assert.That(item.CallerEffectivePermissions.CanWrite, Is.True);
+            Assert.That(item.Exists, Is.True);
         }
 
         // ---- Helpers -----------------------------------------------------------------------

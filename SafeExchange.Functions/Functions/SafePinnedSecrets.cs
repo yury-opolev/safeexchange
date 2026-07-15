@@ -37,7 +37,7 @@ namespace SafeExchange.Functions.Functions
             this.safeExchangePinnedSecretsHandler = new SafeExchangePinnedSecrets(
                 dbContext, tokenHelper, globalFilters, permissionsManager, config);
             this.safeExchangePinnedSecretsListHandler = new SafeExchangePinnedSecretsList(
-                dbContext, tokenHelper, globalFilters);
+                dbContext, tokenHelper, globalFilters, permissionsManager);
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -54,10 +54,10 @@ namespace SafeExchange.Functions.Functions
         [Function("SafeExchange-PinnedSecretsList")]
         public async Task<HttpResponseData> RunListPinnedSecrets(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/pinnedsecrets-list")]
-            HttpRequestData request)
+            HttpRequestData request, string apiVersion)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.safeExchangePinnedSecretsListHandler.RunList(request, principal, this.log);
+            return await this.safeExchangePinnedSecretsListHandler.RunList(request, principal, this.log, effective: apiVersion == "v3");
         }
     }
 }
