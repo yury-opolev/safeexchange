@@ -18,12 +18,5 @@ namespace SafeExchange.Core.Model.Dto.Output
         public List<string> Tags { get; set; } = new();
 
         public bool AuditEnabled { get; set; }
-
-        /// <summary>
-        /// The current caller's effective permissions on this secret (direct grants unioned with
-        /// group-derived grants). Additive field: null unless the endpoint populated it for a
-        /// specific caller (the single-secret read path), so existing consumers are unaffected.
-        /// </summary>
-        public CallerPermissionsOutput? CallerPermissions { get; set; }
     }
 }

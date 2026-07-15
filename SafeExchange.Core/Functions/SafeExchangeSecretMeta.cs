@@ -149,12 +149,9 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
             }
 
-            // Include every secret the caller can effectively read — direct grants unioned with
-            // grants inherited through group membership — with one aggregated effective-permissions
-            // result per secret (no duplicates from overlapping direct + group grants).
-            var effectivePermissions = await this.permissionsManager.GetReadableSecretsAsync(subjectType, subjectId);
+            var readableSecrets = await this.permissionsManager.GetReadableSecretsAsync(subjectType, subjectId);
 
-            var names = effectivePermissions.Select(e => e.SecretName).Distinct().ToList();
+            var names = readableSecrets.Select(e => e.SecretName).Distinct().ToList();
             var tagMap = new Dictionary<string, List<string>>();
             if (names.Count > 0)
             {
@@ -180,29 +177,26 @@ namespace SafeExchange.Core.Functions
             if (requiredTags.Count > 0)
             {
                 var matched = new HashSet<string>(tagMap.Keys);
-                effectivePermissions = effectivePermissions.Where(e => matched.Contains(e.SecretName)).ToList();
+                readableSecrets = readableSecrets.Where(e => matched.Contains(e.SecretName)).ToList();
             }
 
-            var dtos = effectivePermissions.Select(e =>
+            var dtos = readableSecrets.Select(e => new SecretListItemOutput
             {
-                var caller = CallerPermissionsOutput.FromPermissionType(e.Permissions);
-                return new SubjectPermissionsOutput
-                {
-                    ObjectName = e.SecretName,
-                    SubjectType = subjectType.ToDto(),
-                    SubjectName = subjectId,
-                    SubjectId = subjectId,
-                    CanRead = caller.CanRead,
-                    CanWrite = caller.CanWrite,
-                    CanGrantAccess = caller.CanGrantAccess,
-                    CanRevokeAccess = caller.CanRevokeAccess,
-                    Tags = tagMap.TryGetValue(e.SecretName, out var t) ? t.ToList() : new List<string>(),
-                };
+                ObjectName = e.SecretName,
+                SubjectType = subjectType.ToDto(),
+                SubjectName = subjectId,
+                SubjectId = subjectId,
+                CanRead = (e.Direct & PermissionType.Read) == PermissionType.Read,
+                CanWrite = (e.Direct & PermissionType.Write) == PermissionType.Write,
+                CanGrantAccess = (e.Direct & PermissionType.GrantAccess) == PermissionType.GrantAccess,
+                CanRevokeAccess = (e.Direct & PermissionType.RevokeAccess) == PermissionType.RevokeAccess,
+                CallerEffectivePermissions = EffectivePermissionsOutput.FromPermissionType(e.Effective),
+                Tags = tagMap.TryGetValue(e.SecretName, out var t) ? t.ToList() : new List<string>(),
             }).ToList();
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
-                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                new BaseResponseObject<List<SecretListItemOutput>>
                 {
                     Status = "ok",
                     Result = dtos
@@ -314,16 +308,9 @@ namespace SafeExchange.Core.Functions
             metadata.LastAccessedAt = DateTimeProvider.UtcNow;
             await this.dbContext.SaveChangesAsync();
 
-            var dto = metadata.ToDto();
-            // Expose the caller's effective permissions (direct unioned with group-derived) so the
-            // web client can drive Edit / grant / revoke controls from the same model the API
-            // authorizes against, instead of re-deriving them from the access-control list.
-            var effective = await this.permissionsManager.GetEffectivePermissionsAsync(subjectType, subjectId, secretId);
-            dto.CallerPermissions = CallerPermissionsOutput.FromPermissionType(effective);
-
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
-                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = dto });
+                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = metadata.ToDto() });
         }, nameof(HandleSecretMetaRead), log);
 
         private async Task<HttpResponseData> HandleSecretMetaUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)

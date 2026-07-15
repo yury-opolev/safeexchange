@@ -394,6 +394,7 @@ namespace SafeExchange.Core.Permissions
                 subjectId = Normalize(subjectId);
             }
 
+            var directBySecret = new Dictionary<string, PermissionType>(StringComparer.Ordinal);
             var effectiveBySecret = new Dictionary<string, PermissionType>(StringComparer.Ordinal);
 
             var directRows = await this.dbContext.Permissions
@@ -401,33 +402,37 @@ namespace SafeExchange.Core.Permissions
                 .ToListAsync();
             foreach (var row in directRows)
             {
+                AccumulatePermission(directBySecret, row.SecretName, ToPermissionType(row));
                 AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
             }
 
-            // Fold in every secret shared with a group the caller belongs to, reusing the same
-            // consent and group-membership rules as the authorization path, so capability
-            // discovery cannot disagree with authorization.
             if (subjectType == SubjectType.User && this.features.UseGroupsAuthorization)
             {
                 var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
                 if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
                 {
-                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToList();
+                    // Match group grants against the caller's (transitive) group memberships in memory
+                    // via a HashSet, so a caller in thousands of groups never becomes a huge IN clause.
+                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToHashSet();
                     var groupRows = await this.dbContext.Permissions
-                        .Where(p => p.SubjectType.Equals(SubjectType.Group) && groupIds.Contains(p.SubjectId))
+                        .Where(p => p.SubjectType.Equals(SubjectType.Group))
                         .ToListAsync();
                     foreach (var row in groupRows)
                     {
-                        AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
+                        if (groupIds.Contains(row.SubjectId))
+                        {
+                            AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
+                        }
                     }
                 }
             }
 
-            // Only surface secrets the caller can effectively read; one aggregated result per
-            // secret, so overlapping direct and group grants never yield duplicate rows.
             return effectiveBySecret
                 .Where(kvp => (kvp.Value & PermissionType.Read) == PermissionType.Read)
-                .Select(kvp => new EffectiveSecretPermissions(kvp.Key, kvp.Value))
+                .Select(kvp => new EffectiveSecretPermissions(
+                    kvp.Key,
+                    directBySecret.TryGetValue(kvp.Key, out var direct) ? direct : PermissionType.None,
+                    kvp.Value))
                 .ToList();
         }
 

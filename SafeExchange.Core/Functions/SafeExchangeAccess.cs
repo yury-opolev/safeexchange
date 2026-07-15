@@ -113,7 +113,7 @@ namespace SafeExchange.Core.Functions
                                 ActionResults.InsufficientPermissions(PermissionType.Read, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                         }
 
-                        return await this.GetAccessListAsync(request, existingMetadata.ObjectName, log);
+                        return await this.GetAccessListAsync(request, existingMetadata.ObjectName, subjectType, subjectId, log);
                     }
 
                 case "delete":
@@ -340,17 +340,22 @@ namespace SafeExchange.Core.Functions
             await this.permissionsManager.SetPermissionAsync(SubjectType.Group, existingGroup.GroupId, existingGroup.DisplayName, secretId, permission);
         }
 
-        private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, ILogger log)
+        private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretId)).ToListAsync();
+            var effective = await this.permissionsManager.GetEffectivePermissionsAsync(subjectType, subjectId, secretId);
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
-                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                new BaseResponseObject<AccessListOutput>
                 {
                     Status = "ok",
-                    Result = existingPermissions.Select(p => p.ToDto()).ToList()
+                    Result = new AccessListOutput
+                    {
+                        AccessList = existingPermissions.Select(p => p.ToDto()).ToList(),
+                        CallerEffectivePermissions = EffectivePermissionsOutput.FromPermissionType(effective)
+                    }
                 });
         }, nameof(GetAccessListAsync), log);
 

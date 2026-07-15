@@ -1,5 +1,5 @@
 /// <summary>
-/// CallerPermissionsOutput
+/// EffectivePermissionsOutput
 /// </summary>
 
 namespace SafeExchange.Core.Model.Dto.Output
@@ -7,12 +7,10 @@ namespace SafeExchange.Core.Model.Dto.Output
     using SafeExchange.Core.Permissions;
 
     /// <summary>
-    /// The current caller's effective permissions on a secret — the union of all applicable
-    /// direct and group-derived grants. Exposed so the web client can present an accurate user
-    /// experience without re-deriving capabilities from the raw access-control list. The API
-    /// remains the final authorization boundary; these flags are for presentation only.
+    /// The caller's effective permissions on a secret: the union of direct and group-derived
+    /// grants. Presentation-only — the API remains the authorization boundary.
     /// </summary>
-    public class CallerPermissionsOutput
+    public class EffectivePermissionsOutput
     {
         public bool CanRead { get; set; }
 
@@ -22,7 +20,7 @@ namespace SafeExchange.Core.Model.Dto.Output
 
         public bool CanRevokeAccess { get; set; }
 
-        public static CallerPermissionsOutput FromPermissionType(PermissionType permission) => new()
+        public static EffectivePermissionsOutput FromPermissionType(PermissionType permission) => new()
         {
             CanRead = (permission & PermissionType.Read) == PermissionType.Read,
             CanWrite = (permission & PermissionType.Write) == PermissionType.Write,
