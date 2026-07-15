@@ -144,7 +144,7 @@ namespace SafeExchange.Tests
                 Options.Create(this.pinnedSecretsConfig));
 
             this.pinnedSecretsList = new SafeExchangePinnedSecretsList(
-                this.dbContext, this.tokenHelper, this.globalFilters);
+                this.dbContext, this.tokenHelper, this.globalFilters, this.permissionsManager);
         }
 
         [TearDown]
@@ -658,7 +658,7 @@ namespace SafeExchange.Tests
                 .Returns("00000000-0000-0000-0000-999999999999");
             appTokenHelper.Setup(h => h.GetDisplayName(It.IsAny<ClaimsPrincipal>())).Returns(string.Empty);
 
-            var appList = new SafeExchangePinnedSecretsList(this.dbContext, appTokenHelper.Object, this.globalFilters);
+            var appList = new SafeExchangePinnedSecretsList(this.dbContext, appTokenHelper.Object, this.globalFilters, this.permissionsManager);
 
             var appIdentity = new CaseSensitiveClaimsIdentity(new List<Claim>
             {
