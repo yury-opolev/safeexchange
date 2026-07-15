@@ -149,11 +149,9 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
             }
 
-            var permissions = await this.dbContext.Permissions
-                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
-                .ToListAsync();
+            var readableSecrets = await this.permissionsManager.GetReadableSecretsAsync(subjectType, subjectId);
 
-            var names = permissions.Select(p => p.SecretName).Distinct().ToList();
+            var names = readableSecrets.Select(e => e.SecretName).Distinct().ToList();
             var tagMap = new Dictionary<string, List<string>>();
             if (names.Count > 0)
             {
@@ -179,19 +177,26 @@ namespace SafeExchange.Core.Functions
             if (requiredTags.Count > 0)
             {
                 var matched = new HashSet<string>(tagMap.Keys);
-                permissions = permissions.Where(p => matched.Contains(p.SecretName)).ToList();
+                readableSecrets = readableSecrets.Where(e => matched.Contains(e.SecretName)).ToList();
             }
 
-            var dtos = permissions.Select(p =>
+            var dtos = readableSecrets.Select(e => new SecretListItemOutput
             {
-                var dto = p.ToDto();
-                dto.Tags = tagMap.TryGetValue(p.SecretName, out var t) ? t.ToList() : new List<string>();
-                return dto;
+                ObjectName = e.SecretName,
+                SubjectType = subjectType.ToDto(),
+                SubjectName = subjectId,
+                SubjectId = subjectId,
+                CanRead = (e.Direct & PermissionType.Read) == PermissionType.Read,
+                CanWrite = (e.Direct & PermissionType.Write) == PermissionType.Write,
+                CanGrantAccess = (e.Direct & PermissionType.GrantAccess) == PermissionType.GrantAccess,
+                CanRevokeAccess = (e.Direct & PermissionType.RevokeAccess) == PermissionType.RevokeAccess,
+                CallerEffectivePermissions = EffectivePermissionsOutput.FromPermissionType(e.Effective),
+                Tags = tagMap.TryGetValue(e.SecretName, out var t) ? t.ToList() : new List<string>(),
             }).ToList();
 
             return await ActionResults.CreateResponseAsync(
                 request, HttpStatusCode.OK,
-                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                new BaseResponseObject<List<SecretListItemOutput>>
                 {
                     Status = "ok",
                     Result = dtos

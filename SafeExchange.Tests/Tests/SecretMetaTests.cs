@@ -483,7 +483,7 @@ namespace SafeExchange.Tests
             Assert.That(okObjectListResult, Is.Not.Null);
             Assert.That(okObjectListResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var listResponseResult = okObjectListResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var listResponseResult = okObjectListResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(listResponseResult, Is.Not.Null);
             Assert.That(listResponseResult?.Status, Is.EqualTo("ok"));
             Assert.That(listResponseResult?.Error, Is.Null);
@@ -912,7 +912,7 @@ namespace SafeExchange.Tests
             var okResult = listResponse as TestHttpResponseData;
             Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(responseResult, Is.Not.Null);
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
 
@@ -943,7 +943,7 @@ namespace SafeExchange.Tests
             var okResult = listResponse as TestHttpResponseData;
             Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(responseResult?.Result, Is.Not.Null);
 
             var names = responseResult!.Result!.Select(p => p.ObjectName).ToList();
@@ -976,7 +976,7 @@ namespace SafeExchange.Tests
             var okResult = listResponse as TestHttpResponseData;
             Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(responseResult?.Result, Is.Not.Null);
 
             var names = responseResult!.Result!.Select(p => p.ObjectName).ToList();
@@ -998,7 +998,7 @@ namespace SafeExchange.Tests
             var okResult = listResponse as TestHttpResponseData;
             Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(responseResult?.Result, Is.Not.Null);
             Assert.That(responseResult!.Result!.Any(p => p.ObjectName == ab), Is.True);
         }
@@ -1020,7 +1020,7 @@ namespace SafeExchange.Tests
             var okResult = listResponse as TestHttpResponseData;
             Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(responseResult?.Result, Is.Not.Null);
 
             var names = responseResult!.Result!.Select(p => p.ObjectName).ToList();
@@ -1048,7 +1048,7 @@ namespace SafeExchange.Tests
             var okResult = listResponse as TestHttpResponseData;
             Assert.That(okResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            var responseResult = okResult?.ReadBodyAsJson<BaseResponseObject<List<SecretListItemOutput>>>();
             Assert.That(responseResult?.Result, Is.Not.Null);
             Assert.That(responseResult!.Result!.Any(p => p.ObjectName == any), Is.True);
         }
