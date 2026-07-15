@@ -8,9 +8,9 @@
       "Microsoft.EntityFrameworkCore": "Warning",
       "Microsoft.AspNetCore": "Warning",
       "Microsoft.Azure.Functions.Worker": "Warning",
-      "Host.Aggregator": "Warning",
+      "Host.Aggregator": "Information",
       "Host.Function.Console": "Warning",
-      "Host.Results": "Warning",
+      "Host.Results": "Information",
       "SafeExchange.Core": "Information",
       "System.Net.Http.HttpClient": "Warning"
     },
