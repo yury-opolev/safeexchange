@@ -19,7 +19,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeAccessRequest
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeAccessRequest accessRequestHandler;
 

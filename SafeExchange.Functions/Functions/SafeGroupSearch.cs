@@ -16,7 +16,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeGroupSearch
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeGroupSearch safeExchangeGroupSearchHandler;
 

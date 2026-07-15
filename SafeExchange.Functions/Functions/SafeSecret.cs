@@ -19,7 +19,7 @@ namespace SafeExchange.Functions
 
     public class SafeSecret
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeSecretMeta metaHandler;
 
@@ -66,10 +66,12 @@ namespace SafeExchange.Functions
         [Function("SafeExchange-ListSecretMeta")]
         public async Task<HttpResponseData> RunListSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = $"{Version}/secret-list")]
-            HttpRequestData request)
+            HttpRequestData request, string apiVersion)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.metaHandler.RunList(request, principal, this.log);
+            return apiVersion == "v3"
+                ? await this.metaHandler.RunListV3(request, principal, this.log)
+                : await this.metaHandler.RunList(request, principal, this.log);
         }
 
         [Function("SafeExchange-SecretContentMetaCreate")]

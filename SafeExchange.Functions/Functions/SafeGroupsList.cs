@@ -13,7 +13,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeGroupsList
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeGroupsList safeExchangeGroupsListHandler;
 

@@ -14,7 +14,7 @@ namespace SafeExchange.Functions
 
     public class SafeAdminApplications
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private readonly SafeExchangeAdminApplications handler;
         private readonly ILogger log;
