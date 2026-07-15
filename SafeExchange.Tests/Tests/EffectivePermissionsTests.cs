@@ -474,7 +474,7 @@ namespace SafeExchange.Tests
             this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
 
             var request = TestFactory.CreateHttpRequestData("get");
-            var response = await this.secretAccess.Run(request, secret, new ClaimsPrincipal(this.memberIdentity), this.logger) as TestHttpResponseData;
+            var response = await this.secretAccess.Run(request, secret, new ClaimsPrincipal(this.memberIdentity), this.logger, enrichedAccessList: true) as TestHttpResponseData;
 
             Assert.That(response, Is.Not.Null);
             Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
@@ -489,6 +489,38 @@ namespace SafeExchange.Tests
             Assert.That(memberRow, Is.Not.Null, "The access list reports each subject's actual permissions.");
             Assert.That(memberRow!.CanRead, Is.True);
             Assert.That(memberRow.CanWrite, Is.False, "The access list keeps the member's actual direct grant, not the effective one.");
+        }
+
+        [Test]
+        public async Task RunList_V2_ExcludesGroupOnlySecret()
+        {
+            const string secret = "v2-grouponly";
+            await this.CreateSecret(this.ownerIdentity, secret);
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Read | PermissionType.Write);
+
+            var request = TestFactory.CreateHttpRequestData("get");
+            var response = await this.secretMeta.RunList(request, new ClaimsPrincipal(this.memberIdentity), this.logger) as TestHttpResponseData;
+
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var body = response.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(body?.Result?.Any(p => p.ObjectName == secret), Is.False,
+                "v2 secret-list must stay direct-only — no group-only secrets.");
+        }
+
+        [Test]
+        public async Task GetAccessList_V2_ReturnsPlainArray()
+        {
+            const string secret = "v2-access-array";
+            await this.CreateSecret(this.ownerIdentity, secret);
+
+            var request = TestFactory.CreateHttpRequestData("get");
+            var response = await this.secretAccess.Run(request, secret, new ClaimsPrincipal(this.ownerIdentity), this.logger) as TestHttpResponseData;
+
+            Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var body = response.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
+            Assert.That(body?.Result, Is.Not.Null, "v2 access must return a plain array of subject permissions.");
+            Assert.That(body!.Result!.Any(p => p.SubjectId == "owner@test.test" && p.CanWrite), Is.True);
         }
 
         // ---- Helpers -----------------------------------------------------------------------
@@ -566,7 +598,7 @@ namespace SafeExchange.Tests
         private async Task<SecretListItemOutput?> ListSecretAsync(CaseSensitiveClaimsIdentity identity, string secretName)
         {
             var request = TestFactory.CreateHttpRequestData("get");
-            var response = await this.secretMeta.RunList(request, new ClaimsPrincipal(identity), this.logger) as TestHttpResponseData;
+            var response = await this.secretMeta.RunListV3(request, new ClaimsPrincipal(identity), this.logger) as TestHttpResponseData;
 
             Assert.That(response, Is.Not.Null);
             Assert.That(response!.StatusCode, Is.EqualTo(HttpStatusCode.OK));

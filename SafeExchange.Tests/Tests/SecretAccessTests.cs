@@ -245,11 +245,11 @@ namespace SafeExchange.Tests
             Assert.That(okObjectResult, Is.Not.Null);
             Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<AccessListOutput>>();
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            var permissions = responseResult?.Result?.AccessList;
+            var permissions = responseResult?.Result;
             if (permissions == null)
             {
                 throw new AssertionException("Returned permissions are null.");
@@ -289,11 +289,11 @@ namespace SafeExchange.Tests
             Assert.That(okObjectResult, Is.Not.Null);
             Assert.That(okObjectResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<AccessListOutput>>();
+            var responseResult = okObjectResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            var permissions = responseResult?.Result?.AccessList;
+            var permissions = responseResult?.Result;
             if (permissions == null)
             {
                 throw new AssertionException("Returned permissions are null.");
@@ -532,11 +532,11 @@ namespace SafeExchange.Tests
             Assert.That(okObjectAccessResult, Is.Not.Null);
             Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<AccessListOutput>>();
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            var permissions = responseResult?.Result?.AccessList;
+            var permissions = responseResult?.Result;
             if (permissions == null)
             {
                 throw new AssertionException("Permissions list is null.");
@@ -791,11 +791,11 @@ namespace SafeExchange.Tests
             Assert.That(okObjectAccessResult, Is.Not.Null);
             Assert.That(okObjectAccessResult?.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<AccessListOutput>>();
+            var responseResult = okObjectAccessResult?.ReadBodyAsJson<BaseResponseObject<List<SubjectPermissionsOutput>>>();
             Assert.That(responseResult?.Status, Is.EqualTo("ok"));
             Assert.That(responseResult?.Error, Is.Null);
 
-            var permissions = responseResult?.Result?.AccessList;
+            var permissions = responseResult?.Result;
             if (permissions == null)
             {
                 throw new AssertionException("Permissions list is null.");

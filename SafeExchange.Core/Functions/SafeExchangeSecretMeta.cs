@@ -130,17 +130,80 @@ namespace SafeExchange.Core.Functions
             }
         }
 
+        public async Task<HttpResponseData> RunListV3(
+            HttpRequestData request, ClaimsPrincipal principal, ILogger log)
+        {
+            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
+            if (shouldReturn)
+            {
+                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
+
+            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
+            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
+            {
+                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
+            }
+
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunListV3)} triggered by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
+
+            switch (request.Method.ToLower())
+            {
+                case "get":
+                    return await this.HandleListSecretMetaV3(request, subjectType, subjectId, log);
+
+                default:
+                    return await ActionResults.CreateResponseAsync(
+                        request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
+            }
+        }
+
         private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
-            var rawTags = Array.Empty<string>();
-            var query = request.Url?.Query;
-            if (!string.IsNullOrEmpty(query))
+            var (tagsOk, requiredTags, tagsError) = TryGetRequiredTags(request);
+            if (!tagsOk)
             {
-                rawTags = System.Web.HttpUtility.ParseQueryString(query).GetValues("tag") ?? Array.Empty<string>();
+                log.LogInformation($"Invalid tag filter: {tagsError}.");
+                return await ActionResults.CreateResponseAsync(
+                    request, HttpStatusCode.BadRequest,
+                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
             }
 
-            var (tagsOk, requiredTags, tagsError) = TagValidator.TryNormalizeList(rawTags);
+            var permissions = await this.dbContext.Permissions
+                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
+                .ToListAsync();
+
+            var names = permissions.Select(p => p.SecretName).Distinct().ToList();
+            var tagMap = await this.LoadTagMapAsync(names, requiredTags);
+
+            if (requiredTags.Count > 0)
+            {
+                var matched = new HashSet<string>(tagMap.Keys);
+                permissions = permissions.Where(p => matched.Contains(p.SecretName)).ToList();
+            }
+
+            var dtos = permissions.Select(p =>
+            {
+                var dto = p.ToDto();
+                dto.Tags = tagMap.TryGetValue(p.SecretName, out var t) ? t.ToList() : new List<string>();
+                return dto;
+            }).ToList();
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                {
+                    Status = "ok",
+                    Result = dtos
+                });
+        }, nameof(HandleListSecretMeta), log);
+
+        private async Task<HttpResponseData> HandleListSecretMetaV3(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
+            => await ActionResults.TryCatchAsync(request, async () =>
+        {
+            var (tagsOk, requiredTags, tagsError) = TryGetRequiredTags(request);
             if (!tagsOk)
             {
                 log.LogInformation($"Invalid tag filter: {tagsError}.");
@@ -152,27 +215,7 @@ namespace SafeExchange.Core.Functions
             var readableSecrets = await this.permissionsManager.GetReadableSecretsAsync(subjectType, subjectId);
 
             var names = readableSecrets.Select(e => e.SecretName).Distinct().ToList();
-            var tagMap = new Dictionary<string, List<string>>();
-            if (names.Count > 0)
-            {
-                IQueryable<ObjectMetadata> tagQuery = this.dbContext.Objects
-                    .Where(o => names.Contains(o.ObjectName));
-
-                foreach (var rt in requiredTags)
-                {
-                    var tag = rt; // local capture so closure binds correctly
-                    tagQuery = tagQuery.Where(o => o.Tags.Contains(tag));
-                }
-
-                var tagPairs = await tagQuery
-                    .Select(o => new { o.ObjectName, o.Tags })
-                    .ToListAsync();
-
-                foreach (var pair in tagPairs)
-                {
-                    tagMap[pair.ObjectName] = pair.Tags?.ToList() ?? new List<string>();
-                }
-            }
+            var tagMap = await this.LoadTagMapAsync(names, requiredTags);
 
             if (requiredTags.Count > 0)
             {
@@ -201,8 +244,48 @@ namespace SafeExchange.Core.Functions
                     Status = "ok",
                     Result = dtos
                 });
+        }, nameof(HandleListSecretMetaV3), log);
 
-        }, nameof(HandleListSecretMeta), log);
+        private static (bool ok, IReadOnlyList<string> requiredTags, string? error) TryGetRequiredTags(HttpRequestData request)
+        {
+            var rawTags = Array.Empty<string>();
+            var query = request.Url?.Query;
+            if (!string.IsNullOrEmpty(query))
+            {
+                rawTags = System.Web.HttpUtility.ParseQueryString(query).GetValues("tag") ?? Array.Empty<string>();
+            }
+
+            return TagValidator.TryNormalizeList(rawTags);
+        }
+
+        private async Task<Dictionary<string, List<string>>> LoadTagMapAsync(List<string> names, IReadOnlyList<string> requiredTags)
+        {
+            var tagMap = new Dictionary<string, List<string>>();
+            if (names.Count == 0)
+            {
+                return tagMap;
+            }
+
+            IQueryable<ObjectMetadata> tagQuery = this.dbContext.Objects
+                .Where(o => names.Contains(o.ObjectName));
+
+            foreach (var rt in requiredTags)
+            {
+                var tag = rt; // local capture so closure binds correctly
+                tagQuery = tagQuery.Where(o => o.Tags.Contains(tag));
+            }
+
+            var tagPairs = await tagQuery
+                .Select(o => new { o.ObjectName, o.Tags })
+                .ToListAsync();
+
+            foreach (var pair in tagPairs)
+            {
+                tagMap[pair.ObjectName] = pair.Tags?.ToList() ?? new List<string>();
+            }
+
+            return tagMap;
+        }
 
         private async Task<HttpResponseData> HandleSecretMetaCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>

@@ -15,7 +15,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeTelemetryConfig
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeTelemetryConfig safeExchangeTelemetryConfigHandler;
 

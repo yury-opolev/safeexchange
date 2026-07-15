@@ -13,7 +13,7 @@ namespace SafeExchange.Functions.AdminFunctions
 
     public class SafeAdminWebhookSubscriptionsList
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeWebhookSubscriptionsList safeExchangeWebhookSubscriptionsListHandler;
 

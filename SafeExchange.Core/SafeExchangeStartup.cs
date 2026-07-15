@@ -59,6 +59,9 @@ namespace SafeExchange.Core
             // but before any handler logs so downstream ILogger scopes
             // inherit the x-saex-session-id correlation.
             builder.UseWhen<SessionCorrelationMiddleware>(IsHttpTrigger);
+
+            // Records the {apiVersion} route segment so v2-vs-v3 traffic can be measured.
+            builder.UseWhen<ApiVersionTelemetryMiddleware>(IsHttpTrigger);
         }
 
         // The categories below are emitted inside the isolated worker process —
@@ -218,6 +221,7 @@ namespace SafeExchange.Core
             // in tandem with SessionCorrelationMiddleware (which sets the
             // AsyncLocal for the duration of the request handler).
             services.AddSingleton<ITelemetryInitializer, SessionCorrelationTelemetryInitializer>();
+            services.AddSingleton<ITelemetryInitializer, ApiVersionTelemetryInitializer>();
 
             // Stamps customDimensions.saex.telemetryId — a pseudonymous, weekly-rotating
             // id — on every telemetry item so traces can be correlated per user without

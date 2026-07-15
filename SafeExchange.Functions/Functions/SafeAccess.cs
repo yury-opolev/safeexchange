@@ -19,7 +19,7 @@ namespace SafeExchange.Functions
 
     public class SafeAccess
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private SafeExchangeAccess accessHandler;
 
@@ -46,10 +46,11 @@ namespace SafeExchange.Functions
         public async Task<HttpResponseData> RunSecret(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", "patch", Route = $"{Version}/access/{{secretId}}")]
             HttpRequestData request,
+            string apiVersion,
             string secretId)
         {
             var principal = request.FunctionContext.GetPrincipal();
-            return await this.accessHandler.Run(request, secretId, principal, this.log);
+            return await this.accessHandler.Run(request, secretId, principal, this.log, enrichedAccessList: apiVersion == "v3");
         }
     }
 }

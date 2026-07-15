@@ -62,7 +62,7 @@ namespace SafeExchange.Core.Functions
 
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
-            string secretId, ClaimsPrincipal principal, ILogger log)
+            string secretId, ClaimsPrincipal principal, ILogger log, bool enrichedAccessList = false)
         {
             var (shouldReturn, filterResponse) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
             if (shouldReturn)
@@ -113,7 +113,9 @@ namespace SafeExchange.Core.Functions
                                 ActionResults.InsufficientPermissions(PermissionType.Read, secretId, consentRequired ? GraphDataProvider.ConsentRequiredSubStatus : string.Empty));
                         }
 
-                        return await this.GetAccessListAsync(request, existingMetadata.ObjectName, subjectType, subjectId, log);
+                        return enrichedAccessList
+                            ? await this.GetEnrichedAccessListAsync(request, existingMetadata.ObjectName, subjectType, subjectId, log)
+                            : await this.GetAccessListAsync(request, existingMetadata.ObjectName, log);
                     }
 
                 case "delete":
@@ -340,7 +342,21 @@ namespace SafeExchange.Core.Functions
             await this.permissionsManager.SetPermissionAsync(SubjectType.Group, existingGroup.GroupId, existingGroup.DisplayName, secretId, permission);
         }
 
-        private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
+        private async Task<HttpResponseData> GetAccessListAsync(HttpRequestData request, string secretId, ILogger log)
+            => await ActionResults.TryCatchAsync(request, async () =>
+        {
+            var existingPermissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretId)).ToListAsync();
+
+            return await ActionResults.CreateResponseAsync(
+                request, HttpStatusCode.OK,
+                new BaseResponseObject<List<SubjectPermissionsOutput>>
+                {
+                    Status = "ok",
+                    Result = existingPermissions.Select(p => p.ToDto()).ToList()
+                });
+        }, nameof(GetAccessListAsync), log);
+
+        private async Task<HttpResponseData> GetEnrichedAccessListAsync(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>
         {
             var existingPermissions = await this.dbContext.Permissions.Where(p => p.SecretName.Equals(secretId)).ToListAsync();
@@ -357,7 +373,7 @@ namespace SafeExchange.Core.Functions
                         CallerEffectivePermissions = EffectivePermissionsOutput.FromPermissionType(effective)
                     }
                 });
-        }, nameof(GetAccessListAsync), log);
+        }, nameof(GetEnrichedAccessListAsync), log);
 
         private async Task<HttpResponseData> RevokeAccessAsync(ObjectMetadata secret, HttpRequestData request, SubjectType actorType, string actorId, ILogger log)
             => await ActionResults.TryCatchAsync(request, async () =>

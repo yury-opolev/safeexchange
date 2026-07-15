@@ -20,7 +20,7 @@ namespace SafeExchange.Functions
 
     public class SafeS2SApps
     {
-        private const string Version = "v2";
+        private const string Version = "{apiVersion}";
 
         private readonly SafeExchangeS2SApps handler;
         private readonly ILogger log;
