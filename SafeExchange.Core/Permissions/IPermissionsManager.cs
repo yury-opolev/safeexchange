@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Permissions
 {
+    using System.Collections.Generic;
     using System.Threading.Tasks;
     using SafeExchange.Core.Model;
 
@@ -96,5 +97,27 @@ namespace SafeExchange.Core.Permissions
         /// <param name="subjectId">Specified subject id.</param>
         /// <returns>Task, representing asynchronous operation.</returns>
         public Task<SubjectPermissions?> GetSubjectPermissionsAsync(string secretName, SubjectType subjectType, string subjectId);
+
+        /// <summary>
+        /// Calculates the permissions effective for the specified subject on the specified secret:
+        /// the union of the subject's direct grant and any grant inherited through group membership.
+        /// Reuses the same consent and group-membership rules as the authorization checks, so
+        /// capability discovery cannot disagree with authorization.
+        /// </summary>
+        /// <param name="subjectType">Specified subject type.</param>
+        /// <param name="subjectId">Specified subject id.</param>
+        /// <param name="secretId">Specified secret id.</param>
+        /// <returns>The effective permission flags for the subject on the secret.</returns>
+        public Task<PermissionType> GetEffectivePermissionsAsync(SubjectType subjectType, string subjectId, string secretId);
+
+        /// <summary>
+        /// Returns every secret the specified subject can effectively read (via a direct grant or a
+        /// grant inherited through group membership), each with its aggregated effective permissions.
+        /// One result per secret — overlapping direct and group grants never produce duplicates.
+        /// </summary>
+        /// <param name="subjectType">Specified subject type.</param>
+        /// <param name="subjectId">Specified subject id.</param>
+        /// <returns>The readable secrets with their effective permissions.</returns>
+        public Task<IReadOnlyList<EffectiveSecretPermissions>> GetReadableSecretsAsync(SubjectType subjectType, string subjectId);
     }
 }

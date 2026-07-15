@@ -292,14 +292,14 @@ namespace SafeExchange.Core.Permissions
 
             if (existingUser.ConsentRequired)
             {
-                this.logger.LogInformation($"User '{userName}' has not consented to the AAD application to get group memberships, cannot authorize via groups.");
+                this.logger.LogInformation($"Subject 'User (tid {TelemetryContext.Current})' has not consented to the AAD application to get group memberships, cannot authorize via groups.");
                 return false;
             }
 
             var userGroups = existingUser.Groups;
             if (userGroups == default || userGroups.Count == 0)
             {
-                this.logger.LogInformation($"User '{userName}' does not have any group memberships, cannot authorize via groups.");
+                this.logger.LogInformation($"Subject 'User (tid {TelemetryContext.Current})' does not have any group memberships, cannot authorize via groups.");
                 return false;
             }
 
@@ -309,12 +309,12 @@ namespace SafeExchange.Core.Permissions
                 var foundGroup = userGroups.FirstOrDefault(g => g.AadGroupId.Equals(groupPermission.SubjectId));
                 if (foundGroup != default && IsPresentPermission(groupPermission, permission))
                 {
-                    this.logger.LogInformation($"User '{userName}' has {permission} permissions for '{secretName}' via group {groupPermission.SubjectName} ({foundGroup.AadGroupId}).");
+                    this.logger.LogInformation($"Subject 'User (tid {TelemetryContext.Current})' has {permission} permissions for '{secretName}' via group {groupPermission.SubjectName} ({foundGroup.AadGroupId}).");
                     return true;
                 }
             }
 
-            this.logger.LogInformation($"User '{userName}' does not have {permission} permissions for '{secretName}' via groups ({userGroups.Count} groups total).");
+            this.logger.LogInformation($"Subject 'User (tid {TelemetryContext.Current})' does not have {permission} permissions for '{secretName}' via groups ({userGroups.Count} groups total).");
             return false;
         }
 
@@ -368,6 +368,101 @@ namespace SafeExchange.Core.Permissions
                 .ToListAsync();
 
             return groupRows.Any(r => r.CanRead || r.CanWrite || r.CanGrantAccess || r.CanRevokeAccess);
+        }
+
+        public async Task<PermissionType> GetEffectivePermissionsAsync(SubjectType subjectType, string subjectId, string secretId)
+        {
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
+
+            var effective = ToPermissionType(await this.GetSubjectPermissionsAsync(secretId, subjectType, subjectId));
+
+            if (subjectType == SubjectType.User && this.features.UseGroupsAuthorization)
+            {
+                effective |= await this.GetGroupDerivedPermissionsAsync(subjectId, secretId);
+            }
+
+            return effective;
+        }
+
+        public async Task<IReadOnlyList<EffectiveSecretPermissions>> GetReadableSecretsAsync(SubjectType subjectType, string subjectId)
+        {
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
+
+            var effectiveBySecret = new Dictionary<string, PermissionType>(StringComparer.Ordinal);
+
+            var directRows = await this.dbContext.Permissions
+                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId))
+                .ToListAsync();
+            foreach (var row in directRows)
+            {
+                AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
+            }
+
+            // Fold in every secret shared with a group the caller belongs to, reusing the same
+            // consent and group-membership rules as the authorization path, so capability
+            // discovery cannot disagree with authorization.
+            if (subjectType == SubjectType.User && this.features.UseGroupsAuthorization)
+            {
+                var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
+                if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
+                {
+                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToList();
+                    var groupRows = await this.dbContext.Permissions
+                        .Where(p => p.SubjectType.Equals(SubjectType.Group) && groupIds.Contains(p.SubjectId))
+                        .ToListAsync();
+                    foreach (var row in groupRows)
+                    {
+                        AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
+                    }
+                }
+            }
+
+            // Only surface secrets the caller can effectively read; one aggregated result per
+            // secret, so overlapping direct and group grants never yield duplicate rows.
+            return effectiveBySecret
+                .Where(kvp => (kvp.Value & PermissionType.Read) == PermissionType.Read)
+                .Select(kvp => new EffectiveSecretPermissions(kvp.Key, kvp.Value))
+                .ToList();
+        }
+
+        private async Task<PermissionType> GetGroupDerivedPermissionsAsync(string userId, string secretName)
+        {
+            var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(userId));
+            if (existingUser is null || existingUser.ConsentRequired)
+            {
+                return PermissionType.None;
+            }
+
+            var userGroups = existingUser.Groups;
+            if (userGroups is not { Count: > 0 })
+            {
+                return PermissionType.None;
+            }
+
+            var groupIds = userGroups.Select(g => g.AadGroupId).ToHashSet();
+            var groupPermissions = await this.GetGroupPermissionsAsync(secretName);
+
+            var effective = PermissionType.None;
+            foreach (var groupPermission in groupPermissions)
+            {
+                if (groupIds.Contains(groupPermission.SubjectId))
+                {
+                    effective |= ToPermissionType(groupPermission);
+                }
+            }
+
+            return effective;
+        }
+
+        private static void AccumulatePermission(Dictionary<string, PermissionType> effectiveBySecret, string secretName, PermissionType permission)
+        {
+            effectiveBySecret[secretName] = (effectiveBySecret.TryGetValue(secretName, out var existing) ? existing : PermissionType.None) | permission;
         }
     }
 }
