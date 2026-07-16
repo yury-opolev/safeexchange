@@ -121,10 +121,11 @@
             "defaultValue": "aadOnly",
             "type": "string",
             "allowedValues": [
-                "aadOnly"
+                "aadOnly",
+                "privateLink"
             ],
             "metadata": {
-                "description": "Network/auth isolation for the BACKEND Application Insights. 'aadOnly' keeps public ingestion but disables local (connection-string) auth so only the Function App managed identity (granted Monitoring Metrics Publisher) can send telemetry — cheap, no private link. A future 'privateLink' value will additionally provision an Azure Monitor Private Link Scope + private endpoint + private DNS and disable public ingestion/query for full network isolation (extra cost); it is intentionally NOT yet an allowed value until those resources are added and validated, so the switch can never leave the backend AI with public access disabled but no private endpoint (which would break telemetry). Application Insights does not support the cheaper service-endpoint/VNet-rule isolation used by storage/Cosmos/Key Vault."
+                "description": "Network/auth isolation for the BACKEND Application Insights. 'aadOnly' keeps public ingestion but disables local (connection-string) auth so only the Function App managed identity (granted Monitoring Metrics Publisher) can send telemetry — cheap, no private link. 'privateLink' additionally provisions an Azure Monitor Private Link Scope (AMPLS) with the backend AI component and its Log Analytics workspace as scoped resources, an 'azuremonitor' private endpoint in snet-privateendpoints, the full Azure Monitor private-DNS-zone set (monitor/oms/ods/agentsvc + the shared blob zone) with vnet links and a zone group, and sets AMPLS access modes plus the AI/workspace public ingestion+query to PrivateOnly/Disabled for full VNet network isolation (extra cost). Application Insights does not support the cheaper service-endpoint/VNet-rule isolation used by storage/Cosmos/Key Vault. The browser (public) Application Insights is never scoped in and stays publicly reachable."
             }
         },
         "settings-aadClient-clientId": {
@@ -390,6 +391,10 @@
         "privateDnsZone_table": "privatelink.table.core.windows.net",
         "privateDnsZone_file": "privatelink.file.core.windows.net",
         "privateDnsZone_vault": "privatelink.vaultcore.azure.net",
+        "privateDnsZone_monitor": "privatelink.monitor.azure.com",
+        "privateDnsZone_oms": "privatelink.oms.opinsights.azure.com",
+        "privateDnsZone_ods": "privatelink.ods.opinsights.azure.com",
+        "privateDnsZone_agentsvc": "privatelink.agentsvc.azure-automation.net",
 
         "pe_cosmosdb_name": "[parameters('safeexchange_cosmosdb_pe_name')]",
         "pe_datastorage_blob_name": "[concat(parameters('safeexchange_data_storage_name'), '-blob-pe')]",
@@ -399,6 +404,8 @@
         "pe_wjstorage_table_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-table-pe')]",
         "pe_wjstorage_file_name": "[concat(parameters('safeexchange_webjobsstorage_name'), '-file-pe')]",
         "pe_keyvault_name": "[parameters('safeexchange_keyvault_pe_name')]",
+        "ampls_name": "[concat(parameters('safeexchange_appinsights_name'), '-ampls')]",
+        "pe_ampls_name": "[concat(parameters('safeexchange_appinsights_name'), '-ampls-pe')]",
 
         "storage_role_tableDataContributor": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
 
@@ -411,7 +418,8 @@
         "is_kv_se_mode": "[equals(parameters('keyvault_isolation_mode'), 'serviceEndpoint')]",
         "is_cdb_pe_mode": "[equals(parameters('cosmosdb_isolation_mode'), 'privateEndpoints')]",
         "is_cdb_se_mode": "[equals(parameters('cosmosdb_isolation_mode'), 'serviceEndpoint')]",
-        "need_storage_data_zones": "[or(variables('is_wjs_pe_mode'), variables('is_ds_pe_mode'))]"
+        "need_storage_data_zones": "[or(variables('is_wjs_pe_mode'), variables('is_ds_pe_mode'))]",
+        "need_blob_zone": "[or(variables('need_storage_data_zones'), variables('is_backend_ai_privatelink'))]"
     },
     "resources": [
         {
@@ -429,7 +437,9 @@
                 },
                 "features": {
                     "enableLogAccessUsingOnlyResourcePermissions": "[variables('appinsights_workspace_resource_permissions')]"
-                }
+                },
+                "publicNetworkAccessForIngestion": "[if(variables('is_backend_ai_privatelink'), 'Disabled', 'Enabled')]",
+                "publicNetworkAccessForQuery": "[if(variables('is_backend_ai_privatelink'), 'Disabled', 'Enabled')]"
             }
         },
         {
@@ -602,6 +612,218 @@
             },
             "dependsOn": [
                 "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Insights/privateLinkScopes",
+            "apiVersion": "2021-07-01-preview",
+            "name": "[variables('ampls_name')]",
+            "location": "global",
+            "properties": {
+                "accessModeSettings": {
+                    "ingestionAccessMode": "PrivateOnly",
+                    "queryAccessMode": "PrivateOnly"
+                }
+            }
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Insights/privateLinkScopes/scopedResources",
+            "apiVersion": "2021-07-01-preview",
+            "name": "[concat(variables('ampls_name'), '/', parameters('safeexchange_appinsights_name'), '-connection')]",
+            "properties": {
+                "linkedResourceId": "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Insights/privateLinkScopes', variables('ampls_name'))]",
+                "[resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Insights/privateLinkScopes/scopedResources",
+            "apiVersion": "2021-07-01-preview",
+            "name": "[concat(variables('ampls_name'), '/', parameters('appinsights_workspace_name'), '-connection')]",
+            "properties": {
+                "linkedResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Insights/privateLinkScopes', variables('ampls_name'))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_monitor')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_oms')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_ods')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('privateDnsZone_agentsvc')]",
+            "location": "global",
+            "properties": {}
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_monitor'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_monitor'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_oms'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_oms'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_ods'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_ods'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('privateDnsZone_agentsvc'), '/', parameters('safeexchange_vnet_name'), '-link')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_agentsvc'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2023-09-01",
+            "name": "[variables('pe_ampls_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('safeexchange_vnet_name'), variables('subnet_privateendpoints_name'))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('pe_ampls_name')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Insights/privateLinkScopes', variables('ampls_name'))]",
+                            "groupIds": [ "azuremonitor" ]
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('safeexchange_vnet_name'))]",
+                "[resourceId('Microsoft.Insights/privateLinkScopes', variables('ampls_name'))]"
+            ]
+        },
+        {
+            "condition": "[variables('is_backend_ai_privatelink')]",
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2023-09-01",
+            "name": "[concat(variables('pe_ampls_name'), '/default')]",
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "monitor-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_monitor'))]"
+                        }
+                    },
+                    {
+                        "name": "oms-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_oms'))]"
+                        }
+                    },
+                    {
+                        "name": "ods-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_ods'))]"
+                        }
+                    },
+                    {
+                        "name": "agentsvc-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_agentsvc'))]"
+                        }
+                    },
+                    {
+                        "name": "blob-config",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZone_blob'))]"
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('pe_ampls_name'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_monitor'), concat(parameters('safeexchange_vnet_name'), '-link'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_oms'), concat(parameters('safeexchange_vnet_name'), '-link'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_ods'), concat(parameters('safeexchange_vnet_name'), '-link'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_agentsvc'), concat(parameters('safeexchange_vnet_name'), '-link'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('privateDnsZone_blob'), concat(parameters('safeexchange_vnet_name'), '-link'))]"
             ]
         },
         {
@@ -933,7 +1155,7 @@
             "properties": {}
         },
         {
-            "condition": "[variables('need_storage_data_zones')]",
+            "condition": "[variables('need_blob_zone')]",
             "type": "Microsoft.Network/privateDnsZones",
             "apiVersion": "2020-06-01",
             "name": "[variables('privateDnsZone_blob')]",
@@ -991,7 +1213,7 @@
             ]
         },
         {
-            "condition": "[variables('need_storage_data_zones')]",
+            "condition": "[variables('need_blob_zone')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('privateDnsZone_blob'), '/', parameters('safeexchange_vnet_name'), '-link')]",
