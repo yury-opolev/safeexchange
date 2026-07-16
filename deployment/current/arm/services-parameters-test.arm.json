@@ -59,6 +59,9 @@
         "cosmosdb_isolation_mode": {
             "value": "serviceEndpoint"
         },
+        "backend_appinsights_isolation_mode": {
+            "value": "aadOnly"
+        },
         "provision_nat_gateway": {
             "value": false
         }

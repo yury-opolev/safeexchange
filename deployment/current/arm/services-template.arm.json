@@ -103,6 +103,30 @@
                 "description": "Log analytics workspace name."
             }
         },
+        "browser_appinsights_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-client-insights')]",
+            "type": "string",
+            "metadata": {
+                "description": "Application Insights component for browser/client-side telemetry. A separate resource so the public, browser-facing ingestion endpoint is isolated from backend telemetry and can be independently daily-capped."
+            }
+        },
+        "browser_appinsights_workspace_name": {
+            "defaultValue": "[concat(parameters('safeexchange_site_name'), '-client-la-workspace')]",
+            "type": "string",
+            "metadata": {
+                "description": "Dedicated Log Analytics workspace backing the browser Application Insights, hard-capped via workspaceCapping.dailyQuotaGb to bound cost/abuse on the public ingestion endpoint."
+            }
+        },
+        "backend_appinsights_isolation_mode": {
+            "defaultValue": "aadOnly",
+            "type": "string",
+            "allowedValues": [
+                "aadOnly"
+            ],
+            "metadata": {
+                "description": "Network/auth isolation for the BACKEND Application Insights. 'aadOnly' keeps public ingestion but disables local (connection-string) auth so only the Function App managed identity (granted Monitoring Metrics Publisher) can send telemetry — cheap, no private link. A future 'privateLink' value will additionally provision an Azure Monitor Private Link Scope + private endpoint + private DNS and disable public ingestion/query for full network isolation (extra cost); it is intentionally NOT yet an allowed value until those resources are added and validated, so the switch can never leave the backend AI with public access disabled but no private endpoint (which would break telemetry). Application Insights does not support the cheaper service-endpoint/VNet-rule isolation used by storage/Cosmos/Key Vault."
+            }
+        },
         "settings-aadClient-clientId": {
             "type": "string",
             "metadata": {
@@ -352,6 +376,8 @@
         "appinsights_workspace_retention_days": 90,
         "appinsights_workspace_resource_permissions": true,
         "appinsights_workspace_daily_quota_gb": "[json('0.1')]",
+        "browser_appinsights_workspace_daily_quota_gb": "[json('0.023')]",
+        "is_backend_ai_privatelink": "[equals(parameters('backend_appinsights_isolation_mode'), 'privateLink')]",
 
         "subnet_functionapp_name": "snet-functionapp",
         "subnet_functionapp_prefix": "10.0.0.0/24",
@@ -570,12 +596,49 @@
                 "RetentionInDays": 90,
                 "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]",
                 "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "[if(variables('is_backend_ai_privatelink'), 'Disabled', 'Enabled')]",
+                "publicNetworkAccessForQuery": "[if(variables('is_backend_ai_privatelink'), 'Disabled', 'Enabled')]",
+                "DisableLocalAuth": true
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2021-12-01-preview",
+            "name": "[parameters('browser_appinsights_workspace_name')]",
+            "location": "[parameters('default_location')]",
+            "properties": {
+                "sku": {
+                    "name": "PerGB2018"
+                },
+                "retentionInDays": "[variables('appinsights_workspace_retention_days')]",
+                "workspaceCapping": {
+                    "dailyQuotaGb": "[variables('browser_appinsights_workspace_daily_quota_gb')]"
+                },
+                "features": {
+                    "enableLogAccessUsingOnlyResourcePermissions": "[variables('appinsights_workspace_resource_permissions')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Insights/components",
+            "apiVersion": "2020-02-02",
+            "name": "[parameters('browser_appinsights_name')]",
+            "location": "[parameters('default_location')]",
+            "kind": "web",
+            "properties": {
+                "Application_Type": "web",
+                "RetentionInDays": 90,
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('browser_appinsights_workspace_name'))]",
+                "IngestionMode": "LogAnalytics",
                 "publicNetworkAccessForIngestion": "Enabled",
                 "publicNetworkAccessForQuery": "Enabled",
                 "DisableLocalAuth": false
             },
             "dependsOn": [
-                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('appinsights_workspace_name'))]"
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('browser_appinsights_workspace_name'))]"
             ]
         },
         {
@@ -1517,6 +1580,23 @@
             }
         },
         {
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/WebClientTelemetry--ConnectionString')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]",
+                "[resourceId('Microsoft.Insights/components', parameters('browser_appinsights_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[reference(resourceId('Microsoft.Insights/components', parameters('browser_appinsights_name')), '2020-02-02').ConnectionString]"
+            }
+        },
+        {
             "condition": "[not(empty(parameters('settings-aadClient-clientSecret')))]",
             "type": "Microsoft.KeyVault/vaults/secrets",
             "apiVersion": "2023-02-01",
@@ -2127,6 +2207,10 @@
                         {
                             "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
                             "value": "[reference(resourceId('Microsoft.Insights/components', parameters('safeexchange_appinsights_name')), '2020-02-02').ConnectionString]"
+                        },
+                        {
+                            "name": "APPLICATIONINSIGHTS_AUTHENTICATION_STRING",
+                            "value": "Authorization=AAD"
                         },
                         {
                             "name": "AzureWebJobsStorage__accountname",
