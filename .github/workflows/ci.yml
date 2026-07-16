@@ -15,12 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Well-known, PUBLIC Cosmos DB emulator connection string: the universal
-  # emulator account key plus DisableServerCertificateValidation=True, so no TLS
-  # cert has to be trusted on the runner. This is NOT a secret. The test
-  # ConfigurationBuilder only reads user-secrets (not environment variables), so
-  # the value is written into user-secrets before the suite runs.
-  COSMOS_CONNECTION_STRING: "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==;DisableServerCertificateValidation=True"
+  # Well-known, PUBLIC Cosmos DB emulator connection string. The vNext-preview
+  # emulator serves the gateway over plain HTTP, so the endpoint is http:// and
+  # no TLS cert has to be trusted on the runner. The account key is the universal
+  # emulator key - not a secret. The test ConfigurationBuilder only reads
+  # user-secrets (not environment variables), so the value is written into
+  # user-secrets before the suite runs.
+  COSMOS_CONNECTION_STRING: "AccountEndpoint=http://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
 
 jobs:
   build-test:
@@ -34,24 +35,29 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # The tests require Gateway mode, which the vNext-preview Linux emulator
-      # supports (the classic emulator's Direct mode fails replica-set
-      # negotiation). Only the 8081 gateway port is needed because the test
-      # client sets LimitToEndpoint=true.
+      # Start the emulator early (detached) so it boots while we restore + build.
+      # The tests require Gateway mode; this vNext emulator is Gateway-only and
+      # serves the gateway over plain HTTP on 8081, with a health endpoint on
+      # 8080. Only these two ports are needed (the test client sets
+      # LimitToEndpoint=true).
       - name: Start Cosmos DB emulator (Linux vNext-preview)
         run: |
           docker run --detach --name cosmos-emulator \
-            --publish 8081:8081 \
+            --publish 8081:8081 --publish 8080:8080 \
             mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+
+      - name: Restore
+        run: dotnet restore SafeExchange.slnx
+
+      - name: Build
+        run: dotnet build SafeExchange.slnx -c Release --no-restore
 
       - name: Wait for Cosmos emulator
         run: |
-          echo "Waiting for Cosmos emulator on https://localhost:8081 ..."
+          echo "Waiting for Cosmos emulator readiness on http://localhost:8080/ready ..."
           for i in $(seq 1 60); do
-            if curl -k --silent --output /dev/null --max-time 5 https://localhost:8081/; then
-              echo "Emulator responded on attempt $i."
-              # Small grace period so gateway is ready for data-plane operations.
-              sleep 10
+            if curl -s --max-time 5 http://localhost:8080/ready | grep -q '"ready": *true'; then
+              echo "Emulator ready on attempt $i."
               exit 0
             fi
             sleep 5
@@ -59,12 +65,6 @@ jobs:
           echo "::error::Cosmos emulator did not become ready in time."
           docker logs cosmos-emulator || true
           exit 1
-
-      - name: Restore
-        run: dotnet restore SafeExchange.slnx
-
-      - name: Build
-        run: dotnet build SafeExchange.slnx -c Release --no-restore
 
       - name: Configure Cosmos connection string (user-secrets)
         run: dotnet user-secrets set "ConnectionStrings:CosmosDb" "$COSMOS_CONNECTION_STRING" --project SafeExchange.Tests
