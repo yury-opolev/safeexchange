@@ -1,0 +1,100 @@
+name: CI
+
+# Build + test on every push and pull request. Tests run the FULL suite against
+# the Linux vNext-preview Cosmos DB emulator (Gateway mode) started as a
+# container. On a push to main, also publish the Functions app artifact.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Well-known, PUBLIC Cosmos DB emulator connection string. The vNext-preview
+  # emulator serves the gateway over plain HTTP, so the endpoint is http:// and
+  # no TLS cert has to be trusted on the runner. The account key is the universal
+  # emulator key - not a secret. The test ConfigurationBuilder only reads
+  # user-secrets (not environment variables), so the value is written into
+  # user-secrets before the suite runs.
+  COSMOS_CONNECTION_STRING: "AccountEndpoint=http://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
+
+jobs:
+  build-test:
+    name: Build & test (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Start the emulator early (detached) so it boots while we restore + build.
+      # The tests require Gateway mode; this vNext emulator is Gateway-only and
+      # serves the gateway over plain HTTP on 8081, with a health endpoint on
+      # 8080. Only these two ports are needed (the test client sets
+      # LimitToEndpoint=true).
+      - name: Start Cosmos DB emulator (Linux vNext-preview)
+        run: |
+          docker run --detach --name cosmos-emulator \
+            --publish 8081:8081 --publish 8080:8080 \
+            mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+
+      - name: Restore
+        run: dotnet restore SafeExchange.slnx
+
+      - name: Build
+        run: dotnet build SafeExchange.slnx -c Release --no-restore
+
+      - name: Wait for Cosmos emulator
+        run: |
+          echo "Waiting for Cosmos emulator readiness on http://localhost:8080/ready ..."
+          for i in $(seq 1 60); do
+            if curl -s --max-time 5 http://localhost:8080/ready | grep -q '"ready": *true'; then
+              echo "Emulator ready on attempt $i."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Cosmos emulator did not become ready in time."
+          docker logs cosmos-emulator || true
+          exit 1
+
+      - name: Configure Cosmos connection string (user-secrets)
+        run: dotnet user-secrets set "ConnectionStrings:CosmosDb" "$COSMOS_CONNECTION_STRING" --project SafeExchange.Tests
+
+      - name: Test
+        run: dotnet test SafeExchange.Tests/SafeExchange.Tests.csproj -c Release --no-build
+
+      - name: Emulator logs (on failure)
+        if: failure()
+        run: docker logs cosmos-emulator || true
+
+  publish:
+    name: Publish backend artifact
+    needs: build-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish Functions app
+        run: dotnet publish SafeExchange.Functions -c Release -o publish
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-functions-${{ github.run_number }}
+          path: publish
+          if-no-files-found: error
