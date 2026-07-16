@@ -34,7 +34,7 @@
 
 .PARAMETER ResourceGroup
     Target resource group. Defaults to 'safeexchange-staging' for test
-    and 'safeexchange-backend' for prd.
+    and 'safeexchange' for prd.
 
 .PARAMETER WhatIf
     Run `az deployment group what-if` instead of actually deploying.
@@ -129,7 +129,7 @@ if (-not (Test-Path $paramsPath)) {
 # ──────────────────────────────────────────────────────────────────
 if (-not $ResourceGroup) {
     $ResourceGroup = switch ($Environment) {
-        'prd'  { 'safeexchange-backend' }
+        'prd'  { 'safeexchange' }
         'test' { 'safeexchange-staging' }
     }
     Write-Host "Using default resource group for ${Environment}: $ResourceGroup" -ForegroundColor DarkGray
