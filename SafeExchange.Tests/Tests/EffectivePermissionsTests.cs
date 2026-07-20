@@ -332,6 +332,48 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task GetEffectivePermissionsBatch_GroupsFeatureDisabled_ReturnsDirectOnly()
+        {
+            const string secret = "namebatch-groups-off";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
+
+            var noGroupsManager = this.CreatePermissionsManager(useGroupsAuthorization: false);
+            var batched = await noGroupsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_UserWithoutGroups_ReturnsDirectOnly()
+        {
+            const string secret = "namebatch-no-groups";
+            this.SeedMember(consentRequired: false); // no group memberships
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_SubjectIdNormalized()
+        {
+            const string secret = "namebatch-normalize";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.User, $"  {MemberUpn.ToUpperInvariant()}  ", new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read | PermissionType.Write),
+                "Direct and group-derived grants must resolve for a differently-cased, padded subject id.");
+        }
+
+        [Test]
         public async Task GetEffectivePermissionsBatch_EmptySet_ReturnsEmpty()
         {
             var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
@@ -509,6 +551,37 @@ namespace SafeExchange.Tests
             Assert.That(trace, Does.Contain($"{groupCount} groups").And.Contain("3 queries").And.Contain("2 grants"));
             Assert.That(trace, Does.Not.Contain(MemberUpn).IgnoreCase,
                 "The trace must not carry the caller's raw user identifier.");
+        }
+
+        [Test]
+        public async Task GetReadableSecrets_GroupsFeatureDisabled_ExcludesGroupSecrets()
+        {
+            const string groupSecret = "read-flag-off-group";
+            const string directSecret = "read-flag-off-direct";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+
+            var noGroupsManager = this.CreatePermissionsManager(useGroupsAuthorization: false);
+            var readable = await noGroupsManager.GetReadableSecretsAsync(SubjectType.User, MemberUpn);
+
+            Assert.That(readable.Any(e => e.SecretName == directSecret), Is.True);
+            Assert.That(readable.Any(e => e.SecretName == groupSecret), Is.False);
+        }
+
+        [Test]
+        public async Task GetReadableSecrets_UnknownUser_ReturnsDirectOnly()
+        {
+            const string groupSecret = "read-no-user-group";
+            const string directSecret = "read-no-user-direct";
+            // No Users row seeded for the caller at all.
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+
+            var readable = await this.permissionsManager.GetReadableSecretsAsync(SubjectType.User, MemberUpn);
+
+            Assert.That(readable.Any(e => e.SecretName == directSecret), Is.True);
+            Assert.That(readable.Any(e => e.SecretName == groupSecret), Is.False);
         }
 
         [Test]
