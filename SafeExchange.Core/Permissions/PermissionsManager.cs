@@ -15,6 +15,11 @@ namespace SafeExchange.Core.Permissions
 
     public class PermissionsManager : IPermissionsManager
     {
+        // Upper bound for the IN clause of a single group-grant query. Chosen as a safe
+        // starting point; tune from measured Cosmos request charge, query size and latency
+        // (see docs in GetReadableSecretsAsync) rather than raising it speculatively.
+        internal const int GroupPermissionQueryBatchSize = 50;
+
         private static readonly List<PermissionType> SinglePermissions =
             new()
             {
@@ -198,25 +203,42 @@ namespace SafeExchange.Core.Permissions
                 return PermissionType.None;
             }
 
+            return ToPermissionType(
+                subjectPermissions.CanRead,
+                subjectPermissions.CanWrite,
+                subjectPermissions.CanGrantAccess,
+                subjectPermissions.CanRevokeAccess);
+        }
+
+        private static PermissionType ToPermissionType(bool canRead, bool canWrite, bool canGrantAccess, bool canRevokeAccess)
+        {
             var permission = PermissionType.None;
-            if (subjectPermissions.CanRead)
+            if (canRead)
             {
                 permission |= PermissionType.Read;
             }
-            if (subjectPermissions.CanWrite)
+            if (canWrite)
             {
                 permission |= PermissionType.Write;
             }
-            if (subjectPermissions.CanGrantAccess)
+            if (canGrantAccess)
             {
                 permission |= PermissionType.GrantAccess;
             }
-            if (subjectPermissions.CanRevokeAccess)
+            if (canRevokeAccess)
             {
                 permission |= PermissionType.RevokeAccess;
             }
 
             return permission;
+        }
+
+        internal static IEnumerable<List<string>> BatchBy(IReadOnlyList<string> values, int batchSize)
+        {
+            for (var offset = 0; offset < values.Count; offset += batchSize)
+            {
+                yield return values.Skip(offset).Take(batchSize).ToList();
+            }
         }
 
         public static bool IsPresentPermission(SubjectPermissions permissionSet, PermissionType permission)
@@ -411,17 +433,25 @@ namespace SafeExchange.Core.Permissions
                 var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
                 if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
                 {
-                    // Match group grants against the caller's (transitive) group memberships in memory
-                    // via a HashSet, so a caller in thousands of groups never becomes a huge IN clause.
-                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToHashSet();
-                    var groupRows = await this.dbContext.Permissions
-                        .Where(p => p.SubjectType.Equals(SubjectType.Group))
-                        .ToListAsync();
-                    foreach (var row in groupRows)
+                    // Query group grants in bounded SubjectId batches. The Permissions container is
+                    // partitioned by SecretName, so an unfiltered 'SubjectType == Group' query is a
+                    // cross-partition scan whose cost grows with ALL group grants in the service —
+                    // while a single IN clause over the caller's memberships can explode for users
+                    // in thousands of transitive groups. Bounded batches avoid both extremes, and
+                    // only the fields needed for aggregation are selected.
+                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).Distinct().ToList();
+                    foreach (var batch in BatchBy(groupIds, GroupPermissionQueryBatchSize))
                     {
-                        if (groupIds.Contains(row.SubjectId))
+                        var groupRows = await this.dbContext.Permissions
+                            .Where(p => p.SubjectType.Equals(SubjectType.Group) && batch.Contains(p.SubjectId))
+                            .Select(p => new { p.SecretName, p.CanRead, p.CanWrite, p.CanGrantAccess, p.CanRevokeAccess })
+                            .ToListAsync();
+                        foreach (var row in groupRows)
                         {
-                            AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
+                            AccumulatePermission(
+                                effectiveBySecret,
+                                row.SecretName,
+                                ToPermissionType(row.CanRead, row.CanWrite, row.CanGrantAccess, row.CanRevokeAccess));
                         }
                     }
                 }

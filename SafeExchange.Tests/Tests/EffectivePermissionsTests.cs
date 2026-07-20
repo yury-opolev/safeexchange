@@ -379,6 +379,49 @@ namespace SafeExchange.Tests
             Assert.That(readable.Single(e => e.SecretName == secretB).Effective, Is.EqualTo(PermissionType.Read | PermissionType.Write));
         }
 
+        [Test]
+        public async Task GetReadableSecrets_ManyGroups_SpansMultipleBatches_AndStaysCorrect()
+        {
+            const string firstBatchSecret = "read-batch-first";
+            const string lastBatchSecret = "read-batch-last";
+            const string unrelatedSecret = "read-batch-unrelated";
+
+            // Enough memberships for three bounded group-grant queries, so the batching loop
+            // (not just its first iteration) is exercised.
+            var groupCount = (PermissionsManager.GroupPermissionQueryBatchSize * 2) + 7;
+            var groupIds = Enumerable.Range(0, groupCount).Select(i => $"batch-group-{i:D4}").ToArray();
+            this.SeedMember(consentRequired: false, groupIds);
+
+            this.SeedGroupPermission(firstBatchSecret, groupIds[0], PermissionType.Read);
+            this.SeedGroupPermission(lastBatchSecret, groupIds[^1], PermissionType.Read | PermissionType.Write);
+            this.SeedGroupPermission(unrelatedSecret, "not-a-member-group", PermissionType.Read);
+
+            var readable = await this.permissionsManager.GetReadableSecretsAsync(SubjectType.User, MemberUpn);
+
+            Assert.That(readable.Single(e => e.SecretName == firstBatchSecret).Effective, Is.EqualTo(PermissionType.Read));
+            Assert.That(readable.Single(e => e.SecretName == lastBatchSecret).Effective, Is.EqualTo(PermissionType.Read | PermissionType.Write));
+            Assert.That(readable.Any(e => e.SecretName == unrelatedSecret), Is.False,
+                "Grants to groups the caller is not a member of must never surface.");
+        }
+
+        [Test]
+        public void BatchBy_SplitsIntoBoundedBatchesPreservingOrder()
+        {
+            var values = Enumerable.Range(0, 101).Select(i => $"id-{i}").ToList();
+
+            var batches = PermissionsManager.BatchBy(values, 50).ToList();
+
+            Assert.That(batches.Count, Is.EqualTo(3));
+            Assert.That(batches.All(b => b.Count <= 50), Is.True, "No batch may exceed the bounded IN-clause size.");
+            Assert.That(batches.SelectMany(b => b), Is.EqualTo(values));
+        }
+
+        [Test]
+        public void BatchBy_EmptyInput_YieldsNoBatches()
+        {
+            Assert.That(PermissionsManager.BatchBy(new List<string>(), 50), Is.Empty);
+        }
+
         // ---- Telemetry scrubbing -----------------------------------------------------------
 
         [Test]
