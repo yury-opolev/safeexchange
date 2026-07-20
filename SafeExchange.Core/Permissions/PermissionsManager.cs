@@ -15,8 +15,9 @@ namespace SafeExchange.Core.Permissions
 
     public class PermissionsManager : IPermissionsManager
     {
-        // Upper bound for one group-grant IN clause; tune from measured Cosmos RU charge and latency.
-        internal const int GroupPermissionQueryBatchSize = 50;
+        internal const int GroupIdQueryBatchSize = 20;
+
+        internal const int MaxEffectivePermissionsRequestSize = 10;
 
         private static readonly List<PermissionType> SinglePermissions =
             new()
@@ -426,6 +427,14 @@ namespace SafeExchange.Core.Permissions
                 return effectiveBySecret;
             }
 
+            if (effectiveBySecret.Count > MaxEffectivePermissionsRequestSize)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(secretNames),
+                    effectiveBySecret.Count,
+                    $"At most {MaxEffectivePermissionsRequestSize} distinct secret names per call.");
+            }
+
             var requestedNames = effectiveBySecret.Keys.ToList();
 
             var directRows = await this.dbContext.Permissions
@@ -497,7 +506,7 @@ namespace SafeExchange.Core.Permissions
                     // with all group grants in the service; bounded SubjectId batches also keep a
                     // caller with thousands of groups from producing one huge IN clause.
                     var groupIds = existingUser.Groups.Select(g => g.AadGroupId).Distinct().ToList();
-                    foreach (var batch in BatchBy(groupIds, GroupPermissionQueryBatchSize))
+                    foreach (var batch in BatchBy(groupIds, GroupIdQueryBatchSize))
                     {
                         var groupRows = await this.dbContext.Permissions
                             .Where(p => p.SubjectType.Equals(SubjectType.Group) && batch.Contains(p.SubjectId))

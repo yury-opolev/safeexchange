@@ -296,6 +296,31 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public void GetEffectivePermissionsBatch_OverRequestCap_Throws()
+        {
+            var names = Enumerable.Range(0, PermissionsManager.MaxEffectivePermissionsRequestSize + 1)
+                .Select(i => $"cap-{i}")
+                .ToArray();
+
+            Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+                await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_DuplicateNamesWithinCap_Allowed()
+        {
+            const string secret = "cap-dupes";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+
+            var names = Enumerable.Repeat(secret, PermissionsManager.MaxEffectivePermissionsRequestSize + 5).ToArray();
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
+
+            Assert.That(batched.Count, Is.EqualTo(1));
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
         public async Task GetEffectivePermissionsBatch_EmptySet_ReturnsEmpty()
         {
             var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
@@ -453,7 +478,7 @@ namespace SafeExchange.Tests
             const string lastBatchSecret = "read-batch-last";
             const string unrelatedSecret = "read-batch-unrelated";
 
-            var groupCount = (PermissionsManager.GroupPermissionQueryBatchSize * 2) + 7;
+            var groupCount = (PermissionsManager.GroupIdQueryBatchSize * 2) + 7;
             var groupIds = Enumerable.Range(0, groupCount).Select(i => $"batch-group-{i:D4}").ToArray();
             this.SeedMember(consentRequired: false, groupIds);
 
