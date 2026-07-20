@@ -266,6 +266,73 @@ namespace SafeExchange.Tests
             Assert.That(effective, Is.EqualTo(PermissionType.Read));
         }
 
+        // ---- Batched effective permission calculation --------------------------------------
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_MatchesPerSecretResults()
+        {
+            const string directSecret = "batch-eff-direct";
+            const string groupSecret = "batch-eff-group";
+            const string unionSecret = "batch-eff-union";
+            const string noAccessSecret = "batch-eff-none";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read | PermissionType.Write);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read | PermissionType.GrantAccess);
+            this.SeedDirectUserPermission(unionSecret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(unionSecret, GroupA, PermissionType.Write);
+            this.SeedGroupPermission(noAccessSecret, GroupB, PermissionType.Read); // member is not in GroupB
+
+            var names = new[] { directSecret, groupSecret, unionSecret, noAccessSecret };
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
+
+            Assert.That(batched.Count, Is.EqualTo(names.Length), "Every requested name must be present in the result.");
+            foreach (var name in names)
+            {
+                var single = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, name);
+                Assert.That(batched[name], Is.EqualTo(single), $"Batched result for '{name}' must equal the per-secret result.");
+            }
+
+            Assert.That(batched[noAccessSecret], Is.EqualTo(PermissionType.None));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_EmptySet_ReturnsEmpty()
+        {
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.User, MemberUpn, Array.Empty<string>());
+
+            Assert.That(batched, Is.Empty);
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_ConsentRequired_ExcludesGroupDerived()
+        {
+            const string groupSecret = "batch-consent-group";
+            const string directSecret = "batch-consent-direct";
+            this.SeedMember(consentRequired: true, GroupA);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read | PermissionType.Write);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.User, MemberUpn, new[] { groupSecret, directSecret });
+
+            Assert.That(batched[groupSecret], Is.EqualTo(PermissionType.None));
+            Assert.That(batched[directSecret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_ApplicationCaller_UsesDirectOnly()
+        {
+            const string secret = "batch-eff-app";
+            this.SeedPermission(secret, SubjectType.Application, ApplicationId, ApplicationId, PermissionType.Read | PermissionType.Write);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.GrantAccess);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.Application, ApplicationId, new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read | PermissionType.Write));
+        }
+
         // ---- Readable secrets: actual (Direct) vs Effective -------------------------------
 
         [Test]

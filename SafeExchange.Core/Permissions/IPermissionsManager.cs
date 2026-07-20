@@ -111,6 +111,21 @@ namespace SafeExchange.Core.Permissions
         public Task<PermissionType> GetEffectivePermissionsAsync(SubjectType subjectType, string subjectId, string secretId);
 
         /// <summary>
+        /// Calculates effective permissions for the specified subject on a bounded set of secrets
+        /// in a fixed number of queries: the subject is normalized once, group memberships are
+        /// loaded once, and direct and group permission rows are each fetched with one query over
+        /// the requested secret names. Every requested name is present in the result (with
+        /// <see cref="PermissionType.None"/> when the subject has no access). Intended for small,
+        /// capped sets such as the pinned-secrets list — not for unbounded name collections.
+        /// </summary>
+        /// <param name="subjectType">Specified subject type.</param>
+        /// <param name="subjectId">Specified subject id.</param>
+        /// <param name="secretNames">The bounded set of secret names to calculate permissions for.</param>
+        /// <returns>The effective permission flags per requested secret name.</returns>
+        public Task<IReadOnlyDictionary<string, PermissionType>> GetEffectivePermissionsAsync(
+            SubjectType subjectType, string subjectId, IReadOnlyCollection<string> secretNames);
+
+        /// <summary>
         /// Returns every secret the specified subject can effectively read (via a direct grant or a
         /// grant inherited through group membership), each with its aggregated effective permissions.
         /// One result per secret — overlapping direct and group grants never produce duplicates.

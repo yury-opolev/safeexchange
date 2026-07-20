@@ -409,6 +409,70 @@ namespace SafeExchange.Core.Permissions
             return effective;
         }
 
+        public async Task<IReadOnlyDictionary<string, PermissionType>> GetEffectivePermissionsAsync(
+            SubjectType subjectType, string subjectId, IReadOnlyCollection<string> secretNames)
+        {
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
+
+            var effectiveBySecret = new Dictionary<string, PermissionType>(StringComparer.Ordinal);
+            foreach (var secretName in secretNames)
+            {
+                effectiveBySecret[secretName] = PermissionType.None;
+            }
+
+            if (effectiveBySecret.Count == 0)
+            {
+                return effectiveBySecret;
+            }
+
+            var requestedNames = effectiveBySecret.Keys.ToList();
+
+            var directRows = await this.dbContext.Permissions
+                .Where(p => requestedNames.Contains(p.SecretName)
+                    && p.SubjectType.Equals(subjectType)
+                    && p.SubjectId.Equals(subjectId))
+                .Select(p => new { p.SecretName, p.CanRead, p.CanWrite, p.CanGrantAccess, p.CanRevokeAccess })
+                .ToListAsync();
+            foreach (var row in directRows)
+            {
+                AccumulatePermission(
+                    effectiveBySecret,
+                    row.SecretName,
+                    ToPermissionType(row.CanRead, row.CanWrite, row.CanGrantAccess, row.CanRevokeAccess));
+            }
+
+            if (subjectType == SubjectType.User && this.features.UseGroupsAuthorization)
+            {
+                var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
+                if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
+                {
+                    // One group-row query keyed by the requested SecretNames (the container's
+                    // partition key), so only the requested secrets' partitions are touched;
+                    // membership is filtered in memory, as in the single-secret path.
+                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToHashSet();
+                    var groupRows = await this.dbContext.Permissions
+                        .Where(p => requestedNames.Contains(p.SecretName) && p.SubjectType.Equals(SubjectType.Group))
+                        .Select(p => new { p.SecretName, p.SubjectId, p.CanRead, p.CanWrite, p.CanGrantAccess, p.CanRevokeAccess })
+                        .ToListAsync();
+                    foreach (var row in groupRows)
+                    {
+                        if (groupIds.Contains(row.SubjectId))
+                        {
+                            AccumulatePermission(
+                                effectiveBySecret,
+                                row.SecretName,
+                                ToPermissionType(row.CanRead, row.CanWrite, row.CanGrantAccess, row.CanRevokeAccess));
+                        }
+                    }
+                }
+            }
+
+            return effectiveBySecret;
+        }
+
         public async Task<IReadOnlyList<EffectiveSecretPermissions>> GetReadableSecretsAsync(SubjectType subjectType, string subjectId)
         {
             if (subjectType == SubjectType.User)
