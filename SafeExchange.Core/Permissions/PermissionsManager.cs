@@ -15,9 +15,7 @@ namespace SafeExchange.Core.Permissions
 
     public class PermissionsManager : IPermissionsManager
     {
-        // Upper bound for the IN clause of a single group-grant query. Chosen as a safe
-        // starting point; tune from measured Cosmos request charge, query size and latency
-        // (see docs in GetReadableSecretsAsync) rather than raising it speculatively.
+        // Upper bound for one group-grant IN clause; tune from measured Cosmos RU charge and latency.
         internal const int GroupPermissionQueryBatchSize = 50;
 
         private static readonly List<PermissionType> SinglePermissions =
@@ -449,9 +447,7 @@ namespace SafeExchange.Core.Permissions
                 var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
                 if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
                 {
-                    // One group-row query keyed by the requested SecretNames (the container's
-                    // partition key), so only the requested secrets' partitions are touched;
-                    // membership is filtered in memory, as in the single-secret path.
+                    // Keyed by SecretName (the partition key); membership filtered in memory.
                     var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToHashSet();
                     var groupRows = await this.dbContext.Permissions
                         .Where(p => requestedNames.Contains(p.SecretName) && p.SubjectType.Equals(SubjectType.Group))
@@ -497,12 +493,9 @@ namespace SafeExchange.Core.Permissions
                 var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
                 if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
                 {
-                    // Query group grants in bounded SubjectId batches. The Permissions container is
-                    // partitioned by SecretName, so an unfiltered 'SubjectType == Group' query is a
-                    // cross-partition scan whose cost grows with ALL group grants in the service —
-                    // while a single IN clause over the caller's memberships can explode for users
-                    // in thousands of transitive groups. Bounded batches avoid both extremes, and
-                    // only the fields needed for aggregation are selected.
+                    // The container is partitioned by SecretName, so an unfiltered group scan grows
+                    // with all group grants in the service; bounded SubjectId batches also keep a
+                    // caller with thousands of groups from producing one huge IN clause.
                     var groupIds = existingUser.Groups.Select(g => g.AadGroupId).Distinct().ToList();
                     foreach (var batch in BatchBy(groupIds, GroupPermissionQueryBatchSize))
                     {

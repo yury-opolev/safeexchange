@@ -453,8 +453,6 @@ namespace SafeExchange.Tests
             const string lastBatchSecret = "read-batch-last";
             const string unrelatedSecret = "read-batch-unrelated";
 
-            // Enough memberships for three bounded group-grant queries, so the batching loop
-            // (not just its first iteration) is exercised.
             var groupCount = (PermissionsManager.GroupPermissionQueryBatchSize * 2) + 7;
             var groupIds = Enumerable.Range(0, groupCount).Select(i => $"batch-group-{i:D4}").ToArray();
             this.SeedMember(consentRequired: false, groupIds);

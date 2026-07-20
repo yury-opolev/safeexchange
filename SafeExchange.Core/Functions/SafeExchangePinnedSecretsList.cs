@@ -183,8 +183,6 @@ namespace SafeExchange.Core.Functions
                     .ToListAsync())
                 .ToDictionary(p => p.SecretName, p => p);
 
-            // One batched calculation for all pins (bounded by the pin cap) instead of a
-            // per-pin user + group + permission query cascade.
             var effectiveByName = await this.permissionsManager.GetEffectivePermissionsAsync(subjectType, subjectId, names);
 
             var result = new List<PinnedSecretListItemOutput>(pins.Count);
