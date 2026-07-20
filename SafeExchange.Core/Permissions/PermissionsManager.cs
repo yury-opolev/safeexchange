@@ -15,7 +15,7 @@ namespace SafeExchange.Core.Permissions
 
     public class PermissionsManager : IPermissionsManager
     {
-        internal const int GroupIdQueryBatchSize = 20;
+        internal const int GroupIdQueryBatchSize = 40;
 
         internal const int MaxEffectivePermissionsRequestSize = 10;
 
