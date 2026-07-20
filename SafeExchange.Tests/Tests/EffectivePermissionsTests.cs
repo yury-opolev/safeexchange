@@ -266,6 +266,151 @@ namespace SafeExchange.Tests
             Assert.That(effective, Is.EqualTo(PermissionType.Read));
         }
 
+        // ---- Batched effective permission calculation --------------------------------------
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_MatchesPerSecretResults()
+        {
+            const string directSecret = "batch-eff-direct";
+            const string groupSecret = "batch-eff-group";
+            const string unionSecret = "batch-eff-union";
+            const string noAccessSecret = "batch-eff-none";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read | PermissionType.Write);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read | PermissionType.GrantAccess);
+            this.SeedDirectUserPermission(unionSecret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(unionSecret, GroupA, PermissionType.Write);
+            this.SeedGroupPermission(noAccessSecret, GroupB, PermissionType.Read); // member is not in GroupB
+
+            var names = new[] { directSecret, groupSecret, unionSecret, noAccessSecret };
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
+
+            Assert.That(batched.Count, Is.EqualTo(names.Length), "Every requested name must be present in the result.");
+            foreach (var name in names)
+            {
+                var single = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, name);
+                Assert.That(batched[name], Is.EqualTo(single), $"Batched result for '{name}' must equal the per-secret result.");
+            }
+
+            Assert.That(batched[noAccessSecret], Is.EqualTo(PermissionType.None));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_ManyNames_SpansMultipleBatches_AndStaysCorrect()
+        {
+            const string directSecret = "namebatch-direct";
+            const string groupSecret = "namebatch-group";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read | PermissionType.Write);
+
+            var names = Enumerable.Range(0, PermissionsManager.SecretNameQueryBatchSize + 5)
+                .Select(i => $"namebatch-none-{i:D3}")
+                .Append(directSecret)
+                .Append(groupSecret)
+                .ToArray();
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
+
+            Assert.That(batched.Count, Is.EqualTo(names.Length), "Every requested name must be present in the result.");
+            Assert.That(batched[directSecret], Is.EqualTo(PermissionType.Read));
+            Assert.That(batched[groupSecret], Is.EqualTo(PermissionType.Read | PermissionType.Write));
+            Assert.That(batched.Where(kvp => kvp.Key.StartsWith("namebatch-none-")).All(kvp => kvp.Value == PermissionType.None), Is.True);
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_DuplicateNames_Deduplicated()
+        {
+            const string secret = "namebatch-dupes";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+
+            var names = Enumerable.Repeat(secret, 15).ToArray();
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
+
+            Assert.That(batched.Count, Is.EqualTo(1));
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_GroupsFeatureDisabled_ReturnsDirectOnly()
+        {
+            const string secret = "namebatch-groups-off";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
+
+            var noGroupsManager = this.CreatePermissionsManager(useGroupsAuthorization: false);
+            var batched = await noGroupsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_UserWithoutGroups_ReturnsDirectOnly()
+        {
+            const string secret = "namebatch-no-groups";
+            this.SeedMember(consentRequired: false); // no group memberships
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_SubjectIdNormalized()
+        {
+            const string secret = "namebatch-normalize";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.Write);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.User, $"  {MemberUpn.ToUpperInvariant()}  ", new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read | PermissionType.Write),
+                "Direct and group-derived grants must resolve for a differently-cased, padded subject id.");
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_EmptySet_ReturnsEmpty()
+        {
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.User, MemberUpn, Array.Empty<string>());
+
+            Assert.That(batched, Is.Empty);
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_ConsentRequired_ExcludesGroupDerived()
+        {
+            const string groupSecret = "batch-consent-group";
+            const string directSecret = "batch-consent-direct";
+            this.SeedMember(consentRequired: true, GroupA);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read | PermissionType.Write);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.User, MemberUpn, new[] { groupSecret, directSecret });
+
+            Assert.That(batched[groupSecret], Is.EqualTo(PermissionType.None));
+            Assert.That(batched[directSecret], Is.EqualTo(PermissionType.Read));
+        }
+
+        [Test]
+        public async Task GetEffectivePermissionsBatch_ApplicationCaller_UsesDirectOnly()
+        {
+            const string secret = "batch-eff-app";
+            this.SeedPermission(secret, SubjectType.Application, ApplicationId, ApplicationId, PermissionType.Read | PermissionType.Write);
+            this.SeedGroupPermission(secret, GroupA, PermissionType.GrantAccess);
+
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(
+                SubjectType.Application, ApplicationId, new[] { secret });
+
+            Assert.That(batched[secret], Is.EqualTo(PermissionType.Read | PermissionType.Write));
+        }
+
         // ---- Readable secrets: actual (Direct) vs Effective -------------------------------
 
         [Test]
@@ -377,6 +522,84 @@ namespace SafeExchange.Tests
 
             Assert.That(readable.Single(e => e.SecretName == secretA).Effective, Is.EqualTo(PermissionType.Read));
             Assert.That(readable.Single(e => e.SecretName == secretB).Effective, Is.EqualTo(PermissionType.Read | PermissionType.Write));
+        }
+
+        [Test]
+        public async Task GetReadableSecrets_ManyGroups_SpansMultipleBatches_AndStaysCorrect()
+        {
+            const string firstBatchSecret = "read-batch-first";
+            const string lastBatchSecret = "read-batch-last";
+            const string unrelatedSecret = "read-batch-unrelated";
+
+            var groupCount = (PermissionsManager.GroupIdQueryBatchSize * 2) + 7;
+            var groupIds = Enumerable.Range(0, groupCount).Select(i => $"batch-group-{i:D4}").ToArray();
+            this.SeedMember(consentRequired: false, groupIds);
+
+            this.SeedGroupPermission(firstBatchSecret, groupIds[0], PermissionType.Read);
+            this.SeedGroupPermission(lastBatchSecret, groupIds[^1], PermissionType.Read | PermissionType.Write);
+            this.SeedGroupPermission(unrelatedSecret, "not-a-member-group", PermissionType.Read);
+
+            var readable = await this.permissionsManager.GetReadableSecretsAsync(SubjectType.User, MemberUpn);
+
+            Assert.That(readable.Single(e => e.SecretName == firstBatchSecret).Effective, Is.EqualTo(PermissionType.Read));
+            Assert.That(readable.Single(e => e.SecretName == lastBatchSecret).Effective, Is.EqualTo(PermissionType.Read | PermissionType.Write));
+            Assert.That(readable.Any(e => e.SecretName == unrelatedSecret), Is.False,
+                "Grants to groups the caller is not a member of must never surface.");
+
+            var trace = this.permissionsLogger.Messages.SingleOrDefault(m => m.Contains("Group-derived permissions resolved"));
+            Assert.That(trace, Is.Not.Null, "Group resolution emits one telemetry trace per call.");
+            Assert.That(trace, Does.Contain($"{groupCount} groups").And.Contain("3 queries").And.Contain("2 grants"));
+            Assert.That(trace, Does.Not.Contain(MemberUpn).IgnoreCase,
+                "The trace must not carry the caller's raw user identifier.");
+        }
+
+        [Test]
+        public async Task GetReadableSecrets_GroupsFeatureDisabled_ExcludesGroupSecrets()
+        {
+            const string groupSecret = "read-flag-off-group";
+            const string directSecret = "read-flag-off-direct";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+
+            var noGroupsManager = this.CreatePermissionsManager(useGroupsAuthorization: false);
+            var readable = await noGroupsManager.GetReadableSecretsAsync(SubjectType.User, MemberUpn);
+
+            Assert.That(readable.Any(e => e.SecretName == directSecret), Is.True);
+            Assert.That(readable.Any(e => e.SecretName == groupSecret), Is.False);
+        }
+
+        [Test]
+        public async Task GetReadableSecrets_UnknownUser_ReturnsDirectOnly()
+        {
+            const string groupSecret = "read-no-user-group";
+            const string directSecret = "read-no-user-direct";
+            // No Users row seeded for the caller at all.
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+
+            var readable = await this.permissionsManager.GetReadableSecretsAsync(SubjectType.User, MemberUpn);
+
+            Assert.That(readable.Any(e => e.SecretName == directSecret), Is.True);
+            Assert.That(readable.Any(e => e.SecretName == groupSecret), Is.False);
+        }
+
+        [Test]
+        public void BatchBy_SplitsIntoBoundedBatchesPreservingOrder()
+        {
+            var values = Enumerable.Range(0, 101).Select(i => $"id-{i}").ToList();
+
+            var batches = PermissionsManager.BatchBy(values, 50).ToList();
+
+            Assert.That(batches.Count, Is.EqualTo(3));
+            Assert.That(batches.All(b => b.Count <= 50), Is.True, "No batch may exceed the bounded IN-clause size.");
+            Assert.That(batches.SelectMany(b => b), Is.EqualTo(values));
+        }
+
+        [Test]
+        public void BatchBy_EmptyInput_YieldsNoBatches()
+        {
+            Assert.That(PermissionsManager.BatchBy(new List<string>(), 50), Is.Empty);
         }
 
         // ---- Telemetry scrubbing -----------------------------------------------------------

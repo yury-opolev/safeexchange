@@ -11,10 +11,15 @@ namespace SafeExchange.Core.Permissions
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Telemetry;
     using System;
+    using System.Diagnostics;
     using System.Threading.Tasks;
 
     public class PermissionsManager : IPermissionsManager
     {
+        internal const int GroupIdQueryBatchSize = 40;
+
+        internal const int SecretNameQueryBatchSize = 40;
+
         private static readonly List<PermissionType> SinglePermissions =
             new()
             {
@@ -198,25 +203,42 @@ namespace SafeExchange.Core.Permissions
                 return PermissionType.None;
             }
 
+            return ToPermissionType(
+                subjectPermissions.CanRead,
+                subjectPermissions.CanWrite,
+                subjectPermissions.CanGrantAccess,
+                subjectPermissions.CanRevokeAccess);
+        }
+
+        private static PermissionType ToPermissionType(bool canRead, bool canWrite, bool canGrantAccess, bool canRevokeAccess)
+        {
             var permission = PermissionType.None;
-            if (subjectPermissions.CanRead)
+            if (canRead)
             {
                 permission |= PermissionType.Read;
             }
-            if (subjectPermissions.CanWrite)
+            if (canWrite)
             {
                 permission |= PermissionType.Write;
             }
-            if (subjectPermissions.CanGrantAccess)
+            if (canGrantAccess)
             {
                 permission |= PermissionType.GrantAccess;
             }
-            if (subjectPermissions.CanRevokeAccess)
+            if (canRevokeAccess)
             {
                 permission |= PermissionType.RevokeAccess;
             }
 
             return permission;
+        }
+
+        internal static IEnumerable<List<string>> BatchBy(IReadOnlyList<string> values, int batchSize)
+        {
+            for (var offset = 0; offset < values.Count; offset += batchSize)
+            {
+                yield return values.Skip(offset).Take(batchSize).ToList();
+            }
         }
 
         public static bool IsPresentPermission(SubjectPermissions permissionSet, PermissionType permission)
@@ -387,6 +409,74 @@ namespace SafeExchange.Core.Permissions
             return effective;
         }
 
+        public async Task<IReadOnlyDictionary<string, PermissionType>> GetEffectivePermissionsAsync(
+            SubjectType subjectType, string subjectId, IReadOnlyCollection<string> secretNames)
+        {
+            if (subjectType == SubjectType.User)
+            {
+                subjectId = Normalize(subjectId);
+            }
+
+            var effectiveBySecret = new Dictionary<string, PermissionType>(StringComparer.Ordinal);
+            foreach (var secretName in secretNames)
+            {
+                effectiveBySecret[secretName] = PermissionType.None;
+            }
+
+            if (effectiveBySecret.Count == 0)
+            {
+                return effectiveBySecret;
+            }
+
+            var requestedNames = effectiveBySecret.Keys.ToList();
+
+            foreach (var nameBatch in BatchBy(requestedNames, SecretNameQueryBatchSize))
+            {
+                var directRows = await this.dbContext.Permissions
+                    .Where(p => nameBatch.Contains(p.SecretName)
+                        && p.SubjectType.Equals(subjectType)
+                        && p.SubjectId.Equals(subjectId))
+                    .Select(p => new { p.SecretName, p.CanRead, p.CanWrite, p.CanGrantAccess, p.CanRevokeAccess })
+                    .ToListAsync();
+                foreach (var row in directRows)
+                {
+                    AccumulatePermission(
+                        effectiveBySecret,
+                        row.SecretName,
+                        ToPermissionType(row.CanRead, row.CanWrite, row.CanGrantAccess, row.CanRevokeAccess));
+                }
+            }
+
+            if (subjectType == SubjectType.User && this.features.UseGroupsAuthorization)
+            {
+                var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
+                if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
+                {
+                    // Keyed by SecretName (the partition key); membership filtered in memory.
+                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToHashSet();
+                    foreach (var nameBatch in BatchBy(requestedNames, SecretNameQueryBatchSize))
+                    {
+                        var groupRows = await this.dbContext.Permissions
+                            .Where(p => nameBatch.Contains(p.SecretName) && p.SubjectType.Equals(SubjectType.Group))
+                            .Select(p => new { p.SecretName, p.SubjectId, p.CanRead, p.CanWrite, p.CanGrantAccess, p.CanRevokeAccess })
+                            .ToListAsync();
+                        foreach (var row in groupRows)
+                        {
+                            if (groupIds.Contains(row.SubjectId))
+                            {
+                                AccumulatePermission(
+                                    effectiveBySecret,
+                                    row.SecretName,
+                                    ToPermissionType(row.CanRead, row.CanWrite, row.CanGrantAccess, row.CanRevokeAccess));
+                            }
+                        }
+                    }
+                }
+            }
+
+            return effectiveBySecret;
+        }
+
         public async Task<IReadOnlyList<EffectiveSecretPermissions>> GetReadableSecretsAsync(SubjectType subjectType, string subjectId)
         {
             if (subjectType == SubjectType.User)
@@ -411,19 +501,34 @@ namespace SafeExchange.Core.Permissions
                 var existingUser = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn.Equals(subjectId));
                 if (existingUser is not null && !existingUser.ConsentRequired && existingUser.Groups is { Count: > 0 })
                 {
-                    // Match group grants against the caller's (transitive) group memberships in memory
-                    // via a HashSet, so a caller in thousands of groups never becomes a huge IN clause.
-                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).ToHashSet();
-                    var groupRows = await this.dbContext.Permissions
-                        .Where(p => p.SubjectType.Equals(SubjectType.Group))
-                        .ToListAsync();
-                    foreach (var row in groupRows)
+                    // The container is partitioned by SecretName, so an unfiltered group scan grows
+                    // with all group grants in the service; bounded SubjectId batches also keep a
+                    // caller with thousands of groups from producing one huge IN clause.
+                    var groupIds = existingUser.Groups.Select(g => g.AadGroupId).Distinct().ToList();
+                    var stopwatch = Stopwatch.StartNew();
+                    var queryCount = 0;
+                    var matchedGrantCount = 0;
+                    foreach (var batch in BatchBy(groupIds, GroupIdQueryBatchSize))
                     {
-                        if (groupIds.Contains(row.SubjectId))
+                        queryCount++;
+                        var groupRows = await this.dbContext.Permissions
+                            .Where(p => p.SubjectType.Equals(SubjectType.Group) && batch.Contains(p.SubjectId))
+                            .Select(p => new { p.SecretName, p.CanRead, p.CanWrite, p.CanGrantAccess, p.CanRevokeAccess })
+                            .ToListAsync();
+                        matchedGrantCount += groupRows.Count;
+                        foreach (var row in groupRows)
                         {
-                            AccumulatePermission(effectiveBySecret, row.SecretName, ToPermissionType(row));
+                            AccumulatePermission(
+                                effectiveBySecret,
+                                row.SecretName,
+                                ToPermissionType(row.CanRead, row.CanWrite, row.CanGrantAccess, row.CanRevokeAccess));
                         }
                     }
+
+                    stopwatch.Stop();
+                    this.logger.LogInformation(
+                        "Group-derived permissions resolved (tid {TelemetryId}): {GroupCount} groups, {QueryCount} queries (batch size {BatchSize}), {MatchedGrantCount} grants, {ElapsedMilliseconds} ms.",
+                        TelemetryContext.Current, groupIds.Count, queryCount, GroupIdQueryBatchSize, matchedGrantCount, stopwatch.ElapsedMilliseconds);
                 }
             }
 

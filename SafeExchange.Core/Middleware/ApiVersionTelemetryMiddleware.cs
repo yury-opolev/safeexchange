@@ -17,9 +17,9 @@ namespace SafeExchange.Core.Middleware
     /// <summary>
     /// Records which API version each request targeted, so the operator can see how much
     /// traffic still hits v2 versus v3 and decide when v2 can be retired. The version comes from
-    /// the <c>{apiVersion}</c> route segment. Emits one structured trace per request and stamps a
-    /// <c>saex.apiVersion</c> custom dimension on every telemetry item of the invocation (via
-    /// <see cref="ApiVersionTelemetryInitializer"/>), mirroring the session-correlation approach.
+    /// the <c>{apiVersion}</c> route segment. Stamps a <c>saex.apiVersion</c> custom dimension on
+    /// every telemetry item of the invocation (via <see cref="ApiVersionTelemetryInitializer"/>);
+    /// the per-request trace is Debug-only, since request telemetry already carries the dimension.
     /// No-ops for invocations without an <c>apiVersion</c> route value.
     /// </summary>
     public class ApiVersionTelemetryMiddleware : IFunctionsWorkerMiddleware
@@ -52,7 +52,7 @@ namespace SafeExchange.Core.Middleware
             currentApiVersion.Value = apiVersion;
             try
             {
-                this.log.LogInformation("saex api version {ApiVersion} {FunctionName}", apiVersion, context.FunctionDefinition.Name);
+                this.log.LogDebug("saex api version {ApiVersion} {FunctionName}", apiVersion, context.FunctionDefinition.Name);
                 await next(context).ConfigureAwait(false);
             }
             finally
