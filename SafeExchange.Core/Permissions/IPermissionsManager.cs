@@ -111,17 +111,15 @@ namespace SafeExchange.Core.Permissions
         public Task<PermissionType> GetEffectivePermissionsAsync(SubjectType subjectType, string subjectId, string secretId);
 
         /// <summary>
-        /// Calculates effective permissions for the specified subject on a small set of secrets
-        /// in a fixed number of queries: the subject is normalized once, group memberships are
-        /// loaded once, and direct and group permission rows are each fetched with one query over
-        /// the requested secret names. Every requested name is present in the result (with
-        /// <see cref="PermissionType.None"/> when the subject has no access). Accepts at most
-        /// 10 distinct names per call and throws <see cref="ArgumentOutOfRangeException"/> above
-        /// that, so the queries stay bounded by contract.
+        /// Calculates effective permissions for the specified subject on a set of secrets:
+        /// the subject is normalized once, group memberships are loaded once, and direct and
+        /// group permission rows are fetched in bounded batches over the requested secret names.
+        /// Every requested name is present in the result (with <see cref="PermissionType.None"/>
+        /// when the subject has no access).
         /// </summary>
         /// <param name="subjectType">Specified subject type.</param>
         /// <param name="subjectId">Specified subject id.</param>
-        /// <param name="secretNames">The secret names to calculate permissions for (at most 10 distinct).</param>
+        /// <param name="secretNames">The secret names to calculate permissions for.</param>
         /// <returns>The effective permission flags per requested secret name.</returns>
         public Task<IReadOnlyDictionary<string, PermissionType>> GetEffectivePermissionsAsync(
             SubjectType subjectType, string subjectId, IReadOnlyCollection<string> secretNames);

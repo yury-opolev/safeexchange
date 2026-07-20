@@ -296,24 +296,35 @@ namespace SafeExchange.Tests
         }
 
         [Test]
-        public void GetEffectivePermissionsBatch_OverRequestCap_Throws()
+        public async Task GetEffectivePermissionsBatch_ManyNames_SpansMultipleBatches_AndStaysCorrect()
         {
-            var names = Enumerable.Range(0, PermissionsManager.MaxEffectivePermissionsRequestSize + 1)
-                .Select(i => $"cap-{i}")
-                .ToArray();
+            const string directSecret = "namebatch-direct";
+            const string groupSecret = "namebatch-group";
+            this.SeedMember(consentRequired: false, GroupA);
+            this.SeedDirectUserPermission(directSecret, MemberUpn, PermissionType.Read);
+            this.SeedGroupPermission(groupSecret, GroupA, PermissionType.Read | PermissionType.Write);
 
-            Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-                await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names));
+            var names = Enumerable.Range(0, PermissionsManager.SecretNameQueryBatchSize + 5)
+                .Select(i => $"namebatch-none-{i:D3}")
+                .Append(directSecret)
+                .Append(groupSecret)
+                .ToArray();
+            var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
+
+            Assert.That(batched.Count, Is.EqualTo(names.Length), "Every requested name must be present in the result.");
+            Assert.That(batched[directSecret], Is.EqualTo(PermissionType.Read));
+            Assert.That(batched[groupSecret], Is.EqualTo(PermissionType.Read | PermissionType.Write));
+            Assert.That(batched.Where(kvp => kvp.Key.StartsWith("namebatch-none-")).All(kvp => kvp.Value == PermissionType.None), Is.True);
         }
 
         [Test]
-        public async Task GetEffectivePermissionsBatch_DuplicateNamesWithinCap_Allowed()
+        public async Task GetEffectivePermissionsBatch_DuplicateNames_Deduplicated()
         {
-            const string secret = "cap-dupes";
+            const string secret = "namebatch-dupes";
             this.SeedMember(consentRequired: false, GroupA);
             this.SeedDirectUserPermission(secret, MemberUpn, PermissionType.Read);
 
-            var names = Enumerable.Repeat(secret, PermissionsManager.MaxEffectivePermissionsRequestSize + 5).ToArray();
+            var names = Enumerable.Repeat(secret, 15).ToArray();
             var batched = await this.permissionsManager.GetEffectivePermissionsAsync(SubjectType.User, MemberUpn, names);
 
             Assert.That(batched.Count, Is.EqualTo(1));
@@ -492,6 +503,12 @@ namespace SafeExchange.Tests
             Assert.That(readable.Single(e => e.SecretName == lastBatchSecret).Effective, Is.EqualTo(PermissionType.Read | PermissionType.Write));
             Assert.That(readable.Any(e => e.SecretName == unrelatedSecret), Is.False,
                 "Grants to groups the caller is not a member of must never surface.");
+
+            var trace = this.permissionsLogger.Messages.SingleOrDefault(m => m.Contains("Group-derived permissions resolved"));
+            Assert.That(trace, Is.Not.Null, "Group resolution emits one telemetry trace per call.");
+            Assert.That(trace, Does.Contain($"{groupCount} groups").And.Contain("3 queries").And.Contain("2 grants"));
+            Assert.That(trace, Does.Not.Contain(MemberUpn).IgnoreCase,
+                "The trace must not carry the caller's raw user identifier.");
         }
 
         [Test]
