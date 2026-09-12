@@ -65,11 +65,25 @@ namespace SafeExchange.Tests
         [TestCase("Résumé")]        // non-ASCII letter
         [TestCase("приложение")]    // non-Latin
         [TestCase("app​name")] // zero-width space
+        [TestCase("MyApp\n")]       // trailing newline - '$' would have accepted this
+        [TestCase("MyApp\r")]       // trailing carriage return
+        [TestCase("MyApp\r\n")]     // trailing CRLF
+        [TestCase("My\nApp")]       // interior newline
         public void TryValidate_RejectsDisallowedCharacters(string input)
         {
             var ok = S2SAppDisplayNameValidator.TryValidate(input, out var reason);
             Assert.That(ok, Is.False);
             Assert.That(reason, Does.Contain("English letters"));
+        }
+
+        [Test]
+        public void TryValidate_PatternIsAnchoredToEndOfInput()
+        {
+            // '\z' and not '$': in .NET without Multiline, '$' also matches immediately
+            // before a single trailing newline, which would let a display name carry one
+            // into log messages and audit payloads (CWE-117).
+            var ok = S2SAppDisplayNameValidator.TryValidate("MyApp\nFAKE LOG LINE", out _);
+            Assert.That(ok, Is.False);
         }
 
         [Test]
