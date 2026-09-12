@@ -321,12 +321,15 @@ namespace SafeExchange.Core.Functions
                     new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
             }
 
-            if (string.IsNullOrEmpty(secretId))
+            // Creation-time naming contract, mirrored by the UI for immediate feedback.
+            // Deliberately not applied to read/update/delete: existing identifiers accepted
+            // under earlier behavior stay usable, subject to normal authorization.
+            if (!SecretNameValidator.TryValidate(secretId, out var secretIdError))
             {
-                log.LogInformation("Secret id value is not provided.");
+                log.LogInformation($"Secret id value is not valid: {secretIdError}");
                 return await ActionResults.CreateResponseAsync(
                     request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
+                    new BaseResponseObject<object> { Status = "bad_request", Error = secretIdError });
             }
 
             var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);

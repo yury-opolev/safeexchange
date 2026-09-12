@@ -6,6 +6,9 @@ namespace SafeExchange.Core.Utilities
     /// Validates the display name a user submits when self-registering an S2S app.
     /// Must start with an English letter and contain only English letters, digits,
     /// dash, or underscore; length 3..64.
+    /// The pattern ends with '\z', not '$'. Without Multiline, .NET's '$' also matches
+    /// immediately before a single trailing newline, so "MyApp\n" would be accepted and
+    /// the display name reaches log messages and audit payloads.
     /// </summary>
     public static class S2SAppDisplayNameValidator
     {
@@ -13,7 +16,7 @@ namespace SafeExchange.Core.Utilities
         public const int MaxLength = 64;
 
         private static readonly Regex Pattern = new(
-            @"^[A-Za-z][A-Za-z0-9_-]*$",
+            @"^[A-Za-z][A-Za-z0-9_-]*\z",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         public static bool TryValidate(string? displayName, out string? reason)
