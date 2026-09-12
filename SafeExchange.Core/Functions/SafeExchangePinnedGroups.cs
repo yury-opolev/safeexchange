@@ -21,10 +21,6 @@ namespace SafeExchange.Core.Functions
 
         private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
 
-        private static int MaxEmailLength = 320;
-
-        private static string DefaultEmailRegex = @"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
-
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -148,7 +144,7 @@ namespace SafeExchange.Core.Functions
 
             if (!string.IsNullOrEmpty(registrationInput.GroupMail))
             {
-                if (registrationInput.GroupMail.Length > SafeExchangePinnedGroups.MaxEmailLength)
+                if (registrationInput.GroupMail.Length > EmailValidator.MaxLength)
                 {
                     log.LogInformation($"{nameof(registrationInput.GroupMail)} for '{pinnedGroupId}' is too long.");
                     return await ActionResults.CreateResponseAsync(
@@ -156,7 +152,7 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "error", Error = "Pinned group mail is too long." });
                 }
 
-                if (!Regex.IsMatch(registrationInput.GroupMail, SafeExchangePinnedGroups.DefaultEmailRegex))
+                if (!EmailValidator.HasValidFormat(registrationInput.GroupMail))
                 {
                     log.LogInformation($"{nameof(registrationInput.GroupMail)} for '{pinnedGroupId}' is not in email-like format.");
                     return await ActionResults.CreateResponseAsync(

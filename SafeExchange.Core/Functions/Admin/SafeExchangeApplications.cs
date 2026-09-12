@@ -9,6 +9,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Telemetry;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -17,10 +18,6 @@ namespace SafeExchange.Core.Functions.Admin
     public class SafeExchangeApplications
     {
         private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
-
-        private static int MaxEmailLength = 320;
-
-        private static string DefaultEmailRegex = @"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
 
         private readonly SafeExchangeDbContext dbContext;
 
@@ -117,7 +114,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
             }
 
-            if (registrationInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength)
+            if (registrationInput.ContactEmail.Length > EmailValidator.MaxLength)
             {
                 log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is too long.");
                 return await ActionResults.CreateResponseAsync(
@@ -125,7 +122,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is too long." });
             }
 
-            if (!Regex.IsMatch(registrationInput.ContactEmail, SafeExchangeApplications.DefaultEmailRegex))
+            if (!EmailValidator.HasValidFormat(registrationInput.ContactEmail))
             {
                 log.LogInformation($"{nameof(registrationInput.ContactEmail)} for '{applicationId}' is not in email-like format.");
                 return await ActionResults.CreateResponseAsync(
@@ -243,8 +240,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Update data is not provided." });
             }
 
-            if (!string.IsNullOrEmpty(updateInput.ContactEmail) &&
-                (updateInput.ContactEmail.Length > SafeExchangeApplications.MaxEmailLength || !Regex.IsMatch(updateInput.ContactEmail, DefaultEmailRegex)))
+            if (!string.IsNullOrEmpty(updateInput.ContactEmail) && !EmailValidator.IsValid(updateInput.ContactEmail))
             {
                 log.LogInformation($"{nameof(updateInput.ContactEmail)} property value for '{applicationId}' is incorrect.");
                 return await ActionResults.CreateResponseAsync(

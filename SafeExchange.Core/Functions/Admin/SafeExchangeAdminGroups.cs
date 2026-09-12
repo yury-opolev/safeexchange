@@ -10,6 +10,7 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Telemetry;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Net;
     using System.Security.Claims;
@@ -18,10 +19,6 @@ namespace SafeExchange.Core.Functions.Admin
     public class SafeExchangeAdminGroups
     {
         private static string DefaultGuidRegex = "^([0-9A-Fa-f]{8}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{4}[-][0-9A-Fa-f]{12})$";
-
-        private static int MaxEmailLength = 320;
-
-        private static string DefaultEmailRegex = @"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
 
         private readonly SafeExchangeDbContext dbContext;
 
@@ -145,7 +142,7 @@ namespace SafeExchange.Core.Functions.Admin
 
             if (!string.IsNullOrEmpty(registrationInput.Mail))
             {
-                if (registrationInput.Mail.Length > SafeExchangeAdminGroups.MaxEmailLength)
+                if (registrationInput.Mail.Length > EmailValidator.MaxLength)
                 {
                     log.LogInformation($"{nameof(registrationInput.Mail)} for '{groupId}' is too long.");
                     return await ActionResults.CreateResponseAsync(
@@ -153,7 +150,7 @@ namespace SafeExchange.Core.Functions.Admin
                         new BaseResponseObject<object> { Status = "error", Error = "Group mail is too long." });
                 }
 
-                if (!Regex.IsMatch(registrationInput.Mail, SafeExchangeAdminGroups.DefaultEmailRegex))
+                if (!EmailValidator.HasValidFormat(registrationInput.Mail))
                 {
                     log.LogInformation($"{nameof(registrationInput.Mail)} for '{groupId}' is not in email-like format.");
                     return await ActionResults.CreateResponseAsync(

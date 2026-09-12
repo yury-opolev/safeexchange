@@ -13,14 +13,9 @@ namespace SafeExchange.Core.Functions.Admin
     using System;
     using System.Net;
     using System.Security.Claims;
-    using System.Text.RegularExpressions;
 
     public class SafeExchangeWebhookSubscriptions
     {
-        private static int MaxEmailLength = 320;
-
-        private static string DefaultEmailRegex = @"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
-
         private readonly SafeExchangeDbContext dbContext;
 
         private readonly ITokenHelper tokenHelper;
@@ -120,7 +115,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is not provided." });
             }
 
-            if (creationInput.ContactEmail.Length > SafeExchangeWebhookSubscriptions.MaxEmailLength)
+            if (creationInput.ContactEmail.Length > EmailValidator.MaxLength)
             {
                 log.LogInformation($"{nameof(creationInput.ContactEmail)} for webhook subscription is too long.");
                 return await ActionResults.CreateResponseAsync(
@@ -128,7 +123,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = "Contact email is too long." });
             }
 
-            if (!Regex.IsMatch(creationInput.ContactEmail, SafeExchangeWebhookSubscriptions.DefaultEmailRegex))
+            if (!EmailValidator.HasValidFormat(creationInput.ContactEmail))
             {
                 log.LogInformation($"{nameof(creationInput.ContactEmail)} for webhook subscription is not in email-like format.");
                 return await ActionResults.CreateResponseAsync(
@@ -237,8 +232,7 @@ namespace SafeExchange.Core.Functions.Admin
                     new BaseResponseObject<object> { Status = "error", Error = $"Update data for '{nameof(updateInput.AuthenticationResource)}' is not provided." });
             }
 
-            if (!string.IsNullOrEmpty(updateInput.ContactEmail) &&
-                (updateInput.ContactEmail.Length > SafeExchangeWebhookSubscriptions.MaxEmailLength || !Regex.IsMatch(updateInput.ContactEmail, DefaultEmailRegex)))
+            if (!string.IsNullOrEmpty(updateInput.ContactEmail) && !EmailValidator.IsValid(updateInput.ContactEmail))
             {
                 log.LogInformation($"{nameof(updateInput.ContactEmail)} property value for '{webhookSubscriptionId}' is incorrect.");
                 return await ActionResults.CreateResponseAsync(
