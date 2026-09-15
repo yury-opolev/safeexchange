@@ -39,11 +39,12 @@ jobs:
       # The tests require Gateway mode; this vNext emulator is Gateway-only and
       # serves the gateway over plain HTTP on 8081, with a health endpoint on
       # 8080. Only these two ports are needed (the test client sets
-      # LimitToEndpoint=true).
+      # LimitToEndpoint=true). Both are published on 127.0.0.1 only: an
+      # unauthenticated emulator has no business being reachable off the runner.
       - name: Start Cosmos DB emulator (Linux vNext-preview)
         run: |
           docker run --detach --name cosmos-emulator \
-            --publish 8081:8081 --publish 8080:8080 \
+            --publish 127.0.0.1:8081:8081 --publish 127.0.0.1:8080:8080 \
             mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
 
       - name: Restore

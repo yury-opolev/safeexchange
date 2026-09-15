@@ -6,7 +6,7 @@
 
     "SAEX_DEV_MODE": "true",
 
-    "CosmosDb:CosmosDbEndpoint": "http://localhost:8081",
+    "CosmosDb:CosmosDbEndpoint": "https://localhost:8081",
     "CosmosDb:DatabaseName": "SafeExchangeSpike",
 
     "Authentication:Authority": "https://login.microsoftonline.com/1472703e-99d8-45ee-aeac-7ec3ae9ab104/v2.0",

@@ -1,5 +1,6 @@
 /// <summary>
-/// DevModeCosmosTlsTests — regression guard for the SAEX_DEV_MODE Cosmos wiring.
+/// CosmosCertificateValidationTests — regression guard for the Cosmos client's
+/// server authentication, in development mode and on the production path.
 ///
 /// The development path used to hand the Cosmos gateway an HttpClient built on
 /// <c>HttpClientHandler.DangerousAcceptAnyServerCertificateValidator</c> so the
@@ -9,8 +10,8 @@
 /// connection had no server authentication at all.
 ///
 /// These tests exercise the configuration produced by the real startup code —
-/// not a standalone handler — and assert that the emulator connection now
-/// authenticates its server like any other TLS connection.
+/// not a standalone handler — and assert that both modes authenticate their
+/// server like any other TLS connection.
 /// </summary>
 
 namespace SafeExchange.Tests
@@ -36,7 +37,7 @@ namespace SafeExchange.Tests
 
     [TestFixture]
     [NonParallelizable]
-    public class DevModeCosmosTlsTests
+    public class CosmosCertificateValidationTests
     {
         private const string DevModeVariable = "SAEX_DEV_MODE";
 
@@ -44,6 +45,8 @@ namespace SafeExchange.Tests
         private const string PlaceholderPrimaryKey = "placeholder-not-a-real-key";
 
         private const string LoopbackEndpoint = "https://localhost:8081";
+
+        private const string ProductionEndpoint = "https://safeexchange-test.documents.azure.com:443/";
 
         private string? originalDevMode;
 
@@ -59,10 +62,11 @@ namespace SafeExchange.Tests
             Environment.SetEnvironmentVariable(DevModeVariable, this.originalDevMode);
         }
 
-        [Test]
-        public void DevMode_InstallsNoCustomHttpHandler()
+        [TestCase(true, TestName = "Development mode installs no custom HTTP handler")]
+        [TestCase(false, TestName = "Production path installs no custom HTTP handler")]
+        public void InstallsNoCustomHttpHandler(bool devMode)
         {
-            var extension = CosmosExtension(devMode: true, endpoint: LoopbackEndpoint, primaryKey: PlaceholderPrimaryKey);
+            var extension = ExtensionFor(devMode);
 
             // No factory at all means no place for a validation bypass to live, and
             // no insecure handler to fall back to: the Cosmos SDK's default client
@@ -70,15 +74,16 @@ namespace SafeExchange.Tests
             Assert.That((object?)extension.HttpClientFactory, Is.Null);
         }
 
-        [Test]
-        public void DevMode_RejectsUntrustedServerCertificate()
+        [TestCase(true, TestName = "Development mode rejects an untrusted server certificate")]
+        [TestCase(false, TestName = "Production path rejects an untrusted server certificate")]
+        public void RejectsUntrustedServerCertificate(bool devMode)
         {
             using var certificate = CreateSelfSignedCertificate(
                 subject: "127.0.0.1",
                 configureSubjectAlternativeNames: san => san.AddIpAddress(IPAddress.Loopback));
 
             using var server = new LoopbackTlsServer(certificate);
-            using var client = CreateDevCosmosHttpClient();
+            using var client = CreateCosmosHttpClient(devMode);
 
             var error = Assert.ThrowsAsync<HttpRequestException>(
                 async () => await client.GetAsync($"https://127.0.0.1:{server.Port}/"));
@@ -86,8 +91,9 @@ namespace SafeExchange.Tests
             Assert.That(InnerAuthenticationException(error), Is.Not.Null, "The connection must fail TLS validation, not merely fail.");
         }
 
-        [Test]
-        public void DevMode_RejectsCertificateThatDoesNotMatchTheHost()
+        [TestCase(true, TestName = "Development mode rejects a certificate that does not match the host")]
+        [TestCase(false, TestName = "Production path rejects a certificate that does not match the host")]
+        public void RejectsCertificateThatDoesNotMatchTheHost(bool devMode)
         {
             // Issued for 'localhost' but served on 127.0.0.1. The certificate is
             // self-signed as well, so this asserts that a name-mismatching
@@ -97,7 +103,7 @@ namespace SafeExchange.Tests
                 configureSubjectAlternativeNames: san => san.AddDnsName("localhost"));
 
             using var server = new LoopbackTlsServer(certificate);
-            using var client = CreateDevCosmosHttpClient();
+            using var client = CreateCosmosHttpClient(devMode);
 
             var error = Assert.ThrowsAsync<HttpRequestException>(
                 async () => await client.GetAsync($"https://127.0.0.1:{server.Port}/"));
@@ -105,13 +111,27 @@ namespace SafeExchange.Tests
             Assert.That(InnerAuthenticationException(error), Is.Not.Null, "The connection must fail TLS validation, not merely fail.");
         }
 
-        [Test]
-        public void DevMode_RequiresLoopbackCosmosEndpoint()
+        [TestCase("https://safeexchange-test.documents.azure.com:443/")]
+        [TestCase("https://10.0.0.5:8081")]
+        [TestCase("https://cosmos.internal.example:8081")]
+        [TestCase("not-an-absolute-uri")]
+        public void DevMode_RejectsEndpointsThatAreNotLoopback(string endpoint)
         {
             var error = Assert.Throws<ConfigurationErrorsException>(
-                () => CosmosExtension(devMode: true, endpoint: "https://safeexchange-test.documents.azure.com:443/", primaryKey: PlaceholderPrimaryKey));
+                () => CosmosExtension(devMode: true, endpoint: endpoint, primaryKey: PlaceholderPrimaryKey));
 
             Assert.That(error!.Message, Does.Contain("CosmosDb:CosmosDbEndpoint"));
+        }
+
+        [TestCase("https://localhost:8081")]
+        [TestCase("http://localhost:8081")]
+        [TestCase("https://127.0.0.1:8081")]
+        [TestCase("https://[::1]:8081")]
+        public void DevMode_AcceptsLoopbackEndpoints(string endpoint)
+        {
+            var extension = CosmosExtension(devMode: true, endpoint: endpoint, primaryKey: PlaceholderPrimaryKey);
+
+            Assert.That(extension.AccountEndpoint, Is.EqualTo(endpoint));
         }
 
         [Test]
@@ -126,7 +146,7 @@ namespace SafeExchange.Tests
         [Test]
         public void WithoutDevMode_UsesCredentialPathAndNeedsNoPrimaryKey()
         {
-            var extension = CosmosExtension(devMode: false, endpoint: "https://safeexchange-test.documents.azure.com:443/", primaryKey: null);
+            var extension = CosmosExtension(devMode: false, endpoint: ProductionEndpoint, primaryKey: null);
 
             Assert.Multiple(() =>
             {
@@ -136,15 +156,36 @@ namespace SafeExchange.Tests
             });
         }
 
+        [Test]
+        public void WithoutDevMode_KeepsRemoteEndpointsAndIgnoresAnyPrimaryKey()
+        {
+            // The loopback restriction is a development-mode containment measure; it
+            // must not follow the credential path to a real account, and a stray
+            // primary key must not turn that path into a key-authenticated one.
+            var extension = CosmosExtension(devMode: false, endpoint: ProductionEndpoint, primaryKey: PlaceholderPrimaryKey);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(extension.AccountEndpoint, Is.EqualTo(ProductionEndpoint));
+                Assert.That(extension.TokenCredential, Is.Not.Null);
+                Assert.That(extension.AccountKey, Is.Null);
+            });
+        }
+
+        private static CosmosOptionsExtension ExtensionFor(bool devMode)
+            => devMode
+                ? CosmosExtension(devMode: true, endpoint: LoopbackEndpoint, primaryKey: PlaceholderPrimaryKey)
+                : CosmosExtension(devMode: false, endpoint: ProductionEndpoint, primaryKey: null);
+
         /// <summary>
-        /// The HttpClient the development configuration yields. When that configuration
+        /// The HttpClient the given configuration yields. When that configuration
         /// installs a factory the client comes from it; when it installs none — as it
         /// must, so that no bypass can live there — the Cosmos SDK builds a default
         /// HttpClient, which is what is mirrored here.
         /// </summary>
-        private static HttpClient CreateDevCosmosHttpClient()
+        private static HttpClient CreateCosmosHttpClient(bool devMode)
         {
-            var extension = CosmosExtension(devMode: true, endpoint: LoopbackEndpoint, primaryKey: PlaceholderPrimaryKey);
+            var extension = ExtensionFor(devMode);
             var client = extension.HttpClientFactory?.Invoke() ?? new HttpClient();
             client.Timeout = TimeSpan.FromSeconds(30);
             return client;
