@@ -126,31 +126,11 @@ namespace SafeExchange.Core
             // mutations (e.g., permission grants batched before the final SaveChanges).
             if (IsDevMode())
             {
-                // LOCAL SPIKE: Cosmos emulator key comes from CosmosDb:PrimaryKey in
-                // user-secrets — never hardcoded. Fail fast with the exact command
-                // to set it so the dev experience stays self-explanatory.
-                if (string.IsNullOrWhiteSpace(cosmosDbConfig.PrimaryKey))
-                {
-                    throw new ConfigurationErrorsException(
-                        "CosmosDb:PrimaryKey is required when SAEX_DEV_MODE=true. " +
-                        "Set it via user-secrets, e.g.: " +
-                        "dotnet user-secrets set \"CosmosDb:PrimaryKey\" \"<emulator-key>\" --project SafeExchange.Functions");
-                }
-
-                services.AddDbContextFactory<SafeExchangeDbContext>(
-                    options => options.UseCosmos(
-                        cosmosDbConfig.CosmosDbEndpoint,
-                        cosmosDbConfig.PrimaryKey,
-                        cosmosDbConfig.DatabaseName,
-                        cosmos =>
-                        {
-                            cosmos.ConnectionMode(Microsoft.Azure.Cosmos.ConnectionMode.Gateway);
-                            cosmos.LimitToEndpoint();
-                            cosmos.HttpClientFactory(() => new HttpClient(new HttpClientHandler
-                            {
-                                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                            }));
-                        }));
+                // LOCAL SPIKE: emulator-specific wiring lives in DevCosmosSetup so it
+                // stays out of ordinary startup. It validates the endpoint and the
+                // emulator key, and — deliberately — installs no certificate-validation
+                // callback; see LocalDev/README.md for the local emulator trust setup.
+                DevCosmosSetup.AddDevCosmosDbContextFactory(services, cosmosDbConfig);
             }
             else
             {
