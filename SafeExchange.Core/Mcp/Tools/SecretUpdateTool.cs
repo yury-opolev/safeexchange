@@ -31,7 +31,7 @@ namespace SafeExchange.Core.Mcp.Tools
 
         public JsonElement InputSchema => Schema;
 
-        public ToolAnnotations Annotations => McpToolAnnotations.Additive();
+        public ToolAnnotations Annotations => McpToolAnnotations.Destructive();
 
         public async Task<McpToolResult> ExecuteAsync(McpToolCall call, CancellationToken cancellationToken)
         {

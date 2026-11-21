@@ -23,7 +23,7 @@ namespace SafeExchange.Tests.Mcp
             "file_transfer_info", "access_list", "access_change", "audit_read",
         };
 
-        private static readonly string[] Destructive = { "secret_delete", "file_delete", "access_change" };
+        private static readonly string[] Destructive = { "secret_delete", "file_delete", "access_change", "secret_update" };
 
         private static readonly string[] ReadOnly =
         {
