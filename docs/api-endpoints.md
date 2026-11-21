@@ -168,7 +168,7 @@ Admin endpoints require the caller to be a configured admin (`AdminConfiguration
 
 ## MCP
 
-SafeExchange exposes a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents can use secrets and files under the same permissions and audit as people. It is off unless `Features.McpEndpoint` is enabled; when off, both routes respond `404`. See [mcp.md](mcp.md) for setup, authentication, the tool list and the file transfer flows.
+SafeExchange exposes a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents can use secrets and files under the same permissions and audit as people. It is off unless `Features.McpEndpoint` is enabled; when off, the anonymous metadata route responds `404`, and `/api/mcp` responds `404` to authenticated callers (an unauthenticated call gets the normal `401`, without the `WWW-Authenticate` challenge, because authentication runs first). See [mcp.md](mcp.md) for setup, authentication, the tool list and the file transfer flows.
 
 | Method | Path | Description |
 |--------|------|-------------|

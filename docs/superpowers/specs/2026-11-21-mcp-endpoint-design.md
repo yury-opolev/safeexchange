@@ -198,8 +198,11 @@ Contract:
   send it on later requests; the handler decodes it into
   `Caller.ClientLabel` (truncated to 128 chars, printable ASCII only). Missing or
   malformed → `ClientLabel = null`. It carries no authority.
-- Feature flag `Features.McpEndpoint` (default `false`). When off, both new
-  routes return `404`.
+- Feature flag `Features.McpEndpoint` (default `false`). When off, the anonymous
+  metadata route returns `404`, and `/api/mcp` returns `404` to authenticated
+  callers. Authentication runs before the handler checks the flag, so an
+  unauthenticated `/api/mcp` call gets the normal `401` from authentication
+  (without the `WWW-Authenticate` challenge).
 
 ### Authentication
 

@@ -27,7 +27,7 @@ The dispatcher and tools live in `SafeExchange.Core/Mcp` and depend only on the 
 | `Features:McpEndpoint` | `Features--McpEndpoint` (`True` / `False`) | `settings-features-mcpEndpoint` | `False` |
 | `Authentication:McpScopes` (optional) | `Authentication--McpScopes` | — (set the secret by hand) | empty |
 
-- With the flag off, `POST /api/mcp` and `GET /api/.well-known/oauth-protected-resource` answer `404`, and `401` responses carry no `WWW-Authenticate` challenge.
+- With the flag off, `GET /api/.well-known/oauth-protected-resource` (anonymous) answers `404`. `POST /api/mcp` answers `404` to authenticated callers; an unauthenticated call gets the normal `401` from authentication, because authentication runs before the handler checks the flag (it is deliberately not skipped based on the flag). Either way `401` responses carry no `WWW-Authenticate` challenge while the flag is off.
 - The flag is read live (`IOptionsMonitor`), so no redeploy is needed. Key Vault configuration is reloaded every 5 minutes; restart the Function app to apply a change immediately.
 - Production should keep the flag off until it is enabled explicitly. Staging (`test` environment) is where it is validated first (see [Staging validation](#staging-validation)).
 - The `deployment\current\arm` templates define `settings-features-mcpEndpoint` (default `False`) and the `Features--McpEndpoint` secret, like the other `Features--*` settings.
