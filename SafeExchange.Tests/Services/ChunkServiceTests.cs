@@ -325,6 +325,38 @@ namespace SafeExchange.Tests.Services
             Assert.That(content.Chunks.Single().Length, Is.EqualTo(Hello.Length));
         }
 
+        [Test]
+        public async Task ConcurrentUploadWithoutATicket_WhileTheFirstIsWritingTheBlob_IsRejectedAsBeingUpdated()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var gated = new GatedBlobHelper(this.BlobHelper);
+            var serviceA = new ChunkService(this.Configuration, this.DbContext, this.Purger, gated, this.PermissionsManager, this.AuditWriter, NullLogger<ChunkService>.Instance);
+
+            var uploadA = serviceA.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(Hello), new ChunkUploadRequest { ChunkHash = Sha256Hex(Hello), DeclaredLength = Hello.Length, ExpectedIndex = 0 });
+            await gated.UploadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // Another request: its own DbContext over the same database.
+            using var otherDbContext = new SafeExchangeDbContext(this.DbContextOptions);
+            var otherService = new ChunkService(
+                this.Configuration, otherDbContext, this.Purger, this.BlobHelper,
+                new PermissionsManager(this.Configuration, otherDbContext, NullLogger<PermissionsManager>.Instance),
+                this.AuditWriter, NullLogger<ChunkService>.Instance);
+            var uploadB = await otherService.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(World), new ChunkUploadRequest { ChunkHash = Sha256Hex(World), DeclaredLength = World.Length, ExpectedIndex = 0 });
+
+            gated.Release.SetResult();
+            var resultA = await uploadA.WaitAsync(TimeSpan.FromSeconds(10));
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(uploadB.IsOk, Is.False);
+            Assert.That(uploadB.Status, Is.EqualTo(ServiceStatus.Unprocessable));
+            Assert.That(uploadB.Error, Is.EqualTo("Content is being updated."));
+            Assert.That(resultA.IsOk, Is.True, resultA.Error);
+            Assert.That(content.Chunks, Has.Count.EqualTo(1));
+            Assert.That(content.Chunks[0].Hash, Is.EqualTo(Sha256Hex(Hello)));
+            Assert.That(this.BlobHelper.Blobs[$"{contentId}-00000000"], Is.EqualTo(Hello));
+        }
+
         private static string Sha256Hex(byte[] data)
             => Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
 
@@ -344,6 +376,30 @@ namespace SafeExchange.Tests.Services
                 DeclaredLength = hashed ? (declareLength ? data.Length : null) : 0,
                 ExpectedIndex = expectedIndex,
             });
+
+        private sealed class GatedBlobHelper : IBlobHelper
+        {
+            private readonly IBlobHelper inner;
+
+            public GatedBlobHelper(IBlobHelper inner) => this.inner = inner;
+
+            public TaskCompletionSource UploadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public async Task EncryptAndUploadBlobAsync(string blobName, Stream data)
+            {
+                this.UploadStarted.TrySetResult();
+                await this.Release.Task;
+                await this.inner.EncryptAndUploadBlobAsync(blobName, data);
+            }
+
+            public Task<bool> BlobExistsAsync(string blobName) => this.inner.BlobExistsAsync(blobName);
+
+            public Task<Stream> DownloadAndDecryptBlobAsync(string blobName) => this.inner.DownloadAndDecryptBlobAsync(blobName);
+
+            public Task<bool> DeleteBlobIfExistsAsync(string blobName) => this.inner.DeleteBlobIfExistsAsync(blobName);
+        }
 
         private async Task<string> CreateAttachmentAsync(string secretId)
         {

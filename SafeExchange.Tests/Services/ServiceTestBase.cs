@@ -41,6 +41,8 @@ namespace SafeExchange.Tests.Services
 
         private DateTime previousSpecifiedDateTime;
 
+        protected DbContextOptions<SafeExchangeDbContext> DbContextOptions => this.dbContextOptions;
+
         protected IConfiguration Configuration { get; private set; } = null!;
 
         protected SafeExchangeDbContext DbContext { get; private set; } = null!;

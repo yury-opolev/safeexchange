@@ -210,16 +210,18 @@ namespace SafeExchange.Core.Services
                     existingContent.Status = ContentStatus.Updating;
                     existingContent.AccessTicket = accessTicket;
                     existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
-                }
 
-                var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
+                    // Persisted before the blob is written, so a concurrent request sees the content as locked.
+                    await this.dbContext.SaveChangesAsync();
+                }
 
                 if (mode == UploadMode.Reject)
                 {
                     // Kept for the REST wire: a rejected upload without ExpectedIndex leaves the lock it took.
-                    await this.dbContext.SaveChangesAsync();
                     return InconsistentUploadMode();
                 }
+
+                var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
 
                 ServiceResult<ChunkCreationOutput> result;
                 try
@@ -234,13 +236,26 @@ namespace SafeExchange.Core.Services
                 }
                 catch
                 {
-                    lockTaken?.RestoreTo(existingContent);
+                    if (lockTaken is not null)
+                    {
+                        try
+                        {
+                            lockTaken.RestoreTo(existingContent);
+                            await this.dbContext.SaveChangesAsync();
+                        }
+                        catch (Exception restoreException)
+                        {
+                            this.log.LogWarning(restoreException, $"Cannot release the upload lock of '{existingContent.ContentName}'.");
+                        }
+                    }
+
                     throw;
                 }
 
-                if (!result.IsOk)
+                if (!result.IsOk && lockTaken is not null)
                 {
-                    lockTaken?.RestoreTo(existingContent);
+                    lockTaken.RestoreTo(existingContent);
+                    await this.dbContext.SaveChangesAsync();
                 }
 
                 return result;
