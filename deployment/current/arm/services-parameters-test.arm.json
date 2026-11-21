@@ -45,7 +45,7 @@
             "value": "True"
         },
         "settings-features-mcpEndpoint": {
-            "value": "False"
+            "value": "True"
         },
         "deployer_ip_addresses": {
             "value": []
