@@ -40,7 +40,14 @@ Telemetry initializers run in registration order, and these two are meant to run
 
 ## 3. Middleware composition
 
-`SafeExchangeFunctionsStartup.ConfigureWorkerDefaults` currently registers, in this order:
+`SafeExchangeFunctionsStartup.ConfigureWorkerDefaults` is two steps, each also callable on its own:
+
+| Method | Registers (in this order) |
+|--------|---------------------------|
+| `UseSafeExchangeAuthentication(builder)` | `DefaultAuthenticationMiddleware`, validates the JWT |
+| `UseSafeExchangeMiddleware(builder)` | `TokenFilterMiddleware` (post-authentication token filters), `SessionCorrelationMiddleware`, `ApiVersionTelemetryMiddleware` |
+
+`ConfigureWorkerDefaults(context, builder)` calls both, so a host that uses our authentication keeps passing it to `ConfigureFunctionsWorkerDefaults`. The registration is equivalent to:
 
 ```csharp
 builder.UseWhen<DefaultAuthenticationMiddleware>(IsAuthenticatedHttpTrigger);   // validates the JWT
@@ -51,21 +58,19 @@ builder.UseWhen<ApiVersionTelemetryMiddleware>(IsHttpTrigger);
 
 `IsAuthenticatedHttpTrigger` is every HTTP trigger except the anonymous MCP protected-resource metadata function.
 
-A consumer with its own authentication does **not** use `ConfigureWorkerDefaults` (it would add our `DefaultAuthenticationMiddleware`). It registers its own authentication middleware and then composes the rest of the chain itself, in the same order:
+A consumer with its own authentication does **not** use `ConfigureWorkerDefaults` (it would add our `DefaultAuthenticationMiddleware`). It registers its own authentication middleware first and then calls `UseSafeExchangeMiddleware`:
 
 ```csharp
 .ConfigureFunctionsWorkerDefaults(builder =>
 {
     builder.UseWhen<MyAuthenticationMiddleware>(SafeExchangeFunctionsStartup.IsAuthenticatedHttpTrigger);
-    builder.UseWhen<TokenFilterMiddleware>(SafeExchangeFunctionsStartup.IsAuthenticatedHttpTrigger);
-    builder.UseWhen<SessionCorrelationMiddleware>(SafeExchangeFunctionsStartup.IsHttpTrigger);
-    builder.UseWhen<ApiVersionTelemetryMiddleware>(SafeExchangeFunctionsStartup.IsHttpTrigger);
+    SafeExchangeFunctionsStartup.UseSafeExchangeMiddleware(builder);
 })
 ```
 
 The one contract between the two halves: your middleware must store the validated `ClaimsPrincipal` in `FunctionContext.Items` under **`DefaultAuthenticationMiddleware.ClaimsPrincipalKey`** (`"ClaimsPrincipal"`). `TokenFilterMiddleware` and `context.GetPrincipal()` (used by the triggers) read it from there. On a `401`, build the response with `UnauthorizedResponse.CreateAsync(request, message, includeResourceMetadata)` to keep the REST body and, with MCP enabled, the `WWW-Authenticate` challenge.
 
-> **Planned:** `ConfigureWorkerDefaults` will be split into `UseSafeExchangeAuthentication(builder)` (our JWT middleware) and `UseSafeExchangeMiddleware(builder)` (token filter, session correlation, API version), so a consumer can call only the second one. This is not implemented yet; until it is, compose the chain as shown above.
+`ConfigureFunctionsServices` must still run before `SafeExchangeStartup.ConfigureServices` (section 2), whichever way the middleware chain is composed.
 
 Both authentication middleware constructors now take `IOptionsMonitor<Features>` (to decide whether the `401` carries the MCP challenge): `DefaultAuthenticationMiddleware(ITokenValidationParametersProvider, IOptionsMonitor<Features>, ILogger<…>)` and `TokenFilterMiddleware(IOptionsMonitor<Features>, ILogger<…>)`. The worker builds them from DI, so only code that constructs them by hand needs to change.
 
@@ -162,7 +167,7 @@ Requirements:
 ## Migration checklist
 
 1. Reference `SafeExchange.Core.Functions`; keep your own Functions worker packages.
-2. Replace `SafeExchangeStartup.ConfigureWorkerDefaults` / `IsHttpTrigger` with the `SafeExchangeFunctionsStartup` equivalents, or compose your own chain (section 3).
+2. Replace `SafeExchangeStartup.ConfigureWorkerDefaults` / `IsHttpTrigger` with the `SafeExchangeFunctionsStartup` equivalents, or, with your own authentication, register it and call `UseSafeExchangeMiddleware` (section 3).
 3. Call `SafeExchangeFunctionsStartup.ConfigureFunctionsServices` before `SafeExchangeStartup.ConfigureServices`.
 4. Store the principal under `DefaultAuthenticationMiddleware.ClaimsPrincipalKey` in your authentication middleware.
 5. Resolve handlers from DI instead of constructing them by hand.

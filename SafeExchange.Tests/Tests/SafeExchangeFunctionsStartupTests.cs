@@ -5,6 +5,8 @@
 namespace SafeExchange.Tests
 {
     using Microsoft.ApplicationInsights.Extensibility;
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Middleware;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.DependencyInjection;
     using NUnit.Framework;
@@ -42,6 +44,65 @@ namespace SafeExchange.Tests
                 "Singleton ITelemetryInitializer <- SessionCorrelationTelemetryInitializer",
                 "Singleton ITelemetryInitializer <- ApiVersionTelemetryInitializer",
             }));
+        }
+
+        [Test]
+        public void ConfigureWorkerDefaults_RegistersTheMiddlewareInOrder()
+        {
+            var builder = new RecordingWorkerBuilder();
+
+            SafeExchangeFunctionsStartup.ConfigureWorkerDefaults(null!, builder);
+
+            Assert.That(builder.Middleware, Is.EqualTo(new[]
+            {
+                typeof(DefaultAuthenticationMiddleware),
+                typeof(TokenFilterMiddleware),
+                typeof(SessionCorrelationMiddleware),
+                typeof(ApiVersionTelemetryMiddleware),
+            }));
+            Assert.That(builder.UseCalls, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void UseSafeExchangeAuthentication_RegistersOnlyTheAuthenticationMiddleware()
+        {
+            var builder = new RecordingWorkerBuilder();
+
+            SafeExchangeFunctionsStartup.UseSafeExchangeAuthentication(builder);
+
+            Assert.That(builder.Middleware, Is.EqualTo(new[] { typeof(DefaultAuthenticationMiddleware) }));
+            Assert.That(builder.UseCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void UseSafeExchangeMiddleware_RegistersEverythingExceptAuthentication()
+        {
+            var builder = new RecordingWorkerBuilder();
+
+            SafeExchangeFunctionsStartup.UseSafeExchangeMiddleware(builder);
+
+            Assert.That(builder.Middleware, Is.EqualTo(new[]
+            {
+                typeof(TokenFilterMiddleware),
+                typeof(SessionCorrelationMiddleware),
+                typeof(ApiVersionTelemetryMiddleware),
+            }));
+            Assert.That(builder.UseCalls, Is.EqualTo(3));
+        }
+
+        private sealed class RecordingWorkerBuilder : IFunctionsWorkerApplicationBuilder
+        {
+            public IServiceCollection Services { get; } = new ServiceCollection();
+
+            public int UseCalls { get; private set; }
+
+            public IEnumerable<System.Type> Middleware => this.Services.Select(d => d.ServiceType);
+
+            public IFunctionsWorkerApplicationBuilder Use(System.Func<FunctionExecutionDelegate, FunctionExecutionDelegate> middleware)
+            {
+                this.UseCalls++;
+                return this;
+            }
         }
 
         [Test]

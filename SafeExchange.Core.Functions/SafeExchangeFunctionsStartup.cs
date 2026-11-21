@@ -30,7 +30,29 @@ namespace SafeExchange.Core
 
         public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
         {
+            UseSafeExchangeAuthentication(builder);
+            UseSafeExchangeMiddleware(builder);
+        }
+
+        /// <summary>
+        /// Adds the bearer-token validation (<see cref="DefaultAuthenticationMiddleware"/>). A host with its own
+        /// authentication skips this and stores the validated principal under
+        /// <see cref="DefaultAuthenticationMiddleware.ClaimsPrincipalKey"/> itself.
+        /// </summary>
+        public static void UseSafeExchangeAuthentication(IFunctionsWorkerApplicationBuilder builder)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+
             builder.UseWhen<DefaultAuthenticationMiddleware>(IsAuthenticatedHttpTrigger);
+        }
+
+        /// <summary>
+        /// Adds everything that follows authentication: token filters, session correlation, API version telemetry.
+        /// </summary>
+        public static void UseSafeExchangeMiddleware(IFunctionsWorkerApplicationBuilder builder)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+
             builder.UseWhen<TokenFilterMiddleware>(IsAuthenticatedHttpTrigger);
 
             // After auth so failed-auth requests still get the dimension,
