@@ -14,6 +14,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Applications;
     using SafeExchange.Core.Audit;
     using SafeExchange.Core.AzureAd;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.LocalDev;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
@@ -143,6 +144,7 @@ namespace SafeExchange.Core
             services.AddScoped<IOrphanedSecretManager, OrphanedSecretManager>();
             services.AddScoped<IGroupsManager, GroupsManager>();
             services.AddScoped<IApplicationOwnerService, ApplicationOwnerService>();
+            services.AddScoped<ICallerResolver, CallerResolver>();
 
             services.AddScoped<IAuditWriter, AuditWriter>();
             services.AddScoped<IAuditPurger, AuditPurger>();

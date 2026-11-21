@@ -94,6 +94,7 @@ Time-delayed and background tasks (webhook delivery, notification retries) are d
 ```
 SafeExchange.Core/
 ├── Blob/                  — Blob storage helpers (upload, download, encrypt)
+├── Callers/               — Caller, ICallerResolver/CallerResolver, GlobalAccessPolicy (host-agnostic caller resolution)
 ├── Configuration/         — Settings classes (CosmosDb, Auth, Features)
 ├── Crypto/                — Encryption/decryption using KeyVault
 ├── DatabaseContext/        — EF Core DbContext for Cosmos DB
@@ -108,8 +109,8 @@ SafeExchange.Core/
 SafeExchange.Core.Functions/  — Azure Functions-typed code (references SafeExchange.Core, never the reverse)
 ├── Functions/             — HTTP business logic handlers for each endpoint
 ├── Middleware/            — Authentication middleware (JWT validation)
-├── Requests/Filters/      — Global authorization filters
-├── Utilities/             — ActionResults, TokenHelperHttpExtensions
+├── Requests/Filters/      — Global authorization filters (HTTP wrappers; the global-group decision is Core's GlobalAccessPolicy)
+├── Utilities/             — ActionResults, TokenHelperHttpExtensions, CallerDenialHttpExtensions
 └── SafeExchangeFunctionsStartup.cs — Worker middleware and Functions-typed DI registrations
 
 SafeExchange.Functions/
