@@ -41,11 +41,11 @@ namespace SafeExchange.Core.Filters
         }
 
         /// <summary>
-        /// The global access-group decision of <see cref="GetFilterResultAsync"/> without writing a response:
-        /// <c>null</c> when the caller passes, otherwise the denial. Logs under this class, like the filter.
+        /// The global access-group gate on this instance's configuration, token helper and log (category
+        /// <see cref="GlobalFilters"/>), as <see cref="GetFilterResultAsync"/> applies it.
         /// </summary>
-        public Task<CallerDenial?> GetGlobalAccessDenialAsync(ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
-            => new GlobalAccessPolicy(this.groupsConfiguration.CurrentValue, this.tokenHelper, this.log).EvaluateAsync(principal, dbContext);
+        internal GlobalAccessPolicy CreateGlobalAccessPolicy()
+            => new(this.groupsConfiguration.CurrentValue, this.tokenHelper, this.log);
 
         public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetAdminFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {

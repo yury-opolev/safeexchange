@@ -81,7 +81,7 @@ The six handlers MCP needs are now thin adapters over services in `SafeExchange.
 | Constructor | Use |
 |-------------|-----|
 | DI constructor, for example `SafeExchangeSecretMeta(ICallerResolver, SecretService)` | **Recommended.** Resolve the handler from DI (`ConfigureFunctionsServices` registers it) or construct it with services from DI |
-| Legacy convenience constructor (the previous parameter list) | Still compiles. It builds a `GlobalFiltersCallerResolver` and a service with `NullLogger`, so the service's log lines are dropped and the global-group log lines keep the `GlobalFilters` category. Meant for tests and hand-built code |
+| Legacy convenience constructor (the previous parameter list) | Still compiles. It resolves callers with the same `CallerResolver` logic (the global-group gate comes from the `GlobalFilters` you pass, so its log lines keep the `GlobalFilters` category) and builds a service with `NullLogger`, so the service's log lines are dropped. Meant for tests and hand-built code |
 
 Services take a `Caller` first and return `ServiceResult<T>`; the HTTP adapters map the result to the same status code and `BaseResponseObject<T>` JSON as before.
 

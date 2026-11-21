@@ -17,14 +17,15 @@ namespace SafeExchange.Tests.Contract
     using NUnit.Framework;
     using SafeExchange.Core;
     using SafeExchange.Core.Audit;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Configuration;
-    using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Groups;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Services;
     using SafeExchange.Tests.Utilities;
     using System;
     using System.Collections.Generic;
@@ -173,12 +174,11 @@ namespace SafeExchange.Tests.Contract
             var tokenHelper = new TokenHelper(configuration, NullLogger<TokenHelper>.Instance);
 
             var allowedGroups = this.GlobalAccessGroups;
-            var adminConfiguration = new AdminConfiguration();
-            var globalFilters = new GlobalFilters(
+            var callerResolver = new CallerResolver(
                 Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == allowedGroups),
-                Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == adminConfiguration),
                 tokenHelper,
-                NullLogger<GlobalFilters>.Instance);
+                this.DbContext,
+                NullLogger<CallerResolver>.Instance);
 
             var purger = new PurgeManager(configuration, this.BlobHelper, NullLogger<PurgeManager>.Instance);
             var permissionsManager = new PermissionsManager(configuration, this.DbContext, NullLogger<PermissionsManager>.Instance);
@@ -191,18 +191,18 @@ namespace SafeExchange.Tests.Contract
                 NullLogger<OrphanedSecretManager>.Instance);
             var auditWriter = new AuditWriter(new ContractDbContextFactory(dbContextOptions), NullLogger<AuditWriter>.Instance);
 
-            this.SecretMeta = new SafeExchangeSecretMeta(
-                configuration, this.DbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.ContentMeta = new SafeExchangeSecretContentMeta(
-                configuration, this.DbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.SecretStream = new SafeExchangeSecretStream(
-                configuration, this.DbContext, tokenHelper, globalFilters, purger, this.BlobHelper, permissionsManager, auditWriter);
-            this.ContentCommit = new SafeExchangeContentCommit(
-                configuration, this.DbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.SecretAccess = new SafeExchangeAccess(
-                this.DbContext, groupsManager, tokenHelper, globalFilters, purger, permissionsManager, auditWriter, orphanedSecretManager);
-            this.SecretAudit = new SafeExchangeSecretAudit(
-                this.DbContext, tokenHelper, globalFilters, permissionsManager);
+            var secretService = new SecretService(configuration, this.DbContext, purger, permissionsManager, auditWriter, NullLogger<SecretService>.Instance);
+            var contentService = new ContentService(configuration, this.DbContext, purger, permissionsManager, auditWriter, NullLogger<ContentService>.Instance);
+            var chunkService = new ChunkService(configuration, this.DbContext, purger, this.BlobHelper, permissionsManager, auditWriter, NullLogger<ChunkService>.Instance);
+            var accessService = new AccessService(this.DbContext, groupsManager, permissionsManager, auditWriter, orphanedSecretManager, NullLogger<AccessService>.Instance);
+            var auditQueryService = new AuditQueryService(this.DbContext, permissionsManager);
+
+            this.SecretMeta = new SafeExchangeSecretMeta(callerResolver, secretService);
+            this.ContentMeta = new SafeExchangeSecretContentMeta(callerResolver, contentService);
+            this.SecretStream = new SafeExchangeSecretStream(callerResolver, chunkService);
+            this.ContentCommit = new SafeExchangeContentCommit(callerResolver, contentService);
+            this.SecretAccess = new SafeExchangeAccess(callerResolver, accessService);
+            this.SecretAudit = new SafeExchangeSecretAudit(callerResolver, auditQueryService);
         }
 
         [TearDown]

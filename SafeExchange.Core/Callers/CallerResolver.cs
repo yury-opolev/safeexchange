@@ -22,20 +22,26 @@ namespace SafeExchange.Core.Callers
     {
         public const string ApplicationNotRegisteredError = "Application is not registered or disabled.";
 
-        private readonly IOptionsMonitor<GloballyAllowedGroupsConfiguration> groupsConfiguration;
+        private readonly Func<GlobalAccessPolicy> globalAccessPolicy;
 
         private readonly ITokenHelper tokenHelper;
 
         private readonly SafeExchangeDbContext dbContext;
 
-        private readonly ILogger<CallerResolver> log;
-
         public CallerResolver(IOptionsMonitor<GloballyAllowedGroupsConfiguration> groupsConfiguration, ITokenHelper tokenHelper, SafeExchangeDbContext dbContext, ILogger<CallerResolver> log)
+            : this(PolicyFactory(groupsConfiguration, tokenHelper, log), tokenHelper, dbContext)
         {
-            this.groupsConfiguration = groupsConfiguration ?? throw new ArgumentNullException(nameof(groupsConfiguration));
+        }
+
+        /// <summary>
+        /// For hosts that already own the global access policy (its configuration and log), such as the handlers'
+        /// pre-service constructors.
+        /// </summary>
+        internal CallerResolver(Func<GlobalAccessPolicy> globalAccessPolicy, ITokenHelper tokenHelper, SafeExchangeDbContext dbContext)
+        {
+            this.globalAccessPolicy = globalAccessPolicy ?? throw new ArgumentNullException(nameof(globalAccessPolicy));
             this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
             this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         public async Task<CallerResolution> ResolveAsync(ClaimsPrincipal principal, string channel, string? clientLabel, CancellationToken cancellationToken = default)
@@ -43,8 +49,7 @@ namespace SafeExchange.Core.Callers
             ArgumentNullException.ThrowIfNull(principal);
             ArgumentException.ThrowIfNullOrEmpty(channel);
 
-            var policy = new GlobalAccessPolicy(this.groupsConfiguration.CurrentValue, this.tokenHelper, this.log);
-            var denial = await policy.EvaluateAsync(principal, this.dbContext, cancellationToken);
+            var denial = await this.globalAccessPolicy().EvaluateAsync(principal, this.dbContext, cancellationToken);
             if (denial is not null)
             {
                 return CallerResolution.Denied(denial);
@@ -63,6 +68,14 @@ namespace SafeExchange.Core.Callers
             }
 
             return CallerResolution.Ok(new Caller(subjectType, subjectId, displayName, Array.Empty<string>(), channel, clientLabel));
+        }
+
+        private static Func<GlobalAccessPolicy> PolicyFactory(IOptionsMonitor<GloballyAllowedGroupsConfiguration> groupsConfiguration, ITokenHelper tokenHelper, ILogger<CallerResolver> log)
+        {
+            ArgumentNullException.ThrowIfNull(groupsConfiguration);
+            ArgumentNullException.ThrowIfNull(log);
+
+            return () => new GlobalAccessPolicy(groupsConfiguration.CurrentValue, tokenHelper, log);
         }
     }
 }
