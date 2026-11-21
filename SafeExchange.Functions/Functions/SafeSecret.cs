@@ -4,14 +4,9 @@
 
 namespace SafeExchange.Functions
 {
-    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core;
-    using SafeExchange.Core.Audit;
     using SafeExchange.Core.Functions;
-    using SafeExchange.Core.Permissions;
-    using SafeExchange.Core.Purger;
-    using SafeExchange.Core.Filters;
     using System.Security.Claims;
     using System.Threading.Tasks;
     using Microsoft.Azure.Functions.Worker;
@@ -33,14 +28,14 @@ namespace SafeExchange.Functions
 
         private readonly ILogger log;
 
-        public SafeSecret(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IBlobHelper blobHelper, IAuditWriter auditWriter, ILogger<SafeSecret> log)
+        public SafeSecret(SafeExchangeSecretMeta metaHandler, SafeExchangeSecretContentMeta contentMetaHandler, SafeExchangeSecretStream contentHandler, SafeExchangeContentCommit contentCommitHandler, SafeExchangeSecretAudit auditHandler, ILogger<SafeSecret> log)
         {
             this.log = log ?? throw new ArgumentNullException(nameof(log));
-            this.metaHandler = new SafeExchangeSecretMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.contentMetaHandler = new SafeExchangeSecretContentMeta(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.contentHandler = new SafeExchangeSecretStream(configuration, dbContext, tokenHelper, globalFilters, purger, blobHelper, permissionsManager, auditWriter);
-            this.contentCommitHandler = new SafeExchangeContentCommit(configuration, dbContext, tokenHelper, globalFilters, purger, permissionsManager, auditWriter);
-            this.auditHandler = new SafeExchangeSecretAudit(dbContext, tokenHelper, globalFilters, permissionsManager);
+            this.metaHandler = metaHandler ?? throw new ArgumentNullException(nameof(metaHandler));
+            this.contentMetaHandler = contentMetaHandler ?? throw new ArgumentNullException(nameof(contentMetaHandler));
+            this.contentHandler = contentHandler ?? throw new ArgumentNullException(nameof(contentHandler));
+            this.contentCommitHandler = contentCommitHandler ?? throw new ArgumentNullException(nameof(contentCommitHandler));
+            this.auditHandler = auditHandler ?? throw new ArgumentNullException(nameof(auditHandler));
         }
 
         [Function("SafeExchange-SecretAudit")]

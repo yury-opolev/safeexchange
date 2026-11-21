@@ -21,6 +21,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Services;
     using SafeExchange.Core.Crypto;
     using SafeExchange.Core.Migrations;
     using SafeExchange.Core.DelayedTasks;
@@ -145,6 +146,12 @@ namespace SafeExchange.Core
             services.AddScoped<IGroupsManager, GroupsManager>();
             services.AddScoped<IApplicationOwnerService, ApplicationOwnerService>();
             services.AddScoped<ICallerResolver, CallerResolver>();
+
+            services.AddScoped<SecretService>();
+            services.AddScoped<ContentService>();
+            services.AddScoped<ChunkService>();
+            services.AddScoped<AccessService>();
+            services.AddScoped<AuditQueryService>();
 
             services.AddScoped<IAuditWriter, AuditWriter>();
             services.AddScoped<IAuditPurger, AuditPurger>();

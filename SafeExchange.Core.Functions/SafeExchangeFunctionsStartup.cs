@@ -8,8 +8,11 @@ namespace SafeExchange.Core
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Filters;
+    using SafeExchange.Core.Functions;
     using SafeExchange.Core.Middleware;
+    using SafeExchange.Core.Services;
 
     public static class SafeExchangeFunctionsStartup
     {
@@ -37,6 +40,14 @@ namespace SafeExchange.Core
         {
             services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<GlobalFilters>();
+
+            // Factories pick the service-based constructors; the pre-service ones would also be satisfiable.
+            services.AddScoped(sp => new SafeExchangeSecretMeta(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<SecretService>()));
+            services.AddScoped(sp => new SafeExchangeSecretContentMeta(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<ContentService>()));
+            services.AddScoped(sp => new SafeExchangeSecretStream(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<ChunkService>()));
+            services.AddScoped(sp => new SafeExchangeContentCommit(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<ContentService>()));
+            services.AddScoped(sp => new SafeExchangeAccess(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<AccessService>()));
+            services.AddScoped(sp => new SafeExchangeSecretAudit(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<AuditQueryService>()));
 
             // Stamps customDimensions.saex.sessionId on every telemetry
             // item emitted within a request that carried the header. Works

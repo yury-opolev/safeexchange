@@ -25,12 +25,18 @@ namespace SafeExchange.Tests
             SafeExchangeFunctionsStartup.ConfigureFunctionsServices(services);
 
             var registrations = services
-                .Select(d => $"{d.Lifetime} {d.ServiceType.Name} <- {d.ImplementationType?.Name}")
+                .Select(d => $"{d.Lifetime} {d.ServiceType.Name} <- {d.ImplementationType?.Name ?? "factory"}")
                 .ToList();
             Assert.That(registrations, Is.EqualTo(new[]
             {
                 "Scoped ITokenMiddlewareCore <- TokenMiddlewareCore",
                 "Singleton GlobalFilters <- GlobalFilters",
+                "Scoped SafeExchangeSecretMeta <- factory",
+                "Scoped SafeExchangeSecretContentMeta <- factory",
+                "Scoped SafeExchangeSecretStream <- factory",
+                "Scoped SafeExchangeContentCommit <- factory",
+                "Scoped SafeExchangeAccess <- factory",
+                "Scoped SafeExchangeSecretAudit <- factory",
                 "Singleton ITelemetryInitializer <- SessionCorrelationTelemetryInitializer",
                 "Singleton ITelemetryInitializer <- ApiVersionTelemetryInitializer",
             }));
