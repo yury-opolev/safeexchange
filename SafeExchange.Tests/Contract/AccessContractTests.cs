@@ -186,6 +186,57 @@ namespace SafeExchange.Tests.Contract
         }
 
         [Test]
+        public async Task Revoke_WithoutRevokeAccessPermission_Forbidden()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.GrantAsync("alpha", ReaderUpn, read: true, grant: true);
+
+            var response = await this.SecretAccess.Run(JsonRequest("delete", ReaderInput(read: true)), "alpha", this.Reader, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.Forbidden, """
+                {"status":"forbidden","subStatus":"","error":"Insufficient permissions to do 'RevokeAccess' action on 'alpha'"}
+                """);
+        }
+
+        [Test]
+        public async Task Grant_CallerRequiringConsent_ForbiddenWithConsentSubStatus()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.SeedUserAsync(StrangerUpn, "00000000-0000-0000-0000-0000000000a3", consentRequired: true);
+
+            var response = await this.SecretAccess.Run(JsonRequest("post", ReaderInput(read: true)), "alpha", this.Stranger, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.Forbidden, """
+                {"status":"forbidden","subStatus":"consent_required","error":"Insufficient permissions to do 'GrantAccess' action on 'alpha'"}
+                """);
+        }
+
+        [Test]
+        public async Task Revoke_CallerRequiringConsent_ForbiddenWithConsentSubStatus()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.SeedUserAsync(StrangerUpn, "00000000-0000-0000-0000-0000000000a3", consentRequired: true);
+
+            var response = await this.SecretAccess.Run(JsonRequest("delete", ReaderInput(read: true)), "alpha", this.Stranger, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.Forbidden, """
+                {"status":"forbidden","subStatus":"consent_required","error":"Insufficient permissions to do 'RevokeAccess' action on 'alpha'"}
+                """);
+        }
+
+        [Test]
+        public async Task UnknownMethod_ErrorStatus()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.SecretAccess.Run(Request("put"), "alpha", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"error","subStatus":"","error":"Request method not recognized"}
+                """);
+        }
+
+        [Test]
         public async Task RegisteredApplication_GetV3_OnGrantedSecret()
         {
             await this.SeedApplicationAsync(AgentClientId, AgentDisplayName, enabled: true);

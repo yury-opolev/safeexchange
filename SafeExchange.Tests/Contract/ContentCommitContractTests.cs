@@ -8,6 +8,7 @@ namespace SafeExchange.Tests.Contract
     using NUnit.Framework;
     using SafeExchange.Core.Functions;
     using System.Net;
+    using System.Security.Claims;
     using System.Text;
     using System.Threading.Tasks;
 
@@ -138,6 +139,43 @@ namespace SafeExchange.Tests.Contract
                 """);
         }
 
+        [Test]
+        public async Task Commit_MissingSecret_NotFound()
+        {
+            var response = await this.ContentCommit.Run(
+                TextRequest("patch", $"{{\"hash\":\"{HelloWorldSha256}\"}}"), "missing", "any-content", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.NotFound, """
+                {"status":"not_found","subStatus":"","error":"Secret 'missing' does not exist."}
+                """);
+        }
+
+        [Test]
+        public async Task Commit_WithoutWritePermission_Forbidden()
+        {
+            var (attachment, ticket) = await this.UploadHashedHelloWorldAsync();
+            await this.GrantAsync("alpha", ReaderUpn, read: true);
+
+            var response = await this.CommitAsync(attachment, ticket, $"{{\"hash\":\"{HelloWorldSha256}\"}}", this.Reader);
+
+            ContractAssert.Json(response, HttpStatusCode.Forbidden, """
+                {"status":"forbidden","subStatus":"","error":"Insufficient permissions to do 'Write' action on 'alpha'"}
+                """);
+        }
+
+        [Test]
+        public async Task Commit_MissingTicketHeader_Unauthorized()
+        {
+            var (attachment, _) = await this.UploadHashedHelloWorldAsync();
+
+            var response = await this.ContentCommit.Run(
+                TextRequest("patch", $"{{\"hash\":\"{HelloWorldSha256}\"}}"), "alpha", attachment, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.Unauthorized, """
+                {"status":"unauthorized","subStatus":"","error":"Access ticket missing or invalid."}
+                """);
+        }
+
         private async Task<(string Attachment, string Ticket)> UploadHashedHelloWorldAsync()
         {
             await this.CreateSecretAsync("alpha");
@@ -148,11 +186,11 @@ namespace SafeExchange.Tests.Contract
             return (attachment, ticket);
         }
 
-        private async Task<HttpResponseData> CommitAsync(string contentId, string ticket, string body)
+        private async Task<HttpResponseData> CommitAsync(string contentId, string ticket, string body, ClaimsPrincipal? caller = null)
         {
             var request = TextRequest("patch", body);
             request.Headers.Add(SafeExchangeSecretStream.AccessTicketHeaderName, ticket);
-            return await this.ContentCommit.Run(request, "alpha", contentId, this.Owner, this.Logger);
+            return await this.ContentCommit.Run(request, "alpha", contentId, caller ?? this.Owner, this.Logger);
         }
     }
 }

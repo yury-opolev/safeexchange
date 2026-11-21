@@ -268,6 +268,135 @@ namespace SafeExchange.Tests.Contract
         }
 
         [Test]
+        public async Task Update_MissingSecret_NotFound()
+        {
+            var response = await this.SecretMeta.Run(JsonRequest("patch", UpdateInput()), "missing", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.NotFound, """
+                {"status":"not_found","subStatus":"","error":"Secret 'missing' does not exist."}
+                """);
+        }
+
+        [Test]
+        public async Task Update_PreviousVersionSecret_Unprocessable()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.MarkAsPreviousVersionAsync("alpha");
+
+            var response = await this.SecretMeta.Run(JsonRequest("patch", UpdateInput()), "alpha", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.UnprocessableEntity, """
+                {"status":"unprocessable","subStatus":"","error":"Cannot use this endpoint for previous versions data."}
+                """);
+        }
+
+        [Test]
+        public async Task Update_WithoutExpirationSettings_BadRequest()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.SecretMeta.Run(TextRequest("patch", "{}"), "alpha", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"bad_request","subStatus":"","error":"Expiration settings are not provided."}
+                """);
+        }
+
+        [Test]
+        public async Task Update_InvalidTag_BadRequest()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.SecretMeta.Run(JsonRequest("patch", UpdateInput(new List<string> { "Bad Tag!" })), "alpha", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"bad_request","subStatus":"","error":"Tag 'Bad Tag!' must match ^[a-z0-9][a-z0-9:_-]*$."}
+                """);
+        }
+
+        [Test]
+        public async Task Delete_MissingSecret_NotFound()
+        {
+            var response = await this.SecretMeta.Run(Request("delete"), "missing", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.NotFound, """
+                {"status":"not_found","subStatus":"","error":"Secret 'missing' does not exist."}
+                """);
+        }
+
+        [Test]
+        public async Task Delete_PreviousVersionSecret_Unprocessable()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.MarkAsPreviousVersionAsync("alpha");
+
+            var response = await this.SecretMeta.Run(Request("delete"), "alpha", this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.UnprocessableEntity, """
+                {"status":"unprocessable","subStatus":"","error":"Cannot use this endpoint for previous versions data."}
+                """);
+        }
+
+        [Test]
+        public async Task Delete_WithoutWritePermission_Forbidden()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.GrantAsync("alpha", ReaderUpn, read: true);
+
+            var response = await this.SecretMeta.Run(Request("delete"), "alpha", this.Reader, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.Forbidden, """
+                {"status":"forbidden","subStatus":"","error":"Insufficient permissions to do 'Write' action on 'alpha'"}
+                """);
+        }
+
+        [Test]
+        public async Task ListV2_InvalidTagFilter_BadRequest()
+        {
+            var request = Request("get");
+            request.SetQueryString("tag=Bad%20Tag!");
+
+            var response = await this.SecretMeta.RunList(request, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"bad_request","subStatus":"","error":"Tag 'Bad Tag!' must match ^[a-z0-9][a-z0-9:_-]*$."}
+                """);
+        }
+
+        [Test]
+        public async Task ListV3_InvalidTagFilter_BadRequest()
+        {
+            var request = Request("get");
+            request.SetQueryString("tag=Bad%20Tag!");
+
+            var response = await this.SecretMeta.RunListV3(request, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"bad_request","subStatus":"","error":"Tag 'Bad Tag!' must match ^[a-z0-9][a-z0-9:_-]*$."}
+                """);
+        }
+
+        [Test]
+        public async Task ListV2_UnknownMethod_BadRequest()
+        {
+            var response = await this.SecretMeta.RunList(Request("post"), this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"error","subStatus":"","error":"Request method not recognized"}
+                """);
+        }
+
+        [Test]
+        public async Task ListV3_UnknownMethod_BadRequest()
+        {
+            var response = await this.SecretMeta.RunListV3(Request("post"), this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"error","subStatus":"","error":"Request method not recognized"}
+                """);
+        }
+
+        [Test]
         public async Task UnregisteredApplication_Forbidden()
         {
             var response = await this.SecretMeta.Run(JsonRequest("post", CreationInput()), "alpha", this.UnregisteredApp, this.Logger);
@@ -315,5 +444,18 @@ namespace SafeExchange.Tests.Contract
                   "callerEffectivePermissions":{"canRead":true,"canWrite":true,"canGrantAccess":true,"canRevokeAccess":true}}]}
                 """);
         }
+
+        private static MetadataUpdateInput UpdateInput(List<string>? tags = null)
+            => new()
+            {
+                ExpirationSettings = new ExpirationSettingsInput
+                {
+                    ScheduleExpiration = false,
+                    ExpireAt = FixedExpireAt,
+                    ExpireOnIdleTime = false,
+                    IdleTimeToExpire = TimeSpan.FromDays(180),
+                },
+                Tags = tags,
+            };
     }
 }

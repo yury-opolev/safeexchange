@@ -4,8 +4,10 @@
 
 namespace SafeExchange.Tests.Contract
 {
+    using Microsoft.EntityFrameworkCore;
     using NUnit.Framework;
     using SafeExchange.Core.Model.Dto.Input;
+    using System.Linq;
     using System.Net;
     using System.Text;
     using System.Threading.Tasks;
@@ -26,6 +28,9 @@ namespace SafeExchange.Tests.Contract
             var response = await this.ContentMeta.Run(JsonRequest("post", input), "alpha", string.Empty, this.Owner, this.Logger);
 
             var attachment = ReadJson(response)["result"]!["contentName"]!.GetValue<string>();
+            var secret = await this.DbContext.Objects.FirstAsync(o => o.ObjectName == "alpha");
+            Assert.That(attachment, Is.EqualTo(secret.Content.Single(c => !c.IsMain).ContentName));
+            Assert.That(attachment, Does.Match("^BLOB-20261121100000-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));
             ContractAssert.Json(response, HttpStatusCode.OK, """
                 {"status":"ok","subStatus":"","result":{"contentName":"<att>","isMain":false,"isImage":true,"contentType":"image/png","fileName":"pic.png","isReady":false,"chunks":[]}}
                 """, Literals((attachment, "<att>")));
@@ -189,6 +194,136 @@ namespace SafeExchange.Tests.Contract
 
             ContractAssert.Json(response, HttpStatusCode.UnprocessableEntity, """
                 {"status":"unprocessable","subStatus":"","error":"Content is being updated."}
+                """);
+        }
+
+        [Test]
+        public async Task Create_MissingSecret_NotFound()
+        {
+            var input = new ContentMetadataCreationInput { ContentType = "application/pdf", FileName = "report.pdf" };
+
+            var response = await this.ContentMeta.Run(JsonRequest("post", input), "missing", string.Empty, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.NotFound, """
+                {"status":"not_found","subStatus":"","error":"Secret 'missing' does not exist."}
+                """);
+        }
+
+        [Test]
+        public async Task Update_PreviousVersionSecret_Unprocessable()
+        {
+            await this.CreateSecretAsync("alpha");
+            var attachment = await this.CreateAttachmentAsync("alpha");
+            await this.MarkAsPreviousVersionAsync("alpha");
+            var input = new ContentMetadataUpdateInput { ContentType = "text/plain", FileName = "a.txt" };
+
+            var response = await this.ContentMeta.Run(JsonRequest("patch", input), "alpha", attachment, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.UnprocessableEntity, """
+                {"status":"unprocessable","subStatus":"","error":"Cannot use this endpoint for previous versions data."}
+                """);
+        }
+
+        [Test]
+        public async Task Drop_PreviousVersionSecret_Unprocessable()
+        {
+            await this.CreateSecretAsync("alpha");
+            var attachment = await this.CreateAttachmentAsync("alpha");
+            await this.MarkAsPreviousVersionAsync("alpha");
+
+            var response = await this.ContentMeta.RunDrop(Request("patch"), "alpha", attachment, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.UnprocessableEntity, """
+                {"status":"unprocessable","subStatus":"","error":"Cannot use this endpoint for previous versions data."}
+                """);
+        }
+
+        [Test]
+        public async Task Delete_PreviousVersionSecret_Unprocessable()
+        {
+            await this.CreateSecretAsync("alpha");
+            var attachment = await this.CreateAttachmentAsync("alpha");
+            await this.MarkAsPreviousVersionAsync("alpha");
+
+            var response = await this.ContentMeta.Run(Request("delete"), "alpha", attachment, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.UnprocessableEntity, """
+                {"status":"unprocessable","subStatus":"","error":"Cannot use this endpoint for previous versions data."}
+                """);
+        }
+
+        [Test]
+        public async Task Drop_WithoutContentId_BadRequest()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.ContentMeta.RunDrop(Request("patch"), "alpha", string.Empty, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"bad_request","subStatus":"","error":"Must specify content name on drop."}
+                """);
+        }
+
+        [Test]
+        public async Task Delete_WithoutContentId_BadRequest()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.ContentMeta.Run(Request("delete"), "alpha", string.Empty, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"bad_request","subStatus":"","error":"Must specify content name on deletion."}
+                """);
+        }
+
+        [Test]
+        public async Task Drop_UnknownContent_InternalError()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.ContentMeta.RunDrop(Request("patch"), "alpha", "missing-content", this.Owner, this.Logger);
+
+            // Quirk: First() on the content list makes an unknown content id a 500, not a 404.
+            ContractAssert.Json(response, HttpStatusCode.InternalServerError, """
+                {"status":"error","subStatus":"internal_exception","error":"Internal error. Reference: <correlationId>"}
+                """);
+        }
+
+        [Test]
+        public async Task Delete_UnknownContent_InternalError()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.ContentMeta.Run(Request("delete"), "alpha", "missing-content", this.Owner, this.Logger);
+
+            // Quirk: First() on the content list makes an unknown content id a 500, not a 404.
+            ContractAssert.Json(response, HttpStatusCode.InternalServerError, """
+                {"status":"error","subStatus":"internal_exception","error":"Internal error. Reference: <correlationId>"}
+                """);
+        }
+
+        [Test]
+        public async Task Run_UnknownMethod_BadRequest()
+        {
+            await this.CreateSecretAsync("alpha");
+
+            var response = await this.ContentMeta.Run(Request("get"), "alpha", string.Empty, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"error","subStatus":"","error":"Request method not recognized"}
+                """);
+        }
+
+        [Test]
+        public async Task RunDrop_UnknownMethod_BadRequest()
+        {
+            await this.CreateSecretAsync("alpha");
+            var attachment = await this.CreateAttachmentAsync("alpha");
+
+            var response = await this.ContentMeta.RunDrop(Request("delete"), "alpha", attachment, this.Owner, this.Logger);
+
+            ContractAssert.Json(response, HttpStatusCode.BadRequest, """
+                {"status":"error","subStatus":"","error":"Request method not recognized"}
                 """);
         }
     }

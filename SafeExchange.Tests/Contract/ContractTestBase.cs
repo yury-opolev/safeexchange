@@ -55,6 +55,8 @@ namespace SafeExchange.Tests.Contract
 
         protected const string StrangerUpn = "stranger@contract.test";
 
+        protected const string MixedCaseOwnerUpn = "Owner@Contract.Test";
+
         protected const string AgentClientId = "00000000-0000-0000-0000-0000000000c1";
 
         protected const string AgentDisplayName = "contract-agent";
@@ -66,6 +68,8 @@ namespace SafeExchange.Tests.Contract
         protected static readonly DateTime FixedExpireAt = new(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         private IServiceProvider previousInstanceServices = null!;
+
+        private DbContextOptions<SafeExchangeDbContext> dbContextOptions = null!;
 
         private bool previousUseSpecifiedDateTime;
 
@@ -100,6 +104,8 @@ namespace SafeExchange.Tests.Contract
 
         protected ClaimsPrincipal Stranger => UserPrincipal(StrangerUpn, "00000000-0000-0000-0000-0000000000a3");
 
+        protected ClaimsPrincipal MixedCaseOwner => UserPrincipal(MixedCaseOwnerUpn, "00000000-0000-0000-0000-0000000000a4");
+
         protected ClaimsPrincipal Agent => AppPrincipal(AgentClientId);
 
         protected ClaimsPrincipal UnregisteredApp => AppPrincipal(UnregisteredClientId);
@@ -132,23 +138,41 @@ namespace SafeExchange.Tests.Contract
 
             this.Logger = TestFactory.CreateLogger();
 
-            var configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    { "Features:UseGroupsAuthorization", "False" },
-                    { "AccessTickets:AccessTicketTimeout", "00:10:00" },
-                })
-                .Build();
-
-            var dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
+            this.dbContextOptions = new DbContextOptionsBuilder<SafeExchangeDbContext>()
                 .UseInMemoryDatabase($"{this.GetType().Name}-{Guid.NewGuid()}")
                 .Options;
-            this.DbContext = new SafeExchangeDbContext(dbContextOptions);
+            this.DbContext = new SafeExchangeDbContext(this.dbContextOptions);
+            this.BlobHelper = new TestBlobHelper();
+            this.GlobalAccessGroups = new GloballyAllowedGroupsConfiguration { AllowedGroups = string.Empty };
 
+            this.BuildHandlers();
+        }
+
+        /// <summary>
+        /// Rebuilds the handlers over the same database, blob store and global-group
+        /// configuration with configuration overrides (handlers bind Features and AccessTickets
+        /// once at construction), e.g. <c>("Features:AllowLegacyAttachmentUploads", "False")</c>.
+        /// </summary>
+        protected void BuildHandlers(params (string Key, string Value)[] overrides)
+        {
+            var settings = new Dictionary<string, string?>
+            {
+                { "Features:UseGroupsAuthorization", "False" },
+                { "AccessTickets:AccessTicketTimeout", "00:10:00" },
+            };
+            foreach (var (key, value) in overrides)
+            {
+                settings[key] = value;
+            }
+
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(settings)
+                .Build();
+
+            var dbContextOptions = this.dbContextOptions;
             var tokenHelper = new TokenHelper(configuration, NullLogger<TokenHelper>.Instance);
 
-            var allowedGroups = new GloballyAllowedGroupsConfiguration { AllowedGroups = string.Empty };
-            this.GlobalAccessGroups = allowedGroups;
+            var allowedGroups = this.GlobalAccessGroups;
             var adminConfiguration = new AdminConfiguration();
             var globalFilters = new GlobalFilters(
                 Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == allowedGroups),
@@ -156,7 +180,6 @@ namespace SafeExchange.Tests.Contract
                 tokenHelper,
                 NullLogger<GlobalFilters>.Instance);
 
-            this.BlobHelper = new TestBlobHelper();
             var purger = new PurgeManager(configuration, this.BlobHelper, NullLogger<PurgeManager>.Instance);
             var permissionsManager = new PermissionsManager(configuration, this.DbContext, NullLogger<PermissionsManager>.Instance);
             var groupsManager = new GroupsManager(this.DbContext, NullLogger<GroupsManager>.Instance);
@@ -362,6 +385,16 @@ namespace SafeExchange.Tests.Contract
                 CreatedBy = "contract-test",
                 ModifiedAt = DateTime.MinValue,
                 ModifiedBy = string.Empty,
+            });
+            await this.DbContext.SaveChangesAsync();
+        }
+
+        protected async Task SeedUserAsync(string upn, string objectId, bool consentRequired = false, params string[] groupIds)
+        {
+            this.DbContext.Users.Add(new User("Contract User", objectId, TenantId, upn, upn)
+            {
+                ConsentRequired = consentRequired,
+                Groups = groupIds.Select(g => new UserGroup { AadGroupId = g }).ToList(),
             });
             await this.DbContext.SaveChangesAsync();
         }
