@@ -116,6 +116,7 @@ One row per recorded action. Append-only; never updated or deleted by applicatio
 | ActorSubjectType / ActorSubjectId / ActorDisplayName | Who triggered the event. `system:purger` for passive expiration. |
 | Payload | Event-specific JSON. Never contains content bytes or plaintext-derived hashes. |
 | PrevHash / Hash | SHA-256 hash chain for tamper-evidence. |
+| Channel / ClientLabel | Origin of the action: `mcp` and the MCP client's self-reported label (printable ASCII, at most 128 characters) for events produced through the MCP endpoint; empty for REST, system and older events. Hashed only when non-empty. The label carries no authority. |
 
 ### WebhookSubscription
 

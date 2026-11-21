@@ -48,6 +48,7 @@ namespace SafeExchange.Core.Audit
             string actorId,
             object? payload,
             ILogger log,
+            AuditOrigin? origin = null,
             CancellationToken ct = default)
         {
             if (secret is null || !secret.AuditEnabled || string.IsNullOrEmpty(secret.AuditInstanceId))
@@ -55,6 +56,7 @@ namespace SafeExchange.Core.Audit
                 return;
             }
 
+            origin ??= AuditOrigin.None;
             actorId ??= string.Empty;
             var actorDisplayName = await this.ResolveDisplayNameAsync(actorType, actorId, ct);
 
@@ -81,7 +83,8 @@ namespace SafeExchange.Core.Audit
                     var hash = AuditEventHasher.ComputeHash(
                         secret.AuditInstanceId, sequence, eventType, occurredAt,
                         actorType, actorId, actorDisplayName,
-                        payloadJson, prevHash);
+                        payloadJson, prevHash,
+                        origin.Channel, origin.ClientLabel);
 
                     var entry = new SecretAuditEvent
                     {
@@ -96,6 +99,8 @@ namespace SafeExchange.Core.Audit
                         Payload = payloadJson,
                         PrevHash = prevHash,
                         Hash = hash,
+                        Channel = origin.Channel,
+                        ClientLabel = origin.ClientLabel,
                     };
 
                     auditDb.SecretAuditEvents.Add(entry);

@@ -23,9 +23,10 @@ namespace SafeExchange.Tests.Utilities
             string actorId,
             object? payload,
             ILogger log,
+            AuditOrigin? origin = null,
             CancellationToken ct = default)
         {
-            this.Entries.Add(new RecordedAuditEntry(secret.ObjectName, eventType, actorType, actorId, payload));
+            this.Entries.Add(new RecordedAuditEntry(secret.ObjectName, eventType, actorType, actorId, payload, origin ?? AuditOrigin.None));
             return ValueTask.CompletedTask;
         }
 
@@ -41,5 +42,6 @@ namespace SafeExchange.Tests.Utilities
         SecretAuditEventType EventType,
         SubjectType ActorType,
         string ActorId,
-        object? Payload);
+        object? Payload,
+        AuditOrigin Origin);
 }

@@ -35,9 +35,9 @@ namespace SafeExchange.Core.Purger
         /// <summary>
         /// Delete a secret and stamp its audit anchor with the supplied actor and
         /// retention window. Emits a SecretDeleted audit event before the metadata
-        /// row is removed.
+        /// row is removed, attributed to <paramref name="origin"/> (default: none).
         /// </summary>
-        public Task PurgeAsync(string secretId, SafeExchangeDbContext dbContext, IAuditWriter auditWriter, SubjectType actorType, string actorId, int auditRetentionDays);
+        public Task PurgeAsync(string secretId, SafeExchangeDbContext dbContext, IAuditWriter auditWriter, SubjectType actorType, string actorId, int auditRetentionDays, AuditOrigin? origin = null);
 
         /// <summary>
         /// Delete all content chunks. Asynchronous.

@@ -1,7 +1,7 @@
 /// <summary>
 /// SecretAuditEventOutput — DTO for a single audit event in API responses. Sequential
-/// ContentRead events for the same (actor, contentId) are merged into a single output
-/// item with a populated ChunkIds list; non-merged events use the scalar fields only.
+/// ContentRead events for the same (actor, contentId, channel, clientLabel) are merged into a
+/// single output item with a populated ChunkIds list; non-merged events use the scalar fields only.
 /// </summary>
 
 namespace SafeExchange.Core.Model.Dto.Output
@@ -36,6 +36,16 @@ namespace SafeExchange.Core.Model.Dto.Output
         public string Hash { get; set; } = string.Empty;
 
         public string PrevHash { get; set; } = string.Empty;
+
+        /// <summary>
+        /// "mcp" for events produced through MCP; null (omitted from JSON) for REST, system and older events.
+        /// </summary>
+        public string? Channel { get; set; }
+
+        /// <summary>
+        /// The MCP client's self-reported label; null (omitted from JSON) when none was recorded.
+        /// </summary>
+        public string? ClientLabel { get; set; }
     }
 
     public class ActorOutput

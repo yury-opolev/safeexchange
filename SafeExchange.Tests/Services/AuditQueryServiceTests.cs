@@ -5,6 +5,7 @@
 namespace SafeExchange.Tests.Services
 {
     using NUnit.Framework;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Permissions;
@@ -73,6 +74,21 @@ namespace SafeExchange.Tests.Services
             Assert.That(second.Value!.NextContinuation, Is.Null);
         }
 
+        [Test]
+        public async Task Read_ExposesTheOriginOfMcpEventsOnly()
+        {
+            await this.CreateSecretAsync("alpha", auditEnabled: true);
+            var mcpOwner = this.Owner with { Channel = CallerChannels.Mcp, ClientLabel = "copilot-cli/1.0.114" };
+            await this.CreateSecretService().UpdateAsync(mcpOwner, "alpha", new MetadataUpdateInput { ExpirationSettings = CreationInput().ExpirationSettings, Tags = new() { "x" } });
+
+            var result = await this.service.ReadAsync(this.Owner, "alpha", new AuditPageQuery());
+
+            Assert.That(result.Value!.Events.Select(e => (e.EventType, e.Channel, e.ClientLabel)), Is.EqualTo(new[]
+            {
+                (nameof(SecretAuditEventType.SecretCreated), (string?)null, (string?)null),
+                (nameof(SecretAuditEventType.SecretMetadataUpdated), "mcp", "copilot-cli/1.0.114"),
+            }));
+        }
         [Test]
         public void Parse_ReadsTheRestQueryString()
         {

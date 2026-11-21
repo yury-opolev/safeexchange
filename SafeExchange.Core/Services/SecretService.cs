@@ -196,7 +196,7 @@ namespace SafeExchange.Core.Services
                     };
                     await this.auditWriter.AppendAsync(
                         createdMetadata, SecretAuditEventType.SecretCreated,
-                        caller.SubjectType, caller.SubjectId, creationPayload, this.log);
+                        caller.SubjectType, caller.SubjectId, creationPayload, this.log, AuditOrigin.FromCaller(caller));
                 }
 
                 return ServiceResult<ObjectMetadataOutput>.Ok(createdMetadata.ToDto());
@@ -304,7 +304,7 @@ namespace SafeExchange.Core.Services
                     var diffObj = System.Text.Json.JsonSerializer.Deserialize<object>(diffJson);
                     await this.auditWriter.AppendAsync(
                         updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
-                        caller.SubjectType, caller.SubjectId, diffObj, this.log);
+                        caller.SubjectType, caller.SubjectId, diffObj, this.log, AuditOrigin.FromCaller(caller));
                 }
 
                 return ServiceResult<ObjectMetadataOutput>.Ok(updatedMetadata.ToDto());
@@ -336,7 +336,7 @@ namespace SafeExchange.Core.Services
                     return ServiceResult.InsufficientPermissions(PermissionType.Write, secretId);
                 }
 
-                await this.purger.PurgeAsync(secretId, this.dbContext, this.auditWriter, caller.SubjectType, caller.SubjectId, this.features.AuditRetentionDays);
+                await this.purger.PurgeAsync(secretId, this.dbContext, this.auditWriter, caller.SubjectType, caller.SubjectId, this.features.AuditRetentionDays, AuditOrigin.FromCaller(caller));
                 this.log.LogInformation($"{caller.SubjectType} '(tid {TelemetryContext.Current})' deleted secret '{secretId}'");
 
                 return ServiceResult.Ok();

@@ -406,7 +406,7 @@ namespace SafeExchange.Core.Services
                         from = AuditPayloads.PermissionFlags(beforePerm),
                         to = AuditPayloads.PermissionFlags(afterPerm),
                     },
-                }, this.log);
+                }, this.log, AuditOrigin.FromCaller(caller));
 
         private async Task<(string subjectId, string subjectName, PermissionType beforePerm)> ResolveTargetAndBeforeAsync(
             string secretId, SubjectType targetSubjectType, SubjectPermissionsInput input)

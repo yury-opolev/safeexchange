@@ -482,9 +482,9 @@ namespace SafeExchange.Core.Services
         // Audit-payload guarantee: secretId/contentId/chunkId are opaque identifiers, never
         // derived from secret plaintext. The writer is a no-op for non-audited secrets.
         private ValueTask EmitContentReadAsync(ObjectMetadata secret, string contentId, string chunkId, Caller caller)
-            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentRead, caller.SubjectType, caller.SubjectId, new { contentId, chunkId }, this.log);
+            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentRead, caller.SubjectType, caller.SubjectId, new { contentId, chunkId }, this.log, AuditOrigin.FromCaller(caller));
 
         private ValueTask EmitContentWrittenAsync(ObjectMetadata secret, string contentId, string chunkId, Caller caller)
-            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentWritten, caller.SubjectType, caller.SubjectId, new { contentId, chunkId }, this.log);
+            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentWritten, caller.SubjectType, caller.SubjectId, new { contentId, chunkId }, this.log, AuditOrigin.FromCaller(caller));
     }
 }

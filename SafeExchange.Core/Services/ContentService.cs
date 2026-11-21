@@ -376,7 +376,8 @@ namespace SafeExchange.Core.Services
                 await this.auditWriter.AppendAsync(
                     existingMetadata, SecretAuditEventType.ContentCommitted,
                     caller.SubjectType, caller.SubjectId,
-                    new { contentId, fileName = existingContent.FileName, contentType = existingContent.ContentType }, this.log);
+                    new { contentId, fileName = existingContent.FileName, contentType = existingContent.ContentType }, this.log,
+                    AuditOrigin.FromCaller(caller));
 
                 return ServiceResult<ContentCommitOutput>.Ok(new ContentCommitOutput { ContentName = contentId, Hash = serverHash });
             });
