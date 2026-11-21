@@ -126,13 +126,23 @@ namespace SafeExchange.Tests
         }
 
         [Test]
-        public void ComputeHash_WithOrigin_AppendsChannelAndLabel()
+        public void ComputeHash_WithOrigin_AppendsTheVersionMarkerChannelAndLabel()
         {
-            var expected = Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|mcp|copilot-cli/1.0.114");
+            var expected = Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|v2|mcp|copilot-cli/1.0.114");
 
             var hash = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", "copilot-cli/1.0.114");
 
             Assert.That(hash, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ComputeHash_WithOnlyAChannelOrOnlyALabel_StillAppendsTheMarker()
+        {
+            var channelOnly = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", string.Empty);
+            var labelOnly = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", null, "agent/1");
+
+            Assert.That(channelOnly, Is.EqualTo(Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|v2|mcp|")));
+            Assert.That(labelOnly, Is.EqualTo(Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|v2||agent/1")));
         }
 
         [Test]

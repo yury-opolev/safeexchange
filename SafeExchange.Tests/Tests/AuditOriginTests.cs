@@ -61,6 +61,15 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public void Create_DropsThePipeSoTheHashSuffixStaysUnambiguous()
+        {
+            var origin = AuditOrigin.Create("m|cp", "agent|1|v2");
+
+            Assert.That(origin.Channel, Is.EqualTo("mcp"));
+            Assert.That(origin.ClientLabel, Is.EqualTo("agent1v2"));
+        }
+
+        [Test]
         public void Create_NothingLeft_IsNone()
         {
             Assert.That(AuditOrigin.Create(null, null), Is.EqualTo(AuditOrigin.None));

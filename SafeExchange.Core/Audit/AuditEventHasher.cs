@@ -14,9 +14,9 @@ namespace SafeExchange.Core.Audit
     {
         /// <summary>
         /// Hashes the canonical form of an event. <paramref name="channel"/> and <paramref name="clientLabel"/>
-        /// are appended as <c>|{channel}|{clientLabel}</c> only when one of them is non-empty, so events
+        /// are appended as <c>|v2|{channel}|{clientLabel}</c> only when one of them is non-empty, so events
         /// without an origin (all REST and system events, and every event written before origins existed)
-        /// hash exactly as before.
+        /// hash exactly as before. The marker keeps the suffix distinguishable from the original fields.
         /// </summary>
         public static string ComputeHash(
             string auditInstanceId,
@@ -43,7 +43,7 @@ namespace SafeExchange.Core.Audit
                 prevHash ?? string.Empty);
             if (!string.IsNullOrEmpty(channel) || !string.IsNullOrEmpty(clientLabel))
             {
-                canonical = string.Join('|', canonical, channel ?? string.Empty, clientLabel ?? string.Empty);
+                canonical = string.Join('|', canonical, "v2", channel ?? string.Empty, clientLabel ?? string.Empty);
             }
 
             var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));

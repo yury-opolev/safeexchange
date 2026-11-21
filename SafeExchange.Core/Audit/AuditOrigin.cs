@@ -52,7 +52,7 @@ namespace SafeExchange.Core.Audit
         }
 
         /// <summary>
-        /// Keeps printable ASCII (0x20-0x7E) only, trims, and truncates to <see cref="MaxLength"/> characters.
+        /// Keeps printable ASCII (0x20-0x7E) only, without the <c>|</c> hash separator, trims, and truncates to <see cref="MaxLength"/> characters.
         /// </summary>
         public static string Sanitize(string? value)
         {
@@ -64,7 +64,7 @@ namespace SafeExchange.Core.Audit
             var builder = new StringBuilder(value.Length);
             foreach (var c in value)
             {
-                if (c >= 0x20 && c <= 0x7E)
+                if (c >= 0x20 && c <= 0x7E && c != '|')
                 {
                     builder.Append(c);
                 }
