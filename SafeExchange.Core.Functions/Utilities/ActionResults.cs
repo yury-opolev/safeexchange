@@ -7,6 +7,7 @@ namespace SafeExchange.Core
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Services;
     using System;
     using System.Net;
     using System.Threading.Tasks;
@@ -70,23 +71,50 @@ namespace SafeExchange.Core
             }
             catch (Exception ex)
             {
-                var correlationId = Guid.NewGuid().ToString("N");
-                log.LogError(
-                    ex,
-                    "Exception in {ActionName}, correlationId={CorrelationId}",
-                    actionName,
-                    correlationId);
-
-                return await CreateResponseAsync(
-                    request,
-                    HttpStatusCode.InternalServerError,
-                    new BaseResponseObject<object>
-                    {
-                        Status = "error",
-                        SubStatus = "internal_exception",
-                        Error = $"Internal error. Reference: {correlationId}",
-                    });
+                return await InternalErrorAsync(request, ex, actionName, log);
             }
+        }
+
+        /// <summary>
+        /// Executes <paramref name="serviceCall"/>, which calls a service and writes its result, and turns a
+        /// <see cref="ServiceOperationException"/> into the same 500 response as <see cref="TryCatchAsync"/>
+        /// (logging the wrapped exception). Any other exception propagates: services throw unwrapped only
+        /// from the steps that ran outside <see cref="TryCatchAsync"/> before they were extracted.
+        /// </summary>
+        public static async Task<HttpResponseData> ServiceCallAsync(
+            HttpRequestData request,
+            Func<Task<HttpResponseData>> serviceCall,
+            string actionName,
+            ILogger log)
+        {
+            try
+            {
+                return await serviceCall();
+            }
+            catch (ServiceOperationException ex)
+            {
+                return await InternalErrorAsync(request, ex.InnerException ?? ex, actionName, log);
+            }
+        }
+
+        private static async Task<HttpResponseData> InternalErrorAsync(HttpRequestData request, Exception ex, string actionName, ILogger log)
+        {
+            var correlationId = Guid.NewGuid().ToString("N");
+            log.LogError(
+                ex,
+                "Exception in {ActionName}, correlationId={CorrelationId}",
+                actionName,
+                correlationId);
+
+            return await CreateResponseAsync(
+                request,
+                HttpStatusCode.InternalServerError,
+                new BaseResponseObject<object>
+                {
+                    Status = "error",
+                    SubStatus = "internal_exception",
+                    Error = $"Internal error. Reference: {correlationId}",
+                });
         }
 
         public static BaseResponseObject<object> InsufficientPermissions(PermissionType permission, string secretId, string subStatus)
