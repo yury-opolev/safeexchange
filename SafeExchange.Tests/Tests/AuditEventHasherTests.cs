@@ -8,6 +8,8 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Audit;
     using SafeExchange.Core.Model;
     using System;
+    using System.Security.Cryptography;
+    using System.Text;
 
     [TestFixture]
     public class AuditEventHasherTests
@@ -108,5 +110,56 @@ namespace SafeExchange.Tests
             var bytes = Convert.FromBase64String(hash);
             Assert.That(bytes.Length, Is.EqualTo(32));
         }
+
+        [Test]
+        public void ComputeHash_WithoutOrigin_HashesTheOriginalCanonicalString()
+        {
+            var expected = Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev");
+
+            var legacyCall = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev");
+            var emptyOrigin = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", string.Empty, string.Empty);
+            var nullOrigin = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", null, null);
+
+            Assert.That(legacyCall, Is.EqualTo(expected));
+            Assert.That(emptyOrigin, Is.EqualTo(expected));
+            Assert.That(nullOrigin, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ComputeHash_WithOrigin_AppendsTheVersionMarkerChannelAndLabel()
+        {
+            var expected = Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|v2|mcp|copilot-cli/1.0.114");
+
+            var hash = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", "copilot-cli/1.0.114");
+
+            Assert.That(hash, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ComputeHash_WithOnlyAChannelOrOnlyALabel_StillAppendsTheMarker()
+        {
+            var channelOnly = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", string.Empty);
+            var labelOnly = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", null, "agent/1");
+
+            Assert.That(channelOnly, Is.EqualTo(Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|v2|mcp|")));
+            Assert.That(labelOnly, Is.EqualTo(Sha256Base64("inst-1|1|SecretCreated|2026-01-02T03:04:05.0000000Z|User|u@x|U|{}|prev|v2||agent/1")));
+        }
+
+        [Test]
+        public void ComputeHash_ChangingChannelOrLabel_ChangesOutput()
+        {
+            var baseline = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", "agent/1");
+            var otherLabel = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", "agent/2");
+            var noLabel = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev", "mcp", string.Empty);
+            var noOrigin = AuditEventHasher.ComputeHash("inst-1", 1, SecretAuditEventType.SecretCreated, FixedOccurredAt, SubjectType.User, "u@x", "U", "{}", "prev");
+
+            Assert.That(otherLabel, Is.Not.EqualTo(baseline));
+            Assert.That(noLabel, Is.Not.EqualTo(baseline));
+            Assert.That(noLabel, Is.Not.EqualTo(noOrigin));
+            Assert.That(baseline, Is.Not.EqualTo(noOrigin));
+        }
+
+        private static string Sha256Base64(string canonical)
+            => Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 }

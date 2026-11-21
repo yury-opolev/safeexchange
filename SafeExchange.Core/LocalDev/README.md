@@ -58,7 +58,7 @@ docker run --detach --name saex-cosmos `
   --publish 127.0.0.1:8081:8081 --publish 127.0.0.1:8080:8080 `
   --mount "type=bind,source=$PWD\emulator.pfx,target=/emulator.pfx,readonly" `
   -e PROTOCOL=https -e CERT_PATH=/emulator.pfx -e CERT_SECRET="<the PFX password>" `
-  mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+  mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907pre
 ```
 
 Publishing on `127.0.0.1:` matters: `--publish 8081:8081` binds every interface
@@ -98,12 +98,15 @@ it stayed installed. Generate your own certificate instead.
 ## Alternative: loopback HTTP harness
 
 If you would rather not manage a certificate, the emulator's gateway also serves
-plain HTTP, which is how CI runs it for the integration suite:
+plain HTTP, which is how CI runs it for the integration suite. Use the same
+pinned build as CI (`vnext-EN20260907pre`): newer `vnext-preview` builds return
+query results the Cosmos SDK cannot read ("Unknown JsonNodeType") or fail
+database deletes.
 
 ```powershell
 docker run --detach --name saex-cosmos `
   --publish 127.0.0.1:8081:8081 --publish 127.0.0.1:8080:8080 `
-  mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+  mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907pre
 ```
 
 Set `CosmosDb:CosmosDbEndpoint` to `http://localhost:8081`. There is no

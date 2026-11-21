@@ -152,7 +152,7 @@ namespace SafeExchange.Tests
         {
             DateTimeProvider.UseSpecifiedDateTime = false;
 
-            this.dbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.dbContext.Database);
             this.dbContext.Dispose();
         }
 

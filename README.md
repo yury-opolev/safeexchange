@@ -53,12 +53,24 @@ Deploy all required services with one click:
 ## Project Structure
 
 ```
-SafeExchange.Core/        — Domain models, business logic, permissions, and Azure integrations
-SafeExchange.Functions/   — Azure Functions HTTP endpoints (the API layer)
-SafeExchange.Tests/       — Unit and integration tests
-deployment/               — ARM templates for Azure infrastructure
-docs/                     — Architecture and design documentation
+SafeExchange.Core/           — Host-agnostic domain models, services, permissions, audit, MCP tools and Azure integrations (no Azure Functions types)
+SafeExchange.Core.Functions/ — Azure Functions-typed handlers, middleware, filters and the MCP HTTP adapters built on SafeExchange.Core
+SafeExchange.Functions/      — Azure Functions HTTP endpoints (the API layer), including the /api/mcp triggers
+SafeExchange.Tests/          — Unit, contract and integration tests
+deployment/                  — ARM templates for Azure infrastructure
+docs/                        — Architecture and design documentation
 ```
+
+## MCP for AI Agents
+
+SafeExchange has a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint (`POST /api/mcp`) so AI agents such as Copilot CLI can store, read and share secrets and files under the same permissions and audit as people. It is off by default (`Features.McpEndpoint`). See [docs/mcp.md](docs/mcp.md) for setup, authentication (signed-in users and S2S agent apps), the tool list and client configuration.
+
+## Documentation
+
+- [Architecture](docs/architecture.md) and [authentication](docs/authentication.md)
+- [API endpoints](docs/api-endpoints.md) and [data model](docs/data-model.md)
+- [MCP endpoint](docs/mcp.md)
+- [Consumer migration note](docs/consumer-migration.md) — for projects that use `SafeExchange.Core` with their own Functions app and authentication
 
 ## License
 

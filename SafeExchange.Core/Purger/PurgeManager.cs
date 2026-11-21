@@ -30,10 +30,10 @@ namespace SafeExchange.Core.Purger
         public Task PurgeAsync(string secretId, SafeExchangeDbContext dbContext)
             => this.PurgeInternalAsync(secretId, dbContext, auditWriter: null, actorType: SubjectType.User, actorId: string.Empty, auditRetentionDays: 0);
 
-        public Task PurgeAsync(string secretId, SafeExchangeDbContext dbContext, IAuditWriter auditWriter, SubjectType actorType, string actorId, int auditRetentionDays)
-            => this.PurgeInternalAsync(secretId, dbContext, auditWriter, actorType, actorId, auditRetentionDays);
+        public Task PurgeAsync(string secretId, SafeExchangeDbContext dbContext, IAuditWriter auditWriter, SubjectType actorType, string actorId, int auditRetentionDays, AuditOrigin? origin = null)
+            => this.PurgeInternalAsync(secretId, dbContext, auditWriter, actorType, actorId, auditRetentionDays, origin);
 
-        private async Task PurgeInternalAsync(string secretId, SafeExchangeDbContext dbContext, IAuditWriter? auditWriter, SubjectType actorType, string actorId, int auditRetentionDays)
+        private async Task PurgeInternalAsync(string secretId, SafeExchangeDbContext dbContext, IAuditWriter? auditWriter, SubjectType actorType, string actorId, int auditRetentionDays, AuditOrigin? origin = null)
         {
             this.log.LogInformation($"Purging '{secretId}'.");
 
@@ -45,7 +45,7 @@ namespace SafeExchange.Core.Purger
             {
                 await auditWriter.AppendAsync(
                     metadataToDelete, SecretAuditEventType.SecretDeleted,
-                    actorType, actorId, payload: new { }, this.log);
+                    actorType, actorId, payload: new { }, this.log, origin);
                 await auditWriter.StampDeletionAsync(metadataToDelete, actorId, auditRetentionDays);
             }
 

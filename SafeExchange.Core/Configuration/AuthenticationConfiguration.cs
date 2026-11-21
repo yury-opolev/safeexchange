@@ -57,5 +57,12 @@ namespace SafeExchange.Core.Configuration
         /// </summary>
         public string UpnClaims { get; set; } =
             "upn,http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn";
+
+        /// <summary>
+        /// Optional comma-separated scopes advertised as <c>scopes_supported</c> in the MCP protected-resource
+        /// metadata (and in <c>file_transfer_info</c>). Empty ⇒ <c>{resource}/user_impersonation</c>, where
+        /// <c>resource</c> is the first <c>api://</c> entry of <see cref="ValidAudiences"/>.
+        /// </summary>
+        public string McpScopes { get; set; } = string.Empty;
     }
 }

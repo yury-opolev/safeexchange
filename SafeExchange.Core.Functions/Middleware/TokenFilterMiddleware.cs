@@ -1,0 +1,84 @@
+﻿/// <summary>
+/// TokenFilterMiddleware
+/// </summary>
+
+namespace SafeExchange.Core.Middleware
+{
+    using Microsoft.Azure.Functions.Worker;
+    using Microsoft.Azure.Functions.Worker.Http;
+    using Microsoft.Azure.Functions.Worker.Middleware;
+    using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Telemetry;
+    using System.Net;
+    using System.Security.Claims;
+
+    public class TokenFilterMiddleware : IFunctionsWorkerMiddleware
+    {
+        private readonly IOptionsMonitor<Features> features;
+
+        private readonly ILogger log;
+
+        public TokenFilterMiddleware(IOptionsMonitor<Features> features, ILogger<TokenFilterMiddleware> log)
+        {
+            this.features = features ?? throw new ArgumentNullException(nameof(features));
+            this.log = log ?? throw new ArgumentNullException(nameof(log));
+        }
+
+        public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
+        {
+            var httpRequestData = await context.GetHttpRequestDataAsync();
+            var principal = context.Items[DefaultAuthenticationMiddleware.ClaimsPrincipalKey] as ClaimsPrincipal;
+            if (principal == default)
+            {
+                this.log.LogWarning($"There is no claims principal in {nameof(context.Items)}.");
+                await UnauthorizedAsync(context, httpRequestData, "Bearer token is not present or invalid.");
+                return;
+            }
+
+            // Resolve-and-run sets the request's telemetry id on context.Items. We
+            // re-establish it on TelemetryContext within this frame (and restore the
+            // previous value afterwards) so every telemetry item emitted during
+            // next(context) carries saex.telemetryId without the AsyncLocal leaking
+            // across invocations — mirrors SessionCorrelationMiddleware's save/restore.
+            var previousTelemetryId = TelemetryContext.Current;
+            try
+            {
+                using (var scope = context.InstanceServices.CreateScope())
+                {
+                    var tokenMiddlewareCore = scope.ServiceProvider.GetRequiredService<ITokenMiddlewareCore>();
+                    (bool shouldReturn, HttpResponseData? earlyResponse) = await tokenMiddlewareCore.RunAsync(httpRequestData!, principal);
+                    if (shouldReturn)
+                    {
+                        SetResponse(context, earlyResponse);
+                        return;
+                    }
+                }
+
+                if (context.Items.TryGetValue(DefaultAuthenticationMiddleware.InvocationContextTelemetryIdKey, out var telemetryId))
+                {
+                    TelemetryContext.Current = telemetryId as string;
+                }
+
+                await next(context);
+            }
+            finally
+            {
+                TelemetryContext.Current = previousTelemetryId;
+            }
+        }
+
+        private async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)
+        {
+            var response = await UnauthorizedResponse.CreateAsync(httpRequestData!, errorMessage, this.features.CurrentValue.McpEndpoint);
+            SetResponse(context, response);
+        }
+
+        private static void SetResponse(FunctionContext context, HttpResponseData? response)
+        {
+            context.GetInvocationResult().Value = response;
+        }
+    }
+}

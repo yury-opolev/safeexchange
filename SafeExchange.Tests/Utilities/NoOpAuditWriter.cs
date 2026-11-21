@@ -21,6 +21,7 @@ namespace SafeExchange.Tests.Utilities
             string actorId,
             object? payload,
             ILogger log,
+            AuditOrigin? origin = null,
             CancellationToken ct = default) => ValueTask.CompletedTask;
 
         public ValueTask EnsureAnchorAsync(ObjectMetadata secret, string createdBy, CancellationToken ct = default)

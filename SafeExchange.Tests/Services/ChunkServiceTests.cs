@@ -1,0 +1,418 @@
+/// <summary>
+/// ChunkServiceTests
+/// </summary>
+
+namespace SafeExchange.Tests.Services
+{
+    using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Logging.Abstractions;
+    using NUnit.Framework;
+    using SafeExchange.Core;
+    using SafeExchange.Core.Callers;
+    using SafeExchange.Core.Model;
+    using SafeExchange.Core.Model.Dto.Input;
+    using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Services;
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+    using System.Net;
+    using System.Security.Cryptography;
+    using System.Text;
+    using System.Threading.Tasks;
+
+    [TestFixture]
+    public class ChunkServiceTests : ServiceTestBase
+    {
+        private static readonly byte[] Hello = Encoding.UTF8.GetBytes("hello");
+
+        private static readonly byte[] World = Encoding.UTF8.GetBytes("world");
+
+        private ChunkService service = null!;
+
+        private ContentService contentService = null!;
+
+        [SetUp]
+        public void SetUp()
+        {
+            this.service = new ChunkService(this.Configuration, this.DbContext, this.Purger, this.BlobHelper, this.PermissionsManager, this.AuditWriter, NullLogger<ChunkService>.Instance);
+            this.contentService = new ContentService(this.Configuration, this.DbContext, this.Purger, this.PermissionsManager, this.AuditWriter, NullLogger<ContentService>.Instance);
+        }
+
+        [Test]
+        public async Task EveryMethod_DeniesACallerWithoutThePermission()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            await this.GrantAsync("alpha", ReaderUpn, PermissionType.Read);
+
+            AssertInsufficientPermissions((await this.Upload(this.Reader, contentId, Hello)).Outcome, PermissionType.Write, "alpha");
+            AssertInsufficientPermissions((await this.service.DownloadChunkAsync(this.Stranger, "alpha", contentId, $"{contentId}-00000000")).Outcome, PermissionType.Read, "alpha");
+            AssertInsufficientPermissions((await this.service.DownloadContentAsync(this.Stranger, "alpha", contentId)).Outcome, PermissionType.Read, "alpha");
+            Assert.That(this.BlobHelper.Blobs, Is.Empty);
+        }
+
+        [Test]
+        public async Task HashedUpload_Commit_AndDownload_RoundTrip()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var second = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: first.Value!.AccessTicket, expectedIndex: 1);
+            var whole = Hello.Concat(World).ToArray();
+            var commit = await this.contentService.CommitAsync(this.Owner, "alpha", contentId, first.Value!.AccessTicket!, new ContentCommitInput(Sha256Hex(whole)));
+            var chunk = await this.service.DownloadChunkAsync(this.Owner, "alpha", contentId, second.Value!.ChunkName);
+            var content = await this.service.DownloadContentAsync(this.Owner, "alpha", contentId);
+
+            Assert.That(second.Value!.Hash, Is.EqualTo(Sha256Hex(World)));
+            Assert.That(commit.IsOk, Is.True, commit.Error);
+            Assert.That(chunk.Value!.ContentLength, Is.EqualTo(World.Length));
+            Assert.That(chunk.Value!.ContentDisposition, Is.Null);
+            Assert.That(await ReadAllAsync(chunk.Value!), Is.EqualTo(World));
+            Assert.That(content.Value!.ContentType, Is.EqualTo("application/pdf"));
+            Assert.That(content.Value!.ContentLength, Is.EqualTo(whole.Length));
+            Assert.That(content.Value!.ContentDisposition, Is.EqualTo("attachment; filename=report.pdf"));
+            Assert.That(await ReadAllAsync(content.Value!), Is.EqualTo(whole));
+        }
+
+        [Test]
+        public async Task Download_ReadsAndAuditsOnlyWhenWritten()
+        {
+            await this.CreateSecretAsync("alpha", auditEnabled: true);
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var upload = await this.Upload(this.Owner, contentId, Hello);
+            Assert.That(upload.Value!.AccessTicket, Is.Empty, "Arrange: a final legacy chunk releases the lock.");
+
+            var download = await this.service.DownloadChunkAsync(this.Owner, "alpha", contentId, upload.Value!.ChunkName);
+            var readsBefore = await this.ContentReadEventsAsync();
+            var bytes = await ReadAllAsync(download.Value!);
+            var readsAfter = await this.ContentReadEventsAsync();
+
+            Assert.That(bytes, Is.EqualTo(Hello));
+            Assert.That(readsBefore, Is.EqualTo(0));
+            Assert.That(readsAfter, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task Download_StorageFailureWhileWriting_IsAnOperationFailure()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var upload = await this.Upload(this.Owner, contentId, Hello);
+            this.BlobHelper.Blobs.Clear();
+
+            var download = await this.service.DownloadChunkAsync(this.Owner, "alpha", contentId, upload.Value!.ChunkName);
+
+            Assert.That(download.IsOk, Is.True);
+            Assert.ThrowsAsync<ServiceOperationException>(() => download.Value!.WriteToAsync(new MemoryStream()));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_RetryOfAStoredChunkWithTheSameHash_IsANoOp()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+
+            var retry = await this.Upload(this.Owner, contentId, Hello, hashed: true, ticket: first.Value!.AccessTicket, expectedIndex: 0);
+
+            Assert.That(retry.IsOk, Is.True, retry.Error);
+            Assert.That(retry.Value!.ChunkName, Is.EqualTo(first.Value!.ChunkName));
+            Assert.That(retry.Value!.Hash, Is.EqualTo(Sha256Hex(Hello)));
+            Assert.That(retry.Value!.AccessTicket, Is.EqualTo(first.Value!.AccessTicket));
+            Assert.That((await this.ContentAsync(contentId)).Chunks, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_RetryOfChunkZeroWithoutATicket_IsANoOpCarryingTheStoredTicket()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+
+            var retry = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+
+            Assert.That(retry.IsOk, Is.True, retry.Error);
+            Assert.That(retry.Value!.ChunkName, Is.EqualTo(first.Value!.ChunkName));
+            Assert.That(retry.Value!.AccessTicket, Is.EqualTo(first.Value!.AccessTicket).And.Not.Empty);
+            Assert.That((await this.ContentAsync(contentId)).Chunks, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_RetryOfChunkZeroWithoutATicket_StillDeniesOtherCasesAndCallers()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.GrantAsync("alpha", ReaderUpn, PermissionType.Read);
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            await this.Upload(this.Owner, contentId, World, hashed: true, ticket: first.Value!.AccessTicket, expectedIndex: 1);
+
+            var otherHash = await this.Upload(this.Owner, contentId, World, hashed: true, expectedIndex: 0);
+            var twoChunks = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var noWrite = await this.Upload(this.Reader, contentId, Hello, hashed: true, expectedIndex: 0);
+            var legacy = await this.Upload(this.Owner, contentId, Hello);
+
+            foreach (var result in new[] { otherHash, twoChunks, legacy })
+            {
+                Assert.That(result.Status, Is.EqualTo(ServiceStatus.Unprocessable));
+                Assert.That(result.Error, Is.EqualTo("Content is being updated."));
+            }
+
+            AssertInsufficientPermissions(noWrite.Outcome, PermissionType.Write, "alpha");
+        }
+
+        [Test]
+        public async Task ExpectedIndex_NotTheNextIndex_IsUnprocessable()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+
+            var skipped = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: first.Value!.AccessTicket, expectedIndex: 2);
+            var changed = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: first.Value!.AccessTicket, expectedIndex: 0);
+
+            foreach (var result in new[] { skipped, changed })
+            {
+                Assert.That(result.Status, Is.EqualTo(ServiceStatus.Unprocessable));
+                Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.UnprocessableEntity));
+                Assert.That(result.Error, Is.EqualTo("Expected chunk index 1."));
+            }
+
+            Assert.That((await this.ContentAsync(contentId)).Chunks, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_Mismatch_DoesNotTakeTheLock()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var result = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 3);
+
+            Assert.That(result.Error, Is.EqualTo("Expected chunk index 0."));
+            var content = await this.ContentAsync(contentId);
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Blank));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_ResumeWithAnExpiredTicket_TakesAFreshLock()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var oldTicket = first.Value!.AccessTicket!;
+            DateTimeProvider.SpecifiedDateTime = FixedNow.AddMinutes(11);
+
+            var resumed = await this.Upload(this.Owner, contentId, Hello, hashed: true, ticket: oldTicket, expectedIndex: 0);
+            var newTicket = resumed.Value!.AccessTicket!;
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(resumed.IsOk, Is.True, resumed.Error);
+            Assert.That(newTicket, Is.Not.Empty.And.Not.EqualTo(oldTicket));
+            Assert.That(content.AccessTicket, Is.EqualTo(newTicket));
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Updating));
+            Assert.That(content.AccessTicketSetAt, Is.EqualTo(DateTimeProvider.UtcNow));
+
+            var second = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: newTicket, expectedIndex: 1);
+            var whole = Hello.Concat(World).ToArray();
+            var commit = await this.contentService.CommitAsync(this.Owner, "alpha", contentId, newTicket, new ContentCommitInput(Sha256Hex(whole)));
+
+            Assert.That(second.IsOk, Is.True, second.Error);
+            Assert.That(commit.IsOk, Is.True, commit.Error);
+        }
+
+        [TestCase(null)]
+        [TestCase(0)]
+        public async Task HashedUpload_ChunkHashMismatch_LeavesNoLockBehind(int? expectedIndex)
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var mismatch = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: expectedIndex, chunkHash: Sha256Hex(World));
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(mismatch.Status, Is.EqualTo(ServiceStatus.ChunkHashMismatch));
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Blank));
+            Assert.That(content.AccessTicketSetAt, Is.EqualTo(DateTime.MinValue));
+
+            var retry = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: expectedIndex);
+            Assert.That(retry.IsOk, Is.True, retry.Error);
+            Assert.That(retry.Value!.AccessTicket, Is.Not.Empty);
+        }
+
+        [Test]
+        public async Task HashedUpload_ChunkHashMismatchOnLaterChunk_KeepsTheCallersLock()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var ticket = first.Value!.AccessTicket!;
+            var setAt = (await this.ContentAsync(contentId)).AccessTicketSetAt;
+
+            var mismatch = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: ticket, expectedIndex: 1, chunkHash: Sha256Hex(Hello));
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(mismatch.Status, Is.EqualTo(ServiceStatus.ChunkHashMismatch));
+            Assert.That(content.AccessTicket, Is.EqualTo(ticket));
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Updating));
+            Assert.That(content.AccessTicketSetAt, Is.EqualTo(setAt));
+            Assert.That(content.Chunks, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_RejectedUploadMode_DoesNotTakeTheLock()
+        {
+            var rejecting = new ChunkService(
+                new ConfigurationBuilder()
+                    .AddConfiguration(this.Configuration)
+                    .AddInMemoryCollection(new Dictionary<string, string?> { { "Features:AllowLegacyAttachmentUploads", "False" }, { "Features:IgnoreChunkHashHeader", "True" } })
+                    .Build(),
+                this.DbContext, this.Purger, this.BlobHelper, this.PermissionsManager, this.AuditWriter, NullLogger<ChunkService>.Instance);
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var rejected = await rejecting.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(Hello), new ChunkUploadRequest { ChunkHash = Sha256Hex(Hello), ExpectedIndex = 0 });
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(rejected.Status, Is.EqualTo(ServiceStatus.InconsistentUploadMode));
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Blank));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_ExtraChunkOnReadyContent_IsRejectedWithoutRelocking()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var oldTicket = first.Value!.AccessTicket!;
+            var commit = await this.contentService.CommitAsync(this.Owner, "alpha", contentId, oldTicket, new ContentCommitInput(Sha256Hex(Hello)));
+            Assert.That(commit.IsOk, Is.True, commit.Error);
+
+            var extraHashed = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: oldTicket, expectedIndex: 1);
+            var extraLegacy = await this.service.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(World), new ChunkUploadRequest { AccessTicket = oldTicket, ExpectedIndex = 1 });
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(extraHashed.IsOk, Is.False);
+            Assert.That(extraLegacy.IsOk, Is.False);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Ready));
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Chunks, Has.Count.EqualTo(1));
+
+            DateTimeProvider.SpecifiedDateTime = FixedNow.AddMinutes(11);
+            var download = await this.service.DownloadContentAsync(this.Owner, "alpha", contentId);
+            Assert.That(download.IsOk, Is.True, download.Error);
+            Assert.That(await ReadAllAsync(download.Value!), Is.EqualTo(Hello));
+        }
+
+        [Test]
+        public async Task HashedUpload_WithoutADeclaredLength_RecordsTheBytesRead()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var upload = await this.Upload(this.Owner, contentId, Hello, hashed: true, declareLength: false);
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(upload.IsOk, Is.True, upload.Error);
+            Assert.That(upload.Value!.Length, Is.EqualTo(Hello.Length));
+            Assert.That(content.Chunks.Single().Length, Is.EqualTo(Hello.Length));
+        }
+
+        [Test]
+        public async Task ConcurrentUploadWithoutATicket_WhileTheFirstIsWritingTheBlob_IsRejectedAsBeingUpdated()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var gated = new GatedBlobHelper(this.BlobHelper);
+            var serviceA = new ChunkService(this.Configuration, this.DbContext, this.Purger, gated, this.PermissionsManager, this.AuditWriter, NullLogger<ChunkService>.Instance);
+
+            var uploadA = serviceA.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(Hello), new ChunkUploadRequest { ChunkHash = Sha256Hex(Hello), DeclaredLength = Hello.Length, ExpectedIndex = 0 });
+            await gated.UploadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // Another request: its own DbContext over the same database.
+            using var otherDbContext = new SafeExchangeDbContext(this.DbContextOptions);
+            var otherService = new ChunkService(
+                this.Configuration, otherDbContext, this.Purger, this.BlobHelper,
+                new PermissionsManager(this.Configuration, otherDbContext, NullLogger<PermissionsManager>.Instance),
+                this.AuditWriter, NullLogger<ChunkService>.Instance);
+            var uploadB = await otherService.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(World), new ChunkUploadRequest { ChunkHash = Sha256Hex(World), DeclaredLength = World.Length, ExpectedIndex = 0 });
+
+            gated.Release.SetResult();
+            var resultA = await uploadA.WaitAsync(TimeSpan.FromSeconds(10));
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(uploadB.IsOk, Is.False);
+            Assert.That(uploadB.Status, Is.EqualTo(ServiceStatus.Unprocessable));
+            Assert.That(uploadB.Error, Is.EqualTo("Content is being updated."));
+            Assert.That(resultA.IsOk, Is.True, resultA.Error);
+            Assert.That(content.Chunks, Has.Count.EqualTo(1));
+            Assert.That(content.Chunks[0].Hash, Is.EqualTo(Sha256Hex(Hello)));
+            Assert.That(this.BlobHelper.Blobs[$"{contentId}-00000000"], Is.EqualTo(Hello));
+        }
+
+        private static string Sha256Hex(byte[] data)
+            => Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+
+        private static async Task<byte[]> ReadAllAsync(ContentDownload download)
+        {
+            using var buffer = new MemoryStream();
+            await download.WriteToAsync(buffer);
+            return buffer.ToArray();
+        }
+
+        private Task<ServiceResult<ChunkCreationOutput>> Upload(
+            Caller caller, string contentId, byte[] data, bool hashed = false, string? ticket = null, int? expectedIndex = null, bool declareLength = true, string? chunkHash = null)
+            => this.service.UploadChunkAsync(caller, "alpha", contentId, new MemoryStream(data), new ChunkUploadRequest
+            {
+                AccessTicket = ticket ?? string.Empty,
+                ChunkHash = hashed ? (chunkHash ?? Sha256Hex(data)) : null,
+                DeclaredLength = hashed ? (declareLength ? data.Length : null) : 0,
+                ExpectedIndex = expectedIndex,
+            });
+
+        private sealed class GatedBlobHelper : IBlobHelper
+        {
+            private readonly IBlobHelper inner;
+
+            public GatedBlobHelper(IBlobHelper inner) => this.inner = inner;
+
+            public TaskCompletionSource UploadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public async Task EncryptAndUploadBlobAsync(string blobName, Stream data)
+            {
+                this.UploadStarted.TrySetResult();
+                await this.Release.Task;
+                await this.inner.EncryptAndUploadBlobAsync(blobName, data);
+            }
+
+            public Task<bool> BlobExistsAsync(string blobName) => this.inner.BlobExistsAsync(blobName);
+
+            public Task<Stream> DownloadAndDecryptBlobAsync(string blobName) => this.inner.DownloadAndDecryptBlobAsync(blobName);
+
+            public Task<bool> DeleteBlobIfExistsAsync(string blobName) => this.inner.DeleteBlobIfExistsAsync(blobName);
+        }
+
+        private async Task<string> CreateAttachmentAsync(string secretId)
+        {
+            var input = new ContentMetadataCreationInput { ContentType = "application/pdf", FileName = "report.pdf", IsImage = false };
+            var result = await this.contentService.CreateAsync(this.Owner, secretId, string.Empty, input);
+            Assert.That(result.IsOk, Is.True, $"Arrange: attachment creation failed: {result.Error}");
+            return result.Value!.ContentName;
+        }
+
+        private async Task<ContentMetadata> ContentAsync(string contentId)
+            => (await this.DbContext.Objects.SingleAsync(o => o.ObjectName == "alpha")).Content.Single(c => c.ContentName == contentId);
+
+        private Task<int> ContentReadEventsAsync()
+            => this.DbContext.SecretAuditEvents.AsNoTracking().CountAsync(e => e.EventType == SecretAuditEventType.ContentRead);
+    }
+}

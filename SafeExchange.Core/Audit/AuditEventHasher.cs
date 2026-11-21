@@ -12,6 +12,12 @@ namespace SafeExchange.Core.Audit
 
     public static class AuditEventHasher
     {
+        /// <summary>
+        /// Hashes the canonical form of an event. <paramref name="channel"/> and <paramref name="clientLabel"/>
+        /// are appended as <c>|v2|{channel}|{clientLabel}</c> only when one of them is non-empty, so events
+        /// without an origin (all REST and system events, and every event written before origins existed)
+        /// hash exactly as before. The marker keeps the suffix distinguishable from the original fields.
+        /// </summary>
         public static string ComputeHash(
             string auditInstanceId,
             long sequenceNumber,
@@ -21,7 +27,9 @@ namespace SafeExchange.Core.Audit
             string actorSubjectId,
             string actorDisplayName,
             string payloadJson,
-            string prevHash)
+            string prevHash,
+            string? channel = null,
+            string? clientLabel = null)
         {
             var canonical = string.Join('|',
                 auditInstanceId ?? string.Empty,
@@ -33,6 +41,11 @@ namespace SafeExchange.Core.Audit
                 actorDisplayName ?? string.Empty,
                 payloadJson ?? string.Empty,
                 prevHash ?? string.Empty);
+            if (!string.IsNullOrEmpty(channel) || !string.IsNullOrEmpty(clientLabel))
+            {
+                canonical = string.Join('|', canonical, "v2", channel ?? string.Empty, clientLabel ?? string.Empty);
+            }
+
             var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
             return Convert.ToBase64String(bytes);
         }

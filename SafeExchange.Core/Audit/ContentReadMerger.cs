@@ -1,7 +1,8 @@
 /// <summary>
-/// ContentReadMerger — collapses runs of ContentRead events for the same (actor, contentId)
-/// into single output DTO items. Pure function; never mutates the input list and never reads
-/// the secret's actual content (only the contentId/chunkId from the stored payload JSON).
+/// ContentReadMerger — collapses runs of ContentRead events for the same (actor, contentId, channel,
+/// clientLabel) into single output DTO items, so reads through different channels or MCP clients stay
+/// separate. Pure function; never mutates the input list and never reads the secret's actual content
+/// (only the contentId/chunkId from the stored payload JSON).
 /// </summary>
 
 namespace SafeExchange.Core.Audit
@@ -40,7 +41,9 @@ namespace SafeExchange.Core.Audit
                 var j = i + 1;
                 while (j < events.Count
                     && events[j].EventType == SecretAuditEventType.ContentRead
-                    && events[j].ActorSubjectId == e.ActorSubjectId)
+                    && events[j].ActorSubjectId == e.ActorSubjectId
+                    && events[j].Channel == e.Channel
+                    && events[j].ClientLabel == e.ClientLabel)
                 {
                     var (cId, kId) = ParseRead(events[j].Payload);
                     if (cId != contentId)
@@ -73,6 +76,8 @@ namespace SafeExchange.Core.Audit
                     ChunkIds = chunkIds,
                     Hash = hashEnd,
                     PrevHash = prevHashStart,
+                    Channel = NullIfEmpty(e.Channel),
+                    ClientLabel = NullIfEmpty(e.ClientLabel),
                 });
                 i = j;
             }
@@ -109,8 +114,13 @@ namespace SafeExchange.Core.Audit
                 Payload = payload,
                 Hash = e.Hash,
                 PrevHash = e.PrevHash,
+                Channel = NullIfEmpty(e.Channel),
+                ClientLabel = NullIfEmpty(e.ClientLabel),
             };
         }
+
+        private static string? NullIfEmpty(string value)
+            => string.IsNullOrEmpty(value) ? null : value;
 
         private static (string contentId, string chunkId) ParseRead(string payload)
         {

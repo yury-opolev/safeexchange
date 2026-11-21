@@ -17,6 +17,8 @@ namespace SafeExchange.Core.Audit
         /// Append an event. The actor's display name is resolved from server-stored
         /// records (User.DisplayName / Application.DisplayName) rather than trusted
         /// directly from a token claim — see OWASP review finding F1.
+        /// <paramref name="origin"/> (default <see cref="AuditOrigin.None"/>) records the
+        /// channel and client label; it is persisted and hashed only when non-empty.
         /// </summary>
         ValueTask AppendAsync(
             ObjectMetadata secret,
@@ -25,6 +27,7 @@ namespace SafeExchange.Core.Audit
             string actorId,
             object? payload,
             ILogger log,
+            AuditOrigin? origin = null,
             CancellationToken ct = default);
 
         ValueTask EnsureAnchorAsync(

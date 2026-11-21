@@ -6,7 +6,6 @@ namespace SafeExchange.Core
 {
     using Azure.Extensions.AspNetCore.Configuration.Secrets;
     using Azure.Identity;
-    using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Configuration;
@@ -15,15 +14,16 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Applications;
     using SafeExchange.Core.Audit;
     using SafeExchange.Core.AzureAd;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.LocalDev;
+    using SafeExchange.Core.Mcp;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Permissions;
-    using SafeExchange.Core.Filters;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
+    using SafeExchange.Core.Services;
     using SafeExchange.Core.Crypto;
-    using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Migrations;
     using SafeExchange.Core.DelayedTasks;
     using System;
@@ -37,10 +37,6 @@ namespace SafeExchange.Core
 
     public class SafeExchangeStartup
     {
-        public static bool IsHttpTrigger(FunctionContext context)
-            => context.FunctionDefinition.InputBindings.Values
-                .First(a => a.Type.EndsWith("Trigger")).Type == "httpTrigger";
-
         // LOCAL SPIKE ONLY: when SAEX_DEV_MODE=true we substitute local-runnable
         // implementations for ICryptoHelper / IBlobHelper and point Cosmos at the
         // emulator with its well-known key. Authentication intentionally stays on
@@ -49,20 +45,6 @@ namespace SafeExchange.Core
         // SAEX_DEV_MODE in a deployed environment.
         public static bool IsDevMode()
             => string.Equals(Environment.GetEnvironmentVariable("SAEX_DEV_MODE"), "true", StringComparison.OrdinalIgnoreCase);
-
-        public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
-        {
-            builder.UseWhen<DefaultAuthenticationMiddleware>(IsHttpTrigger);
-            builder.UseWhen<TokenFilterMiddleware>(IsHttpTrigger);
-
-            // After auth so failed-auth requests still get the dimension,
-            // but before any handler logs so downstream ILogger scopes
-            // inherit the x-saex-session-id correlation.
-            builder.UseWhen<SessionCorrelationMiddleware>(IsHttpTrigger);
-
-            // Records the {apiVersion} route segment so v2-vs-v3 traffic can be measured.
-            builder.UseWhen<ApiVersionTelemetryMiddleware>(IsHttpTrigger);
-        }
 
         // The categories below are emitted inside the isolated worker process —
         // most notably Azure.Identity, which logs four Information traces per
@@ -114,7 +96,6 @@ namespace SafeExchange.Core
         {
             services.AddHttpClient();
 
-            services.AddScoped<ITokenMiddlewareCore, TokenMiddlewareCore>();
             services.AddSingleton<ITokenValidationParametersProvider, TokenValidationParametersProvider>();
 
             var defaultCredential = DefaultCredentialProvider.CreateDefaultCredential();
@@ -160,12 +141,20 @@ namespace SafeExchange.Core
             services.AddSingleton<IConfidentialClientProvider, ConfidentialClientProvider>();
             services.AddSingleton<IGraphDataProvider, GraphDataProvider>();
             services.AddSingleton<IPurger, PurgeManager>();
-            services.AddSingleton<GlobalFilters>();
 
             services.AddScoped<IPermissionsManager, PermissionsManager>();
             services.AddScoped<IOrphanedSecretManager, OrphanedSecretManager>();
             services.AddScoped<IGroupsManager, GroupsManager>();
             services.AddScoped<IApplicationOwnerService, ApplicationOwnerService>();
+            services.AddScoped<ICallerResolver, CallerResolver>();
+
+            services.AddScoped<SecretService>();
+            services.AddScoped<ContentService>();
+            services.AddScoped<ChunkService>();
+            services.AddScoped<AccessService>();
+            services.AddScoped<AuditQueryService>();
+
+            services.AddSafeExchangeMcp();
 
             services.AddScoped<IAuditWriter, AuditWriter>();
             services.AddScoped<IAuditPurger, AuditPurger>();
@@ -195,13 +184,6 @@ namespace SafeExchange.Core
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));
             services.Configure<WebClientTelemetryConfiguration>(configuration.GetSection("WebClientTelemetry"));
-
-            // Stamps customDimensions.saex.sessionId on every telemetry
-            // item emitted within a request that carried the header. Works
-            // in tandem with SessionCorrelationMiddleware (which sets the
-            // AsyncLocal for the duration of the request handler).
-            services.AddSingleton<ITelemetryInitializer, SessionCorrelationTelemetryInitializer>();
-            services.AddSingleton<ITelemetryInitializer, ApiVersionTelemetryInitializer>();
 
             // Stamps customDimensions.saex.telemetryId — a pseudonymous, weekly-rotating
             // id — on every telemetry item so traces can be correlated per user without

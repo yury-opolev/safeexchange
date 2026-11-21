@@ -6,9 +6,7 @@ namespace SafeExchange.Core
 {
     using System;
     using System.Configuration;
-    using System.Net.Http.Headers;
     using System.Security.Claims;
-    using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
     using SafeExchange.Core.Configuration;
@@ -132,17 +130,6 @@ namespace SafeExchange.Core
             return string.Empty;
         }
 
-        /// <inheritdoc/>
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal)
-        {
-            var accessToken = GetAccessToken(request);
-            var accountId = GetAccountId(principal);
-
-            this.log.LogInformation($"{nameof(GetAccountIdAndToken)}: AccountId [{accountId}], token {(string.IsNullOrEmpty(accessToken) ? "is empty" : "extracted")}");
-
-            return new AccountIdAndToken(accountId, accessToken);
-        }
-
         public string? GetObjectId(ClaimsPrincipal? principal)
         {
             var objectId = principal?.FindFirst("oid");
@@ -170,23 +157,8 @@ namespace SafeExchange.Core
             return principal.HasClaim(claim => claim.Type.Equals(type));
         }
 
-        private static string GetAccessToken(HttpRequestData request)
-        {
-            if (!request.Headers.TryGetValues("Authorization", out var headerValues) || 
-                !AuthenticationHeaderValue.TryParse(headerValues.FirstOrDefault(), out var authHeader))
-            {
-                return string.Empty;
-            }
-
-            if (authHeader != null && authHeader.Scheme.ToLower() == "bearer" && !string.IsNullOrEmpty(authHeader.Parameter))
-            {
-                return authHeader.Parameter;
-            }
-
-            return string.Empty;
-        }
-
-        private string GetAccountId(ClaimsPrincipal principal)
+        /// <inheritdoc/>
+        public string GetAccountId(ClaimsPrincipal principal)
         {
             var objectId = this.GetObjectId(principal);
             var tenantId = this.GetTenantId(principal);

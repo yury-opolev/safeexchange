@@ -10,11 +10,12 @@ namespace SafeExchange.Tests
     using SafeExchange.Core.Model;
     using System;
     using System.Collections.Generic;
+    using System.Linq;
 
     [TestFixture]
     public class ContentReadMergerTests
     {
-        private static SecretAuditEvent MakeRead(long seq, string actorId, string contentId, string chunkId)
+        private static SecretAuditEvent MakeRead(long seq, string actorId, string contentId, string chunkId, string channel = "", string clientLabel = "")
         {
             var payload = DefaultJsonSerializer.Serialize(new { contentId, chunkId });
             return new SecretAuditEvent
@@ -30,6 +31,8 @@ namespace SafeExchange.Tests
                 Payload = payload,
                 PrevHash = string.Empty,
                 Hash = "h" + seq,
+                Channel = channel,
+                ClientLabel = clientLabel,
             };
         }
 
@@ -133,6 +136,74 @@ namespace SafeExchange.Tests
             Assert.That(raw.Count, Is.EqualTo(2));
         }
 
+        [Test]
+        public void Merge_McpAndRestReadsOfTheSameContent_AreNotMerged()
+        {
+            var events = new List<SecretAuditEvent>
+            {
+                MakeRead(1, "a@x", "c1", "k1"),
+                MakeRead(2, "a@x", "c1", "k2", "mcp", "agent/1"),
+            };
+            var merged = ContentReadMerger.Merge(events);
+            Assert.That(merged.Count, Is.EqualTo(2));
+            Assert.That(merged.Select(m => m.Channel), Is.EqualTo(new[] { null, "mcp" }));
+        }
+
+        [Test]
+        public void Merge_DifferentClientLabels_AreNotMerged()
+        {
+            var events = new List<SecretAuditEvent>
+            {
+                MakeRead(1, "a@x", "c1", "k1", "mcp", "agent/1"),
+                MakeRead(2, "a@x", "c1", "k2", "mcp", "agent/2"),
+            };
+            Assert.That(ContentReadMerger.Merge(events).Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Merge_SameOrigin_MergesAndKeepsTheOrigin()
+        {
+            var events = new List<SecretAuditEvent>
+            {
+                MakeRead(1, "a@x", "c1", "k1", "mcp", "agent/1"),
+                MakeRead(2, "a@x", "c1", "k2", "mcp", "agent/1"),
+            };
+            var merged = ContentReadMerger.Merge(events);
+            Assert.That(merged.Count, Is.EqualTo(1));
+            Assert.That(merged[0].ChunkIds, Is.EqualTo(new[] { "k1", "k2" }));
+            Assert.That(merged[0].Channel, Is.EqualTo("mcp"));
+            Assert.That(merged[0].ClientLabel, Is.EqualTo("agent/1"));
+        }
+
+        [Test]
+        public void Raw_ExposesTheOriginOnlyWhenSet()
+        {
+            var events = new List<SecretAuditEvent>
+            {
+                MakeOther(1, SecretAuditEventType.SecretCreated),
+                MakeRead(2, "a@x", "c1", "k1", "mcp", "agent/1"),
+            };
+            var raw = ContentReadMerger.Raw(events);
+            Assert.That(raw[0].Channel, Is.Null);
+            Assert.That(raw[0].ClientLabel, Is.Null);
+            Assert.That(raw[1].Channel, Is.EqualTo("mcp"));
+            Assert.That(raw[1].ClientLabel, Is.EqualTo("agent/1"));
+        }
+
+        [Test]
+        public void Json_OmitsTheOriginWhenEmpty_AndWritesItWhenSet()
+        {
+            var events = new List<SecretAuditEvent>
+            {
+                MakeOther(1, SecretAuditEventType.SecretCreated),
+                MakeRead(2, "a@x", "c1", "k1", "mcp", "agent/1"),
+            };
+            var raw = ContentReadMerger.Raw(events);
+            var restJson = DefaultJsonSerializer.Serialize(raw[0]);
+            var mcpJson = DefaultJsonSerializer.Serialize(raw[1]);
+            Assert.That(restJson, Does.Not.Contain("channel").And.Not.Contain("clientLabel"));
+            Assert.That(mcpJson, Does.EndWith(",\"channel\":\"mcp\",\"clientLabel\":\"agent/1\"}"));
+        }
         [Test]
         public void Merge_NonReadEventOnly_PassesThrough()
         {

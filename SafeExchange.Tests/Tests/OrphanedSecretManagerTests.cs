@@ -49,7 +49,7 @@ namespace SafeExchange.Tests
         [OneTimeTearDown]
         public async Task OneTimeTearDown()
         {
-            await this.dbContext.Database.EnsureDeletedAsync();
+            await TestDatabase.EnsureDeletedTolerantAsync(this.dbContext.Database);
             this.dbContext.Dispose();
         }
 

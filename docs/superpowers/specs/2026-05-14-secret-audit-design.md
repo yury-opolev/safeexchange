@@ -76,6 +76,8 @@ One row per recorded action. Partition key = `AuditInstanceId`.
 | `Payload` | `string` | Canonical JSON. Per-event-type schema (§ Payloads). |
 | `PrevHash` | `string` | Base64 SHA-256 of previous record's `Hash`. Empty for `SequenceNumber = 1`. |
 | `Hash` | `string` | Base64 SHA-256 over a canonical concatenation (§ Hash chain). |
+| `Channel` | `string` | `mcp` for events produced through the MCP endpoint; empty for REST and system events. Absent on documents written before it existed (read as empty). |
+| `ClientLabel` | `string` | The MCP client's self-reported label (printable ASCII, at most 128 characters); empty otherwise. Carries no authority. |
 
 `EventType` values (string enum, persisted as the name):
 - `SecretCreated`
@@ -142,6 +144,7 @@ For each new event:
    {AuditInstanceId}|{SequenceNumber}|{EventType}|{OccurredAt:O}|{ActorSubjectType}|{ActorSubjectId}|{ActorDisplayName}|{Payload}|{PrevHash}
    ```
    `Payload` is the exact JSON string that will be persisted (single canonical serialization: compact, no whitespace, `JsonSerializerOptions.Default` property name policy via `DefaultJsonSerializer.Serialize`). `OccurredAt` is formatted with the round-trip `O` specifier (UTC). All separator pipes are literal `|` characters.
+   When `Channel` or `ClientLabel` is non-empty, `|v2|{Channel}|{ClientLabel}` is appended to that string. The `v2` marker keeps the suffix distinguishable from the base fields, and `Channel`/`ClientLabel` never contain `|` (sanitised on write), so the suffix is unambiguous. When both are empty (REST and system events, and every event written before these fields existed) the string is exactly the one above, so those hashes are unchanged.
 3. Insert with Cosmos `IfNoneMatch:*`. On `PreconditionFailed` (a concurrent appender allocated the same sequence), retry: re-read the tail, recompute, re-insert. Bounded to 5 attempts; after that, the writer logs `AuditWriteFailed` and returns without throwing.
 
 Verification (offline; no shipped endpoint) is a single linear scan: walk records in `SequenceNumber` order, recompute each hash, confirm `PrevHash` matches the previous record's stored `Hash`. Any break = tampering or missing record.
