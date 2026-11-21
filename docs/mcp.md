@@ -92,7 +92,7 @@ An agent can act under its own identity instead of a user's:
 3. **Get a token** with the client-credentials flow, for example with a certificate:
 
    ```bash
-   az login --service-principal --username <client-id> --tenant <tenant-id> --password <path-to-cert.pem>
+   az login --service-principal --username <client-id> --tenant <tenant-id> --certificate <path-to-cert.pem>
    az account get-access-token --scope api://<api>/.default --query accessToken -o tsv
    ```
 
@@ -263,7 +263,7 @@ curl -s -X POST https://<host>/api/mcp \
 
 ## Staging validation
 
-Before enabling MCP anywhere else, deploy the branch to staging (`test` environment, `safeexchange-staging.azurewebsites.net`; infrastructure with `deployment\deploy.ps1 -Environment test`, code with `func azure functionapp publish`) and set `Features--McpEndpoint = True` there only.
+Before enabling MCP anywhere else, deploy the branch to staging (`test` environment, `safeexchange-staging.azurewebsites.net`; infrastructure with `deployment\deploy.ps1 -Environment test`, code with `func azure functionapp publish`) and enable MCP there only by setting `settings-features-mcpEndpoint` to `"True"` in `deployment\current\arm\services-parameters-test.arm.json` before running `deploy.ps1` (the template owns the `Features--McpEndpoint` secret, so a value set by hand in Key Vault is reset to the parameter file's value by the next infrastructure deploy).
 
 1. **REST regression** with the current web app (v3) and an older web app build (v2): create a secret, upload and download an attachment (hashed and legacy), grant and revoke access, audit view, pinned items, S2S apps pages.
 2. **MCP as an S2S agent:** register an app and grant it on a test secret; move a small file in-band; move a large synthetic file (tens of MB) through `file_transfer_info` and REST with the agent's own token; all SHA-256 values match; disable the app and confirm the next MCP call returns `403`.
