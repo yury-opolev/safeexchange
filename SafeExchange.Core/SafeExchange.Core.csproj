@@ -33,6 +33,7 @@
     <PackageReference Include="Microsoft.Graph" />
     <PackageReference Include="Microsoft.IdentityModel.Tokens" />
     <PackageReference Include="Microsoft.IdentityModel.Validators" />
+    <PackageReference Include="ModelContextProtocol.Core" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />

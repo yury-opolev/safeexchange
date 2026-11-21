@@ -46,6 +46,13 @@ namespace SafeExchange.Core.Configuration
         /// </summary>
         public bool RedactTelemetryPii { get; set; } = false;
 
+        /// <summary>
+        /// Enables the MCP endpoint (<c>POST /api/mcp</c>) and its protected-resource metadata. When false both
+        /// routes answer 404 and 401 responses carry no <c>WWW-Authenticate</c> challenge.
+        /// Read live (IOptionsMonitor), so it can be toggled without a redeploy.
+        /// </summary>
+        public bool McpEndpoint { get; set; } = false;
+
         public Features Clone() => new Features()
         {
             UseExternalWebHookNotifications = this.UseExternalWebHookNotifications,
@@ -59,6 +66,7 @@ namespace SafeExchange.Core.Configuration
             S2SAppsSelfService = this.S2SAppsSelfService,
             RequireApplicationOwnership = this.RequireApplicationOwnership,
             RedactTelemetryPii = this.RedactTelemetryPii,
+            McpEndpoint = this.McpEndpoint,
         };
 
         public override bool Equals(object obj)
@@ -79,7 +87,8 @@ namespace SafeExchange.Core.Configuration
                 this.AuditRetentionDays.Equals(other.AuditRetentionDays) &&
                 this.S2SAppsSelfService.Equals(other.S2SAppsSelfService) &&
                 this.RequireApplicationOwnership.Equals(other.RequireApplicationOwnership) &&
-                this.RedactTelemetryPii.Equals(other.RedactTelemetryPii);
+                this.RedactTelemetryPii.Equals(other.RedactTelemetryPii) &&
+                this.McpEndpoint.Equals(other.McpEndpoint);
         }
 
         public override int GetHashCode() => HashCode.Combine(
@@ -89,6 +98,6 @@ namespace SafeExchange.Core.Configuration
                 this.AllowLegacyAttachmentUploads, this.IgnoreChunkHashHeader,
                 this.UseAccessGiveUp, this.AuditRetentionDays),
             HashCode.Combine(this.S2SAppsSelfService, this.RequireApplicationOwnership,
-                this.RedactTelemetryPii));
+                this.RedactTelemetryPii, this.McpEndpoint));
     }
 }
