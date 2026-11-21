@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Tests
 {
-    using Microsoft.Azure.Functions.Worker.Http;
     using SafeExchange.Core;
     using System.Security.Claims;
 
@@ -14,11 +13,9 @@ namespace SafeExchange.Tests
         {
         }
 
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal)
+        public string GetAccountId(ClaimsPrincipal principal)
         {
-            var accountId = $"{this.GetTenantId(principal)}.{this.GetObjectId(principal)}";
-            var accessToken = $"token:{accountId}";
-            return new AccountIdAndToken(accountId, accessToken);
+            return $"{this.GetTenantId(principal)}.{this.GetObjectId(principal)}";
         }
 
         public string GetDisplayName(ClaimsPrincipal principal)

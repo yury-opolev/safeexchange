@@ -193,8 +193,7 @@ namespace SafeExchange.Tests
             public string? GetObjectId(ClaimsPrincipal? principal) => "00000000-0000-0000-0000-0000000000c1";
             public string GetUpn(ClaimsPrincipal principal) => string.Empty;
             public string GetDisplayName(ClaimsPrincipal principal) => string.Empty;
-            public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal)
-                => new AccountIdAndToken(string.Empty, string.Empty);
+            public string GetAccountId(ClaimsPrincipal principal) => string.Empty;
         }
     }
 }

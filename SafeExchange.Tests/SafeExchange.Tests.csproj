@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SafeExchange.Core\SafeExchange.Core.csproj" />
+    <ProjectReference Include="..\SafeExchange.Core.Functions\SafeExchange.Core.Functions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

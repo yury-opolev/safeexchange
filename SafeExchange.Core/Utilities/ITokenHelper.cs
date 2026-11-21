@@ -4,7 +4,6 @@
 
 namespace SafeExchange.Core
 {
-    using Microsoft.Azure.Functions.Worker.Http;
     using System.Security.Claims;
 
     public interface ITokenHelper
@@ -59,11 +58,10 @@ namespace SafeExchange.Core
         public string? GetTenantId(ClaimsPrincipal? principal);
 
         /// <summary>
-        /// Extract token and AccountId for later on-behalf token acquisition.
+        /// Get the account id ('{ObjectId}.{TenantId}') used for later on-behalf token acquisition.
         /// </summary>
-        /// <param name="request">Incoming http request.</param>
         /// <param name="principal"><see cref="ClaimsPrincipal">ClaimsPrincipal</see> for authenticated user.</param>
-        /// <returns><see cref="AccountIdAndToken">AccountIdAndToken</see>.</returns>
-        public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal);
+        /// <returns>A string, representing the account id, or an empty string when the principal has no object id.</returns>
+        public string GetAccountId(ClaimsPrincipal principal);
     }
 }

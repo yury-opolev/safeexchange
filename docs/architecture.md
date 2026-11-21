@@ -44,7 +44,7 @@ This document describes the high-level architecture of SafeExchange backend.
 
 The API is a set of Azure Functions (v4, isolated worker model) running on .NET 8. Each function is an HTTP-triggered endpoint that handles a specific operation (create secret, grant access, download chunk, etc.).
 
-Functions are thin wrappers — they authenticate the caller, then delegate to business logic handlers in `SafeExchange.Core`.
+Functions are thin wrappers — they authenticate the caller, then delegate to business logic handlers in `SafeExchange.Core.Functions`, which build on the host-agnostic domain logic in `SafeExchange.Core`.
 
 Key endpoint groups:
 
@@ -98,14 +98,19 @@ SafeExchange.Core/
 ├── Crypto/                — Encryption/decryption using KeyVault
 ├── DatabaseContext/        — EF Core DbContext for Cosmos DB
 ├── DelayedTasks/          — Queue-based async task scheduling
-├── Filters/               — Global authorization filters
-├── Functions/             — Business logic handlers for each endpoint
+├── Functions/             — Timer/queue handlers (purge, webhook notifications)
 ├── Graph/                 — Microsoft Graph API client (user/group lookup)
-├── Middleware/            — Authentication middleware (JWT validation)
 ├── Model/                — Domain entity classes
 ├── Permissions/           — Permission evaluation engine
 ├── Purging/              — Expiration and data cleanup logic
 └── Requests/             — Request/response DTOs
+
+SafeExchange.Core.Functions/  — Azure Functions-typed code (references SafeExchange.Core, never the reverse)
+├── Functions/             — HTTP business logic handlers for each endpoint
+├── Middleware/            — Authentication middleware (JWT validation)
+├── Requests/Filters/      — Global authorization filters
+├── Utilities/             — ActionResults, TokenHelperHttpExtensions
+└── SafeExchangeFunctionsStartup.cs — Worker middleware and Functions-typed DI registrations
 
 SafeExchange.Functions/
 ├── Functions/             — HTTP-triggered Azure Function definitions

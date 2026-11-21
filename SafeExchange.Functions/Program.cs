@@ -16,7 +16,7 @@ namespace SafeExchange.Functions
         static async Task Main(string[] args)
         {
             var host = new HostBuilder()
-                .ConfigureFunctionsWorkerDefaults(SafeExchangeStartup.ConfigureWorkerDefaults)
+                .ConfigureFunctionsWorkerDefaults(SafeExchangeFunctionsStartup.ConfigureWorkerDefaults)
                 .ConfigureLogging(SafeExchangeStartup.ConfigureWorkerLogging)
                 .ConfigureAppConfiguration(SafeExchangeStartup.ConfigureAppConfiguration)
                 .ConfigureAppConfiguration(cb =>
@@ -28,6 +28,7 @@ namespace SafeExchange.Functions
                 })
                 .ConfigureServices((hostBuilderContext, serviceCollection) =>
                 {
+                    SafeExchangeFunctionsStartup.ConfigureFunctionsServices(serviceCollection);
                     SafeExchangeStartup.ConfigureServices(hostBuilderContext.Configuration, serviceCollection);
                 })
                 .Build();

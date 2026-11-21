@@ -303,8 +303,7 @@ namespace SafeExchange.Tests
             public string GetDisplayName(ClaimsPrincipal principal) => string.Empty;
             public string? GetObjectId(ClaimsPrincipal? principal) => string.Empty;
             public string? GetTenantId(ClaimsPrincipal? principal) => this.TenantId;
-            public AccountIdAndToken GetAccountIdAndToken(HttpRequestData request, ClaimsPrincipal principal)
-                => new AccountIdAndToken("account", "token");
+            public string GetAccountId(ClaimsPrincipal principal) => "account";
         }
     }
 }

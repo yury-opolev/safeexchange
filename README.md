@@ -54,6 +54,7 @@ Deploy all required services with one click:
 
 ```
 SafeExchange.Core/        — Domain models, business logic, permissions, and Azure integrations
+SafeExchange.Core.Functions/ — Azure Functions-typed handlers, middleware and filters built on SafeExchange.Core
 SafeExchange.Functions/   — Azure Functions HTTP endpoints (the API layer)
 SafeExchange.Tests/       — Unit and integration tests
 deployment/               — ARM templates for Azure infrastructure

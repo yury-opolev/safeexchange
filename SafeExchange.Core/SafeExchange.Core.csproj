@@ -8,12 +8,11 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="SafeExchange.Tests" />
+    <InternalsVisibleTo Include="SafeExchange.Core.Functions" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Azure.Core" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Core" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" />
     <PackageReference Include="Microsoft.Extensions.Http" />
