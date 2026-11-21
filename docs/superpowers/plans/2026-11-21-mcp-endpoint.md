@@ -60,7 +60,7 @@ All from the repo root `C:\Users\yurio\Documents\github\safeexchange`.
 - Run several fixtures: `--filter "FullyQualifiedName~A|FullyQualifiedName~B"`
 - Full suite (final phase only): `dotnet test SafeExchange.Tests\SafeExchange.Tests.csproj --nologo`
 - Cosmos-backed fixtures need the local emulator (HTTP gateway, like CI):
-  `docker run --detach --name saex-test-cosmos --publish 127.0.0.1:8081:8081 --publish 127.0.0.1:8080:8080 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview`
+  `docker run --detach --name saex-test-cosmos --publish 127.0.0.1:8081:8081 --publish 127.0.0.1:8080:8080 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907pre`
   and the `ConnectionStrings:CosmosDb` user-secret of `SafeExchange.Tests` set to the public emulator
   connection string used in `.github/workflows/ci.yml`.
 
