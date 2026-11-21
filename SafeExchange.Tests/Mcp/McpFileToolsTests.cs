@@ -6,6 +6,7 @@ namespace SafeExchange.Tests.Mcp
 {
     using Microsoft.EntityFrameworkCore;
     using NUnit.Framework;
+    using SafeExchange.Core;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
     using System;
@@ -177,6 +178,45 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(retried["nextIndex"]!.GetValue<int>(), Is.EqualTo(1));
             Assert.That(second["nextIndex"]!.GetValue<int>(), Is.EqualTo(2));
             Assert.That(completed["sha256"]!.GetValue<string>(), Is.EqualTo(Sha256Hex(whole)));
+        }
+
+        [Test]
+        public async Task FileUploadChunk_ChunkHashMismatch_LeavesTheFileFreeToRetryAndDelete()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.BeginAsync("alpha");
+
+            var mismatch = await this.CallToolAsync(this.McpOwner, "file_upload_chunk", new { name = "alpha", contentId, index = 0, data = Convert.ToBase64String(Hello), sha256 = Sha256Hex(World) });
+            var retried = Ok(await this.ChunkAsync(contentId, 0, Hello));
+            var secondMismatch = await this.CallToolAsync(this.McpOwner, "file_upload_chunk", new { name = "alpha", contentId, index = 1, data = Convert.ToBase64String(World), sha256 = Sha256Hex(Hello), ticket = retried["ticket"]!.GetValue<string>() });
+            var abandoned = await this.BeginAsync("alpha");
+            await this.CallToolAsync(this.McpOwner, "file_upload_chunk", new { name = "alpha", contentId = abandoned, index = 0, data = Convert.ToBase64String(Hello), sha256 = Sha256Hex(World) });
+            var deleted = Ok(await this.CallToolAsync(this.McpOwner, "file_delete", new { name = "alpha", contentId = abandoned, confirm = true }));
+
+            AssertToolError(mismatch, "chunk_hash_mismatch", "Received chunk bytes do not match the client-asserted hash.");
+            Assert.That(retried["ticket"]!.GetValue<string>(), Is.Not.Empty);
+            Assert.That(secondMismatch["isError"]!.GetValue<bool>(), Is.True);
+            Assert.That(deleted["deleted"]!.GetValue<bool>(), Is.True);
+        }
+
+        [Test]
+        public async Task FileUploadChunk_ExtraChunkOnACommittedFile_IsRejectedAndTheFileStaysIntact()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.BeginAsync("alpha");
+            var ticket = Ok(await this.ChunkAsync(contentId, 0, Hello))["ticket"]!.GetValue<string>();
+            Ok(await this.CallToolAsync(this.McpOwner, "file_upload_complete", new { name = "alpha", contentId, sha256 = Sha256Hex(Hello), ticket }));
+
+            var extra = await this.ChunkAsync(contentId, 1, World, ticket);
+            DateTimeProvider.SpecifiedDateTime = FixedNow.AddMinutes(11);
+            var chunk = Ok(await this.CallToolAsync(this.McpOwner, "file_download_chunk", new { name = "alpha", contentId, index = 0 }));
+
+            Assert.That(extra["isError"]!.GetValue<bool>(), Is.True);
+            Assert.That(Convert.FromBase64String(chunk["untrusted"]!["data"]!.GetValue<string>()), Is.EqualTo(Hello));
+            var file = Ok(await this.CallToolAsync(this.McpOwner, "secret_get", new { name = "alpha" }))["content"]!.AsArray()
+                .Single(c => c!["contentId"]!.GetValue<string>() == contentId)!;
+            Assert.That(file["isReady"]!.GetValue<bool>(), Is.True);
+            Assert.That(file["chunkCount"]!.GetValue<int>(), Is.EqualTo(1));
         }
 
         [Test]

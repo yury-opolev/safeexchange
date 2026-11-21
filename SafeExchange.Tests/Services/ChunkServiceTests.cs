@@ -5,6 +5,7 @@
 namespace SafeExchange.Tests.Services
 {
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging.Abstractions;
     using NUnit.Framework;
     using SafeExchange.Core;
@@ -15,6 +16,7 @@ namespace SafeExchange.Tests.Services
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Services;
     using System;
+    using System.Collections.Generic;
     using System.IO;
     using System.Linq;
     using System.Net;
@@ -224,6 +226,91 @@ namespace SafeExchange.Tests.Services
             Assert.That(commit.IsOk, Is.True, commit.Error);
         }
 
+        [TestCase(null)]
+        [TestCase(0)]
+        public async Task HashedUpload_ChunkHashMismatch_LeavesNoLockBehind(int? expectedIndex)
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var mismatch = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: expectedIndex, chunkHash: Sha256Hex(World));
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(mismatch.Status, Is.EqualTo(ServiceStatus.ChunkHashMismatch));
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Blank));
+            Assert.That(content.AccessTicketSetAt, Is.EqualTo(DateTime.MinValue));
+
+            var retry = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: expectedIndex);
+            Assert.That(retry.IsOk, Is.True, retry.Error);
+            Assert.That(retry.Value!.AccessTicket, Is.Not.Empty);
+        }
+
+        [Test]
+        public async Task HashedUpload_ChunkHashMismatchOnLaterChunk_KeepsTheCallersLock()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var ticket = first.Value!.AccessTicket!;
+            var setAt = (await this.ContentAsync(contentId)).AccessTicketSetAt;
+
+            var mismatch = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: ticket, expectedIndex: 1, chunkHash: Sha256Hex(Hello));
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(mismatch.Status, Is.EqualTo(ServiceStatus.ChunkHashMismatch));
+            Assert.That(content.AccessTicket, Is.EqualTo(ticket));
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Updating));
+            Assert.That(content.AccessTicketSetAt, Is.EqualTo(setAt));
+            Assert.That(content.Chunks, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_RejectedUploadMode_DoesNotTakeTheLock()
+        {
+            var rejecting = new ChunkService(
+                new ConfigurationBuilder()
+                    .AddConfiguration(this.Configuration)
+                    .AddInMemoryCollection(new Dictionary<string, string?> { { "Features:AllowLegacyAttachmentUploads", "False" }, { "Features:IgnoreChunkHashHeader", "True" } })
+                    .Build(),
+                this.DbContext, this.Purger, this.BlobHelper, this.PermissionsManager, this.AuditWriter, NullLogger<ChunkService>.Instance);
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var rejected = await rejecting.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(Hello), new ChunkUploadRequest { ChunkHash = Sha256Hex(Hello), ExpectedIndex = 0 });
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(rejected.Status, Is.EqualTo(ServiceStatus.InconsistentUploadMode));
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Blank));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_ExtraChunkOnReadyContent_IsRejectedWithoutRelocking()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var oldTicket = first.Value!.AccessTicket!;
+            var commit = await this.contentService.CommitAsync(this.Owner, "alpha", contentId, oldTicket, new ContentCommitInput(Sha256Hex(Hello)));
+            Assert.That(commit.IsOk, Is.True, commit.Error);
+
+            var extraHashed = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: oldTicket, expectedIndex: 1);
+            var extraLegacy = await this.service.UploadChunkAsync(this.Owner, "alpha", contentId, new MemoryStream(World), new ChunkUploadRequest { AccessTicket = oldTicket, ExpectedIndex = 1 });
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(extraHashed.IsOk, Is.False);
+            Assert.That(extraLegacy.IsOk, Is.False);
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Ready));
+            Assert.That(content.AccessTicket, Is.Empty);
+            Assert.That(content.Chunks, Has.Count.EqualTo(1));
+
+            DateTimeProvider.SpecifiedDateTime = FixedNow.AddMinutes(11);
+            var download = await this.service.DownloadContentAsync(this.Owner, "alpha", contentId);
+            Assert.That(download.IsOk, Is.True, download.Error);
+            Assert.That(await ReadAllAsync(download.Value!), Is.EqualTo(Hello));
+        }
+
         [Test]
         public async Task HashedUpload_WithoutADeclaredLength_RecordsTheBytesRead()
         {
@@ -249,11 +336,11 @@ namespace SafeExchange.Tests.Services
         }
 
         private Task<ServiceResult<ChunkCreationOutput>> Upload(
-            Caller caller, string contentId, byte[] data, bool hashed = false, string? ticket = null, int? expectedIndex = null, bool declareLength = true)
+            Caller caller, string contentId, byte[] data, bool hashed = false, string? ticket = null, int? expectedIndex = null, bool declareLength = true, string? chunkHash = null)
             => this.service.UploadChunkAsync(caller, "alpha", contentId, new MemoryStream(data), new ChunkUploadRequest
             {
                 AccessTicket = ticket ?? string.Empty,
-                ChunkHash = hashed ? Sha256Hex(data) : null,
+                ChunkHash = hashed ? (chunkHash ?? Sha256Hex(data)) : null,
                 DeclaredLength = hashed ? (declareLength ? data.Length : null) : 0,
                 ExpectedIndex = expectedIndex,
             });

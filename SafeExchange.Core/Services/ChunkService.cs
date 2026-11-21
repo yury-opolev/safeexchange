@@ -37,6 +37,17 @@ namespace SafeExchange.Core.Services
 
         private const string DefaultContentType = "text/html; charset=utf-8";
 
+        // The lock state to put back when the upload that took the lock fails before anything was saved.
+        private sealed record UploadLock(ContentStatus Status, string AccessTicket, DateTime AccessTicketSetAt)
+        {
+            public void RestoreTo(ContentMetadata content)
+            {
+                content.Status = this.Status;
+                content.AccessTicket = this.AccessTicket;
+                content.AccessTicketSetAt = this.AccessTicketSetAt;
+            }
+        }
+
         private readonly Features features;
 
         private readonly SafeExchangeDbContext dbContext;
@@ -159,23 +170,6 @@ namespace SafeExchange.Core.Services
                     }
                 }
 
-                if (string.IsNullOrEmpty(accessTicket)
-                    || (request.ExpectedIndex.HasValue && string.IsNullOrEmpty(existingAccessTicket)))
-                {
-                    // With ExpectedIndex, a caller ticket the content no longer holds (the lock expired and the
-                    // upload was wiped) is stale: re-arm the lock and hand back the new ticket.
-                    this.log.LogInformation($"Setting access ticket to '{existingContent.ContentName}'.");
-                    accessTicket = AccessTicketManager.NewTicket();
-
-                    existingContent.Status = ContentStatus.Updating;
-                    existingContent.AccessTicket = accessTicket;
-                    existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
-
-                    await this.dbContext.SaveChangesAsync();
-                }
-
-                var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
-
                 // Main HTML content always flows through the sanitising legacy path —
                 // a hash header on main content is ignored (would otherwise bypass sanitisation).
                 var hashHeaderPresent = !existingContent.IsMain && !string.IsNullOrEmpty(request.ChunkHash);
@@ -186,25 +180,70 @@ namespace SafeExchange.Core.Services
                     allowLegacy: this.features.AllowLegacyAttachmentUploads,
                     ignoreHeader: this.features.IgnoreChunkHashHeader || existingContent.IsMain);
 
-                switch (mode)
+                var takesLock = string.IsNullOrEmpty(accessTicket)
+                    || (request.ExpectedIndex.HasValue && string.IsNullOrEmpty(existingAccessTicket));
+
+                if (request.ExpectedIndex.HasValue)
                 {
-                    case UploadMode.Reject:
-                        return ServiceResult.Failure(
-                            ServiceStatus.InconsistentUploadMode, HttpStatusCode.BadRequest,
-                            "Chunk-hash header usage is inconsistent with the content's upload mode.");
+                    // Committed content is never re-locked: that would let an expired ticket wipe it.
+                    if (takesLock && existingContent.Status == ContentStatus.Ready)
+                    {
+                        this.log.LogInformation($"Cannot upload content '{contentId}' for secret '{secretId}', as content is already committed.");
+                        return ServiceResult.Unprocessable($"Content '{contentId}' is already committed.");
+                    }
 
-                    case UploadMode.Hashed:
-                        return await this.UploadHashedChunkAsync(
+                    if (mode == UploadMode.Reject)
+                    {
+                        return InconsistentUploadMode();
+                    }
+                }
+
+                var lockTaken = default(UploadLock?);
+                if (takesLock)
+                {
+                    // With ExpectedIndex, a caller ticket the content no longer holds (the lock expired and the
+                    // upload was wiped) is stale: re-arm the lock and hand back the new ticket.
+                    this.log.LogInformation($"Setting access ticket to '{existingContent.ContentName}'.");
+                    accessTicket = AccessTicketManager.NewTicket();
+
+                    lockTaken = new UploadLock(existingContent.Status, existingContent.AccessTicket, existingContent.AccessTicketSetAt);
+                    existingContent.Status = ContentStatus.Updating;
+                    existingContent.AccessTicket = accessTicket;
+                    existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
+                }
+
+                var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
+
+                if (mode == UploadMode.Reject)
+                {
+                    // Kept for the REST wire: a rejected upload without ExpectedIndex leaves the lock it took.
+                    await this.dbContext.SaveChangesAsync();
+                    return InconsistentUploadMode();
+                }
+
+                ServiceResult<ChunkCreationOutput> result;
+                try
+                {
+                    result = mode == UploadMode.Hashed
+                        ? await this.UploadHashedChunkAsync(
                             caller, data, existingContent, newChunkName, existingMetadata,
-                            request.ChunkHash!, request.DeclaredLength, accessTicket);
-
-                    case UploadMode.Legacy:
-                        return await this.UploadLegacyChunkAsync(
+                            request.ChunkHash!, request.DeclaredLength, accessTicket)
+                        : await this.UploadLegacyChunkAsync(
                             caller, data, existingContent, newChunkName, existingMetadata,
                             request.OperationType ?? string.Empty, accessTicket);
                 }
+                catch
+                {
+                    lockTaken?.RestoreTo(existingContent);
+                    throw;
+                }
 
-                throw new InvalidOperationException("Unreachable.");
+                if (!result.IsOk)
+                {
+                    lockTaken?.RestoreTo(existingContent);
+                }
+
+                return result;
             });
         }
 
@@ -302,6 +341,11 @@ namespace SafeExchange.Core.Services
 
         private static string ContentTypeOf(ContentMetadata content)
             => string.IsNullOrEmpty(content.ContentType) ? DefaultContentType : content.ContentType;
+
+        private static ServiceResult InconsistentUploadMode()
+            => ServiceResult.Failure(
+                ServiceStatus.InconsistentUploadMode, HttpStatusCode.BadRequest,
+                "Chunk-hash header usage is inconsistent with the content's upload mode.");
 
         // Shared download checks, in today's order; only the content-missing message differs per endpoint.
         private async Task<(ServiceResult? Failure, ObjectMetadata? Metadata, ContentMetadata? Content)> FindReadableContentAsync(

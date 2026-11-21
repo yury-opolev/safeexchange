@@ -156,9 +156,10 @@ file_upload_complete name, contentId, sha256 (whole file), ticket
 | The response to chunk 0 was lost | Re-send chunk 0 with the same `sha256` and **no ticket**; the server returns the ticket (you hold `Write` and prove the bytes by hash) |
 | The upload lock expired (the unfinished upload was erased and your ticket is stale) | Re-send from the index the server asks for; the lock is re-armed and the response carries a **new ticket** to use from then on |
 | Another writer holds the lock | `unprocessable`: `Content is being updated.` |
-| Wrong chunk hash / wrong whole-file hash | `chunk_hash_mismatch` / `hash_mismatch` |
+| Wrong chunk hash / wrong whole-file hash | `chunk_hash_mismatch` / `hash_mismatch`. A rejected chunk never takes or keeps the upload lock: after a mismatch on chunk 0 re-send it with the correct hash and no ticket; after a mismatch on a later chunk your ticket stays valid |
+| A chunk is sent for a file that is already committed | `unprocessable`: `Content '<id>' is already committed.`; the file is left untouched (a committed file is never re-locked) |
 
-To abandon an upload, call `file_delete` (with `confirm=true`) or REST `PATCH .../content/{contentId}/drop`.
+To abandon an upload, call `file_delete` (with `confirm=true`) or REST `PATCH .../content/{contentId}/drop`. A rejected chunk leaves nothing to clean up; an unfinished upload (chunks stored, never completed) holds the lock until it expires, and is erased then.
 
 Download: read `chunkCount` of the file from `secret_get`, then call `file_download_chunk` for `index` 0 to `chunkCount - 1`; verify each chunk's `sha256`, join the bytes and compare with `fileSha256`.
 
