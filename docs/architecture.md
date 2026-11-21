@@ -104,17 +104,18 @@ SafeExchange.Core/
 ├── Model/                — Domain entity classes
 ├── Permissions/           — Permission evaluation engine
 ├── Purging/              — Expiration and data cleanup logic
-└── Requests/             — Request/response DTOs
+├── Requests/             — Request/response DTOs
+└── Services/             — Host-agnostic services (SecretService, ContentService, ChunkService, AccessService, AuditQueryService) taking a Caller and returning ServiceResult
 
 SafeExchange.Core.Functions/  — Azure Functions-typed code (references SafeExchange.Core, never the reverse)
-├── Functions/             — HTTP business logic handlers for each endpoint
+├── Functions/             — HTTP handlers for each endpoint (the secret, content, chunk, commit, access and audit handlers are thin adapters over Core's Services)
 ├── Middleware/            — Authentication middleware (JWT validation)
 ├── Requests/Filters/      — Global authorization filters (HTTP wrappers; the global-group decision is Core's GlobalAccessPolicy)
-├── Utilities/             — ActionResults, TokenHelperHttpExtensions, CallerDenialHttpExtensions
+├── Utilities/             — ActionResults, TokenHelperHttpExtensions, CallerDenialHttpExtensions, ServiceResultHttpExtensions
 └── SafeExchangeFunctionsStartup.cs — Worker middleware and Functions-typed DI registrations
 
 SafeExchange.Functions/
-├── Functions/             — HTTP-triggered Azure Function definitions
+├── Functions/             — HTTP-triggered Azure Function definitions (handlers come from DI)
 ├── AdminFunctions/        — Admin-only endpoints
 └── Program.cs            — DI container setup and app bootstrap
 
