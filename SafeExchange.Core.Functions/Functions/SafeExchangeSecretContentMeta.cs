@@ -9,90 +9,78 @@ namespace SafeExchange.Core.Functions
     using System.Security.Claims;
     using System;
     using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Logging.Abstractions;
     using SafeExchange.Core.Audit;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Filters;
-    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Permissions;
-    using Microsoft.EntityFrameworkCore;
-    using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
-    using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Services;
     using SafeExchange.Core.Telemetry;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Net;
 
+    /// <summary>
+    /// HTTP adapter for content items (<c>/secret/{secretId}/content[/{contentId}[/drop]]</c>) over <see cref="ContentService"/>.
+    /// </summary>
     public class SafeExchangeSecretContentMeta
     {
-        private const int MaxContentTypeLength = 255;
+        private readonly ICallerResolver callerResolver;
 
-        private readonly Features features;
+        private readonly ContentService contentService;
 
-        private readonly AccessTicketConfiguration accessTicketConfiguration;
-
-        private readonly SafeExchangeDbContext dbContext;
-
-        private readonly ITokenHelper tokenHelper;
-
-        private readonly GlobalFilters globalFilters;
-
-        private readonly IPurger purger;
-
-        private readonly IPermissionsManager permissionsManager;
-
-        private readonly IAuditWriter auditWriter;
-
-        public SafeExchangeSecretContentMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
+        public SafeExchangeSecretContentMeta(ICallerResolver callerResolver, ContentService contentService)
         {
-            if (configuration == null)
-            {
-                throw new ArgumentNullException(nameof(configuration));
-            }
+            this.callerResolver = callerResolver ?? throw new ArgumentNullException(nameof(callerResolver));
+            this.contentService = contentService ?? throw new ArgumentNullException(nameof(contentService));
+        }
 
-            this.features = new Features();
-            configuration.GetSection("Features").Bind(this.features);
-
-            this.accessTicketConfiguration = new AccessTicketConfiguration();
-            configuration.GetSection("AccessTickets").Bind(this.accessTicketConfiguration);
-
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
-            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
-            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
-            this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
-            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
+        /// <summary>
+        /// Pre-service constructor, kept for code that builds handlers by hand: resolves callers through
+        /// <paramref name="globalFilters"/> exactly as before and builds the service itself (without logging).
+        /// </summary>
+        public SafeExchangeSecretContentMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
+            : this(
+                  new GlobalFiltersCallerResolver(globalFilters, tokenHelper, dbContext),
+                  new ContentService(configuration, dbContext, purger, permissionsManager, auditWriter, NullLogger<ContentService>.Instance))
+        {
         }
 
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
             string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
-
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
-
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {caller.SubjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretContentMetaCreation(request, secretId, contentId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(request, async () =>
+                    {
+                        var input = await ReadInputAsync<ContentMetadataCreationInput>(request, secretId, log);
+                        return await (await this.contentService.CreateAsync(caller, secretId, contentId, input)).ToResponseAsync(request);
+                    }, "HandleSecretContentMetaCreation", log);
 
                 case "patch":
-                    return await this.HandleSecretContentMetaUpdate(request, secretId, contentId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(request, async () =>
+                    {
+                        var input = await ReadInputAsync<ContentMetadataUpdateInput>(request, secretId, log);
+                        return await (await this.contentService.UpdateAsync(caller, secretId, contentId, input)).ToResponseAsync(request);
+                    }, "HandleSecretContentMetaDeletion", log);
 
                 case "delete":
-                    return await this.HandleSecretContentMetaDeletion(request, secretId, contentId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.contentService.DeleteAsync(caller, secretId, contentId)).ToResponseAsync(request),
+                        "HandleSecretContentMetaDeletion", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -105,26 +93,22 @@ namespace SafeExchange.Core.Functions
             HttpRequestData request,
             string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
-
-            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}) [DROP ({request.Method})].");
-
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretContentMeta)} triggered for '{secretId}' by {caller.SubjectType} (tid {TelemetryContext.Current}) [DROP ({request.Method})].");
 
             switch (request.Method.ToLower())
             {
                 case "patch":
-                    return await this.HandleSecretContentMetaDrop(request, secretId, contentId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.contentService.DropAsync(caller, secretId, contentId)).ToResponseAsync(request),
+                        "HandleSecretContentMetaDeletion", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -133,360 +117,18 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> HandleSecretContentMetaCreation(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () => 
+        private static async Task<T?> ReadInputAsync<T>(HttpRequestData request, string secretId, ILogger log) where T : class
         {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata == null)
-            {
-                log.LogInformation($"Cannot create content for secret '{secretId}', as secret not exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!string.IsNullOrEmpty(contentId))
-            {
-                log.LogInformation($"Cannot create content for secret '{secretId}' with specified name.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Cannot specify content name on creation." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-            }
-
             var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
-            ContentMetadataCreationInput? contentMetadataInput;
             try
             {
-                contentMetadataInput = DefaultJsonSerializer.Deserialize<ContentMetadataCreationInput>(requestBody);
+                return DefaultJsonSerializer.Deserialize<T>(requestBody);
             }
             catch
             {
                 log.LogInformation($"Could not parse input data for '{secretId}' new content.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
-            }
-
-            if ((contentMetadataInput == null) || string.IsNullOrEmpty(contentMetadataInput.ContentType))
-            {
-                log.LogInformation($"Content settings for '{secretId}' not provided.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
-            }
-
-            if (!IsAcceptableContentType(contentMetadataInput.ContentType))
-            {
-                log.LogInformation($"Content type for '{secretId}' new content is in incorrect format.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content type is in incorrect format." });
-            }
-
-            var newContent = new ContentMetadata(contentMetadataInput);
-            existingMetadata.Content.Add(newContent);
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync();
-
-            log.LogInformation($"Created content meta for '{secretId}': {newContent.ContentName} ({(newContent.IsMain ? "main" : "not main")}), status: {newContent.Status}.");
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = newContent.ToDto() });
-
-        }, nameof(HandleSecretContentMetaCreation), log);
-
-        private async Task<HttpResponseData> HandleSecretContentMetaUpdate(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata == null)
-            {
-                log.LogInformation($"Cannot update content for secret '{secretId}', as secret not exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!existingMetadata.KeepInStorage)
-            {
-                log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-            }
-
-            if (string.IsNullOrEmpty(contentId))
-            {
-                log.LogInformation($"Cannot update content for secret '{secretId}' without specified name.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Must specify content name on update." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-            }
-
-            var requestBody = await new StreamReader(request.Body).ReadToEndAsync();
-            ContentMetadataUpdateInput? contentMetadataInput;
-            try
-            {
-                contentMetadataInput = DefaultJsonSerializer.Deserialize<ContentMetadataUpdateInput>(requestBody);
-            }
-            catch
-            {
-                log.LogInformation($"Could not parse input data for '{secretId}' new content.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
-            }
-
-            if ((contentMetadataInput == null) || string.IsNullOrEmpty(contentMetadataInput.ContentType))
-            {
-                log.LogInformation($"Content settings for '{secretId}' content '{contentId}' not provided.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content settings are not provided." });
-            }
-
-            if (!IsAcceptableContentType(contentMetadataInput.ContentType))
-            {
-                log.LogInformation($"Content type for '{secretId}' content '{contentId}' is in incorrect format.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Content type is in incorrect format." });
-            }
-
-            var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
-            existingContent.ContentType = contentMetadataInput.ContentType;
-            existingContent.FileName = contentMetadataInput.FileName ?? string.Empty;
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync();
-
-            log.LogInformation($"Updated content meta for '{secretId}': {existingContent.ContentName} ({(existingContent.IsMain ? "main" : "not main")}), status: {existingContent.Status}.");
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
-
-        }, nameof(HandleSecretContentMetaDeletion), log);
-
-        private async Task<HttpResponseData> HandleSecretContentMetaDrop(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata == null)
-            {
-                log.LogInformation($"Cannot drop content for secret '{secretId}', as secret not exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!existingMetadata.KeepInStorage)
-            {
-                log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-            }
-
-            if (string.IsNullOrEmpty(contentId))
-            {
-                log.LogInformation($"Cannot drop content for secret '{secretId}' without specified name.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Must specify content name on drop." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-            }
-
-            var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
-            var existingAccessTicket = await this.TryGetAccessTicketAsync(existingContent, log);
-            if (!string.IsNullOrEmpty(existingAccessTicket))
-            {
-                log.LogInformation($"Content '{contentId}' for secret '{secretId}' status is being changed by other user, cannot drop.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
-            }
-
-            await this.DeleteAllChunksAsync(existingMetadata, existingContent, false, log);
-
-            log.LogInformation($"Dropped content meta for '{secretId}': {existingContent.ContentName} ({(existingContent.IsMain ? "main" : "not main")}), status: {existingContent.Status}.");
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ContentMetadataOutput> { Status = "ok", Result = existingContent.ToDto() });
-
-        }, nameof(HandleSecretContentMetaDeletion), log);
-
-        private async Task<HttpResponseData> HandleSecretContentMetaDeletion(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata == null)
-            {
-                log.LogInformation($"Cannot delete content for secret '{secretId}', as secret not exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!existingMetadata.KeepInStorage)
-            {
-                log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-            }
-
-            if (string.IsNullOrEmpty(contentId))
-            {
-                log.LogInformation($"Cannot delete content for secret '{secretId}' without specified name.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Must specify content name on deletion." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-            }
-
-            var existingContent = existingMetadata.Content.First(c => c.ContentName.Equals(contentId));
-
-            if (existingContent.IsMain)
-            {
-                log.LogInformation($"Cannot delete main content for secret '{secretId}'.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Cannot delete main content." });
-            }
-
-            var existingAccessTicket = await this.TryGetAccessTicketAsync(existingContent, log);
-            if (!string.IsNullOrEmpty(existingAccessTicket))
-            {
-                log.LogInformation($"Content '{contentId}' for secret '{secretId}' status is being updated, cannot delete.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
-            }
-
-            await this.DeleteAllChunksAsync(existingMetadata, existingContent, true, log);
-
-            log.LogInformation($"Deleted content meta for '{secretId}': {existingContent.ContentName} ({(existingContent.IsMain ? "main" : "not main")}), status: {existingContent.Status}.");
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
-
-        }, nameof(HandleSecretContentMetaDeletion), log);
-
-        private async Task DeleteAllChunksAsync(ObjectMetadata metadata, ContentMetadata content, bool removeContent, ILogger log)
-        {
-            log.LogInformation($"Deleting all chunks for content '{content.ContentName}', {content.Chunks.Count} chunks. {(removeContent ? "Remove content." : "Do not remove content.")}");
-
-            try
-            {
-                content.Status = ContentStatus.Updating;
-
-                log.LogInformation($"Setting access ticket to '{content.ContentName}'.");
-                content.AccessTicket = $"{Guid.NewGuid()}-{Random.Shared.NextInt64():00000000}";
-                content.AccessTicketSetAt = DateTimeProvider.UtcNow;
-
-                await this.dbContext.SaveChangesAsync();
-
-                await this.purger.DeleteContentDataAsync(content);
-            }
-            catch (Exception exception)
-            {
-                log.LogError(exception, $"Exception inside exclusive operation on content '{content.ContentName}'.");
-            }
-            finally
-            {
-                content.Chunks.Clear();
-                content.Status = ContentStatus.Blank;
-                content.RunningHashState = null;
-
-                log.LogInformation($"Clearing access ticket from '{content.ContentName}'.");
-                content.AccessTicket = string.Empty;
-                content.AccessTicketSetAt = DateTime.MinValue;
-
-                if (removeContent)
-                {
-                    metadata.Content.Remove(content);
-                }
-
-                metadata.LastAccessedAt = DateTimeProvider.UtcNow;
-
-                await this.dbContext.SaveChangesAsync();
+                return null;
             }
         }
-
-        private async ValueTask<string> TryGetAccessTicketAsync(ContentMetadata content, ILogger log)
-        {
-            if (string.IsNullOrEmpty(content.AccessTicket))
-            {
-                return String.Empty;
-            }
-
-            var utcNow = DateTimeProvider.UtcNow;
-            if ((this.accessTicketConfiguration.AccessTicketTimeout > TimeSpan.Zero)
-                && utcNow > (content.AccessTicketSetAt + this.accessTicketConfiguration.AccessTicketTimeout))
-            {
-                log.LogInformation($"Access ticket '{content.AccessTicket}' expired (was set at {content.AccessTicketSetAt}) and is to be dropped. All data will be erased.");
-
-                await this.purger.DeleteContentDataAsync(content);
-
-                content.Chunks.Clear();
-                content.Status = ContentStatus.Blank;
-                content.RunningHashState = null;
-
-                content.AccessTicket = String.Empty;
-                content.AccessTicketSetAt = DateTime.MinValue;
-
-                await this.dbContext.SaveChangesAsync();
-            }
-
-            return content.AccessTicket;
-        }
-
-        private static bool IsAcceptableContentType(string contentType)
-        {
-            if (string.IsNullOrEmpty(contentType) || contentType.Length > MaxContentTypeLength)
-            {
-                return false;
-            }
-
-            foreach (var ch in contentType)
-            {
-                if (char.IsControl(ch))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
     }
 }
