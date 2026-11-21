@@ -145,8 +145,11 @@ namespace SafeExchange.Core.Services
                     }
                 }
 
-                if (string.IsNullOrEmpty(accessTicket))
+                if (string.IsNullOrEmpty(accessTicket)
+                    || (request.ExpectedIndex.HasValue && string.IsNullOrEmpty(existingAccessTicket)))
                 {
+                    // With ExpectedIndex, a caller ticket the content no longer holds (the lock expired and the
+                    // upload was wiped) is stale: re-arm the lock and hand back the new ticket.
                     this.log.LogInformation($"Setting access ticket to '{existingContent.ContentName}'.");
                     accessTicket = AccessTicketManager.NewTicket();
 
@@ -396,7 +399,7 @@ namespace SafeExchange.Core.Services
             string newChunkName,
             ObjectMetadata existingMetadata,
             string headerHash,
-            long declaredLength,
+            long? declaredLength,
             string accessTicket)
         {
             var running = existingContent.RunningHashState is { Length: > 0 }
@@ -404,12 +407,14 @@ namespace SafeExchange.Core.Services
                 : new SerializableSha256();
 
             using var chunkHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            long bytesRead;
             using (var tee = new HashingReadStream(data, chunkHasher, running))
             {
                 await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, tee);
+                bytesRead = tee.BytesRead;
             }
 
-            var dataLength = declaredLength;
+            var dataLength = declaredLength ?? bytesRead;
             var serverHash = Convert.ToHexString(chunkHasher.GetHashAndReset()).ToLowerInvariant();
             if (!serverHash.Equals(headerHash, StringComparison.OrdinalIgnoreCase))
             {

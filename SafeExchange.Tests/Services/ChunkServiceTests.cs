@@ -7,6 +7,7 @@ namespace SafeExchange.Tests.Services
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Logging.Abstractions;
     using NUnit.Framework;
+    using SafeExchange.Core;
     using SafeExchange.Core.Callers;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
@@ -158,6 +159,47 @@ namespace SafeExchange.Tests.Services
             Assert.That(content.Status, Is.EqualTo(ContentStatus.Blank));
         }
 
+        [Test]
+        public async Task ExpectedIndex_ResumeWithAnExpiredTicket_TakesAFreshLock()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var oldTicket = first.Value!.AccessTicket!;
+            DateTimeProvider.SpecifiedDateTime = FixedNow.AddMinutes(11);
+
+            var resumed = await this.Upload(this.Owner, contentId, Hello, hashed: true, ticket: oldTicket, expectedIndex: 0);
+            var newTicket = resumed.Value!.AccessTicket!;
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(resumed.IsOk, Is.True, resumed.Error);
+            Assert.That(newTicket, Is.Not.Empty.And.Not.EqualTo(oldTicket));
+            Assert.That(content.AccessTicket, Is.EqualTo(newTicket));
+            Assert.That(content.Status, Is.EqualTo(ContentStatus.Updating));
+            Assert.That(content.AccessTicketSetAt, Is.EqualTo(DateTimeProvider.UtcNow));
+
+            var second = await this.Upload(this.Owner, contentId, World, hashed: true, ticket: newTicket, expectedIndex: 1);
+            var whole = Hello.Concat(World).ToArray();
+            var commit = await this.contentService.CommitAsync(this.Owner, "alpha", contentId, newTicket, new ContentCommitInput(Sha256Hex(whole)));
+
+            Assert.That(second.IsOk, Is.True, second.Error);
+            Assert.That(commit.IsOk, Is.True, commit.Error);
+        }
+
+        [Test]
+        public async Task HashedUpload_WithoutADeclaredLength_RecordsTheBytesRead()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+
+            var upload = await this.Upload(this.Owner, contentId, Hello, hashed: true, declareLength: false);
+            var content = await this.ContentAsync(contentId);
+
+            Assert.That(upload.IsOk, Is.True, upload.Error);
+            Assert.That(upload.Value!.Length, Is.EqualTo(Hello.Length));
+            Assert.That(content.Chunks.Single().Length, Is.EqualTo(Hello.Length));
+        }
+
         private static string Sha256Hex(byte[] data)
             => Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
 
@@ -169,12 +211,12 @@ namespace SafeExchange.Tests.Services
         }
 
         private Task<ServiceResult<ChunkCreationOutput>> Upload(
-            Caller caller, string contentId, byte[] data, bool hashed = false, string? ticket = null, int? expectedIndex = null)
+            Caller caller, string contentId, byte[] data, bool hashed = false, string? ticket = null, int? expectedIndex = null, bool declareLength = true)
             => this.service.UploadChunkAsync(caller, "alpha", contentId, new MemoryStream(data), new ChunkUploadRequest
             {
                 AccessTicket = ticket ?? string.Empty,
                 ChunkHash = hashed ? Sha256Hex(data) : null,
-                DeclaredLength = hashed ? data.Length : 0,
+                DeclaredLength = hashed ? (declareLength ? data.Length : null) : 0,
                 ExpectedIndex = expectedIndex,
             });
 

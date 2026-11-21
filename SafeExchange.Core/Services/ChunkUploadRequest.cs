@@ -31,9 +31,10 @@ namespace SafeExchange.Core.Services
         public string? ChunkHash { get; init; }
 
         /// <summary>
-        /// The chunk length recorded for hashed uploads (REST: the <c>Content-Length</c> header, 0 if absent).
+        /// The chunk length to record for hashed uploads (REST: the <c>Content-Length</c> header, 0 if absent).
+        /// When <c>null</c>, the number of bytes actually read is recorded.
         /// </summary>
-        public long DeclaredLength { get; init; }
+        public long? DeclaredLength { get; init; }
 
         /// <summary>
         /// Optional resume guard (MCP). When set: a chunk already stored at this index with the same

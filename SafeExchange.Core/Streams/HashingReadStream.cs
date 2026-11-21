@@ -28,6 +28,11 @@ namespace SafeExchange.Core.Streams
 
         public override bool CanRead => true;
 
+        /// <summary>
+        /// The number of bytes yielded so far.
+        /// </summary>
+        public long BytesRead { get; private set; }
+
         public override bool CanSeek => false;
 
         public override bool CanWrite => false;
@@ -47,6 +52,7 @@ namespace SafeExchange.Core.Streams
             var read = this.inner.Read(buffer, offset, count);
             if (read > 0)
             {
+                this.BytesRead += read;
                 this.chunkHasher.AppendData(buffer, offset, read);
                 this.running.Append(new ReadOnlySpan<byte>(buffer, offset, read));
             }
@@ -59,6 +65,7 @@ namespace SafeExchange.Core.Streams
             var read = await this.inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
             if (read > 0)
             {
+                this.BytesRead += read;
                 var span = buffer.Span.Slice(0, read);
                 this.chunkHasher.AppendData(span);
                 this.running.Append(span);
