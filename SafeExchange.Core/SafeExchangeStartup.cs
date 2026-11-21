@@ -16,6 +16,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.AzureAd;
     using SafeExchange.Core.Callers;
     using SafeExchange.Core.LocalDev;
+    using SafeExchange.Core.Mcp;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Permissions;
@@ -152,6 +153,8 @@ namespace SafeExchange.Core
             services.AddScoped<ChunkService>();
             services.AddScoped<AccessService>();
             services.AddScoped<AuditQueryService>();
+
+            services.AddSafeExchangeMcp();
 
             services.AddScoped<IAuditWriter, AuditWriter>();
             services.AddScoped<IAuditPurger, AuditPurger>();
