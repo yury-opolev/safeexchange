@@ -126,6 +126,44 @@ namespace SafeExchange.Tests.Services
         }
 
         [Test]
+        public async Task ExpectedIndex_RetryOfChunkZeroWithoutATicket_IsANoOpCarryingTheStoredTicket()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+
+            var retry = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+
+            Assert.That(retry.IsOk, Is.True, retry.Error);
+            Assert.That(retry.Value!.ChunkName, Is.EqualTo(first.Value!.ChunkName));
+            Assert.That(retry.Value!.AccessTicket, Is.EqualTo(first.Value!.AccessTicket).And.Not.Empty);
+            Assert.That((await this.ContentAsync(contentId)).Chunks, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExpectedIndex_RetryOfChunkZeroWithoutATicket_StillDeniesOtherCasesAndCallers()
+        {
+            await this.CreateSecretAsync("alpha");
+            await this.GrantAsync("alpha", ReaderUpn, PermissionType.Read);
+            var contentId = await this.CreateAttachmentAsync("alpha");
+            var first = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            await this.Upload(this.Owner, contentId, World, hashed: true, ticket: first.Value!.AccessTicket, expectedIndex: 1);
+
+            var otherHash = await this.Upload(this.Owner, contentId, World, hashed: true, expectedIndex: 0);
+            var twoChunks = await this.Upload(this.Owner, contentId, Hello, hashed: true, expectedIndex: 0);
+            var noWrite = await this.Upload(this.Reader, contentId, Hello, hashed: true, expectedIndex: 0);
+            var legacy = await this.Upload(this.Owner, contentId, Hello);
+
+            foreach (var result in new[] { otherHash, twoChunks, legacy })
+            {
+                Assert.That(result.Status, Is.EqualTo(ServiceStatus.Unprocessable));
+                Assert.That(result.Error, Is.EqualTo("Content is being updated."));
+            }
+
+            AssertInsufficientPermissions(noWrite.Outcome, PermissionType.Write, "alpha");
+        }
+
+        [Test]
         public async Task ExpectedIndex_NotTheNextIndex_IsUnprocessable()
         {
             await this.CreateSecretAsync("alpha");

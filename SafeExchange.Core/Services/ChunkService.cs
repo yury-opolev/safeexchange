@@ -121,6 +121,20 @@ namespace SafeExchange.Core.Services
 
                 var accessTicket = request.AccessTicket ?? string.Empty;
                 var existingAccessTicket = await this.accessTickets.TryGetAccessTicketAsync(existingContent);
+
+                // Chunk 0 stored but its response (carrying the ticket) lost: the writer retries without a ticket.
+                // It has write access (checked above) and proves it holds the bytes by their hash, so hand the ticket back.
+                if (request.ExpectedIndex == 0
+                    && string.IsNullOrEmpty(accessTicket)
+                    && !string.IsNullOrEmpty(existingAccessTicket)
+                    && !string.IsNullOrEmpty(request.ChunkHash)
+                    && existingContent.Chunks.Count == 1
+                    && existingContent.Chunks[0].Hash.Equals(request.ChunkHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    this.log.LogInformation($"Chunk 0 of '{contentId}' is already stored with the same hash, returning its access ticket.");
+                    return ServiceResult<ChunkCreationOutput>.Ok(existingContent.Chunks[0].ToCreationDto(existingAccessTicket));
+                }
+
                 if (!string.IsNullOrEmpty(existingAccessTicket) && !existingAccessTicket.Equals(accessTicket))
                 {
                     this.log.LogInformation($"Cannot upload content for secret '{secretId}', is being changed by other user.");

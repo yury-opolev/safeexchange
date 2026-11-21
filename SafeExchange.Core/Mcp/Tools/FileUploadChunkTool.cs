@@ -18,7 +18,7 @@ namespace SafeExchange.Core.Mcp.Tools
         private static readonly Regex Sha256Hex = new("^[0-9a-fA-F]{64}$", RegexOptions.Compiled);
 
         private static readonly JsonElement Schema = McpSchema.Parse($$$"""
-            {"type":"object","properties":{"name":{{{McpSchema.SecretName}}},"contentId":{"type":"string","description":"From file_upload_begin."},"index":{"type":"integer","minimum":0,"description":"0 for the first chunk, then 1, 2, ... Re-sending a stored chunk with the same sha256 is a no-op."},"data":{"type":"string","contentEncoding":"base64","description":"The chunk bytes, base64."},"sha256":{"type":"string","description":"SHA-256 of this chunk's bytes, 64 hex characters."},"ticket":{"type":"string","description":"The ticket returned by the previous chunk; omit for chunk 0."}},"required":["name","contentId","index","data","sha256"]}
+            {"type":"object","properties":{"name":{{{McpSchema.SecretName}}},"contentId":{"type":"string","description":"From file_upload_begin."},"index":{"type":"integer","minimum":0,"description":"0 for the first chunk, then 1, 2, ... Re-sending a stored chunk with the same sha256 is a no-op; if the response to chunk 0 was lost, re-send chunk 0 (no ticket) to get the ticket back."},"data":{"type":"string","contentEncoding":"base64","description":"The chunk bytes, base64."},"sha256":{"type":"string","description":"SHA-256 of this chunk's bytes, 64 hex characters."},"ticket":{"type":"string","description":"The ticket returned by the previous chunk; omit for chunk 0."}},"required":["name","contentId","index","data","sha256"]}
             """);
 
         private readonly ChunkService chunks;

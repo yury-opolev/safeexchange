@@ -17,7 +17,7 @@ namespace SafeExchange.Core.Mcp.Tools
     public sealed class FileDownloadChunkTool : IMcpTool
     {
         private static readonly JsonElement Schema = McpSchema.Parse($$$"""
-            {"type":"object","properties":{"name":{{{McpSchema.SecretName}}},"contentId":{"type":"string","description":"The file's contentId (see secret_get)."},"index":{"type":"integer","minimum":0,"description":"Chunk index, from 0 to chunkCount - 1."}},"required":["name","contentId","index"]}
+            {"type":"object","properties":{"name":{{{McpSchema.SecretName}}},"contentId":{"type":"string","description":"The file's contentId (see secret_get)."},"index":{"type":"integer","minimum":0,"description":"Chunk index, from 0 to chunkCount - 1."},"reveal":{"type":"boolean","description":"Required (true) to download the secret's main text content; prefer secret_read_text."}},"required":["name","contentId","index"]}
             """);
 
         private readonly SecretService secrets;
@@ -32,7 +32,7 @@ namespace SafeExchange.Core.Mcp.Tools
 
         public string Name => "file_download_chunk";
 
-        public string Description => "Reads one chunk of a file (needs Read; the read is audited) as base64, with the chunk's SHA-256, the chunk count and the whole file's SHA-256 to verify against. For files beyond a few MB use file_transfer_info instead.";
+        public string Description => "Reads one chunk of a file (needs Read; the read is audited) as base64, with the chunk's SHA-256, the chunk count and the whole file's SHA-256 to verify against. For files beyond a few MB use file_transfer_info instead. The secret's main text content is refused unless reveal=true; prefer secret_read_text for it.";
 
         public JsonElement InputSchema => Schema;
 
@@ -54,6 +54,13 @@ namespace SafeExchange.Core.Mcp.Tools
             if (content is null)
             {
                 return McpToolResult.Failure(ServiceResult.NotFound($"Content '{contentId}' does not exist."));
+            }
+
+            if (content.IsMain && !call.Arguments.Flag("reveal"))
+            {
+                return McpToolResult.Error(
+                    McpToolResult.RevealRequiredStatus,
+                    $"Content '{contentId}' is the secret's main text value; downloading it puts the value into this conversation and sends it to the model provider. Prefer secret_read_text, or call again with reveal=true.");
             }
 
             if (index >= content.Chunks.Count)

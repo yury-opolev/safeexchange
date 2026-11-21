@@ -4,7 +4,9 @@
 
 namespace SafeExchange.Tests.Mcp
 {
+    using Microsoft.EntityFrameworkCore;
     using NUnit.Framework;
+    using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
     using System;
     using System.Linq;
@@ -126,6 +128,58 @@ namespace SafeExchange.Tests.Mcp
         }
 
         [Test]
+        public async Task FileDownloadChunk_OfTheMainContent_NeedsReveal_AndDoesNotReadBeforeIt()
+        {
+            Ok(await this.CallToolAsync(this.McpOwner, "secret_create", new { name = "alpha", expirationSettings = Expiration(), auditEnabled = true, text = "<p>top secret</p>" }));
+            var mainId = Ok(await this.CallToolAsync(this.McpOwner, "secret_get", new { name = "alpha" }))["content"]!.AsArray()
+                .Single(c => c!["isMain"]!.GetValue<bool>())!["contentId"]!.GetValue<string>();
+
+            var unrevealed = await this.CallToolAsync(this.McpOwner, "file_download_chunk", new { name = "alpha", contentId = mainId, index = 0 });
+            var falseReveal = await this.CallToolAsync(this.McpOwner, "file_download_chunk", new { name = "alpha", contentId = mainId, index = 0, reveal = false });
+            var stranger = await this.CallToolAsync(this.McpStranger, "file_download_chunk", new { name = "alpha", contentId = mainId, index = 0, reveal = true });
+            var readsBefore = await this.ContentReadEventsAsync();
+            var revealed = Ok(await this.CallToolAsync(this.McpOwner, "file_download_chunk", new { name = "alpha", contentId = mainId, index = 0, reveal = true }));
+
+            var message = $"Content '{mainId}' is the secret's main text value; downloading it puts the value into this conversation and sends it to the model provider. Prefer secret_read_text, or call again with reveal=true.";
+            AssertToolError(unrevealed, "reveal_required", message);
+            AssertToolError(falseReveal, "reveal_required", message);
+            AssertToolError(stranger, "forbidden", "Insufficient permissions to do 'Read' action on 'alpha'");
+            Assert.That(readsBefore, Is.EqualTo(0));
+            Assert.That(Encoding.UTF8.GetString(Convert.FromBase64String(revealed["untrusted"]!["data"]!.GetValue<string>())), Does.Contain("top secret"));
+            Assert.That(await this.ContentReadEventsAsync(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task FileDownloadChunk_OfAnAttachment_DoesNotNeedReveal()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.UploadAsync("alpha", Hello);
+
+            var chunk = Ok(await this.CallToolAsync(this.McpOwner, "file_download_chunk", new { name = "alpha", contentId, index = 0 }));
+
+            Assert.That(Convert.FromBase64String(chunk["untrusted"]!["data"]!.GetValue<string>()), Is.EqualTo(Hello));
+        }
+
+        [Test]
+        public async Task FileUploadChunk_RetryOfChunkZeroWithoutTheTicket_ReturnsTheStoredTicket()
+        {
+            await this.CreateSecretAsync("alpha");
+            var contentId = await this.BeginAsync("alpha");
+
+            var first = Ok(await this.ChunkAsync(contentId, 0, Hello));
+            var ticket = first["ticket"]!.GetValue<string>();
+            var retried = Ok(await this.ChunkAsync(contentId, 0, Hello));
+            var second = Ok(await this.ChunkAsync(contentId, 1, World, retried["ticket"]!.GetValue<string>()));
+            var whole = Hello.Concat(World).ToArray();
+            var completed = Ok(await this.CallToolAsync(this.McpOwner, "file_upload_complete", new { name = "alpha", contentId, sha256 = Sha256Hex(whole), ticket }));
+
+            Assert.That(retried["ticket"]!.GetValue<string>(), Is.EqualTo(ticket));
+            Assert.That(retried["nextIndex"]!.GetValue<int>(), Is.EqualTo(1));
+            Assert.That(second["nextIndex"]!.GetValue<int>(), Is.EqualTo(2));
+            Assert.That(completed["sha256"]!.GetValue<string>(), Is.EqualTo(Sha256Hex(whole)));
+        }
+
+        [Test]
         public async Task FileDelete_NeedsConfirmAndWrite()
         {
             await this.CreateSecretAsync("alpha");
@@ -143,6 +197,9 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(deleted["deleted"]!.GetValue<bool>(), Is.True);
             Assert.That(this.BlobHelper.Blobs, Is.Empty);
         }
+
+        private Task<int> ContentReadEventsAsync()
+            => this.DbContext.SecretAuditEvents.AsNoTracking().CountAsync(e => e.EventType == SecretAuditEventType.ContentRead);
 
         private static string Sha256Hex(byte[] data) => Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
 
