@@ -8,101 +8,77 @@ namespace SafeExchange.Core.Functions
     using Microsoft.Extensions.Logging;
     using System.Security.Claims;
     using System;
-    using System.Security.Cryptography;
     using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Logging.Abstractions;
     using SafeExchange.Core.Audit;
-    using SafeExchange.Core.Crypto;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Filters;
-    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Permissions;
-    using SafeExchange.Core.Model;
-    using SafeExchange.Core.Model.Dto.Output;
-    using SafeExchange.Core.Streams;
+    using SafeExchange.Core.Services;
     using SafeExchange.Core.Telemetry;
-    using System.Net.Mime;
-    using System.Text;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Net;
-    using Ganss.Xss;
 
+    /// <summary>
+    /// HTTP adapter for chunk upload and download (<c>/secret/{secretId}/content/{contentId}/chunk[/{chunkId}]</c>,
+    /// <c>.../all</c>) over <see cref="ChunkService"/>.
+    /// </summary>
     public class SafeExchangeSecretStream
     {
         public static readonly string AccessTicketHeaderName = "X-SafeExchange-Ticket";
         public static readonly string OperationTypeHeaderName = "X-SafeExchange-OpType";
         public static readonly string ChunkHashHeaderName = "X-SafeExchange-Chunk-Hash";
 
-        public static readonly string InterimOperationType = "interim";
+        public static readonly string InterimOperationType = ChunkService.InterimOperationType;
 
-        private static readonly string DefaultContentType = "text/html; charset=utf-8";
+        private readonly ICallerResolver callerResolver;
 
-        private readonly Features features;
+        private readonly ChunkService chunkService;
 
-        private readonly AccessTicketConfiguration accessTicketConfiguration;
-
-        private readonly SafeExchangeDbContext dbContext;
-
-        private readonly ITokenHelper tokenHelper;
-
-        private readonly GlobalFilters globalFilters;
-
-        private readonly IPurger purger;
-
-        private readonly IBlobHelper blobHelper;
-
-        private readonly IPermissionsManager permissionsManager;
-
-        private readonly IAuditWriter auditWriter;
-
-        public SafeExchangeSecretStream(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IBlobHelper blobHelper, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
+        public SafeExchangeSecretStream(ICallerResolver callerResolver, ChunkService chunkService)
         {
-            if (configuration == null)
-            {
-                throw new ArgumentNullException(nameof(configuration));
-            }
+            this.callerResolver = callerResolver ?? throw new ArgumentNullException(nameof(callerResolver));
+            this.chunkService = chunkService ?? throw new ArgumentNullException(nameof(chunkService));
+        }
 
-            this.features = new Features();
-            configuration.GetSection("Features").Bind(this.features);
-
-            this.accessTicketConfiguration = new AccessTicketConfiguration();
-            configuration.GetSection("AccessTickets").Bind(this.accessTicketConfiguration);
-
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
-            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
-            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
-            this.blobHelper = blobHelper ?? throw new ArgumentNullException(nameof(blobHelper));
-            this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
-            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
+        /// <summary>
+        /// Pre-service constructor, kept for code that builds handlers by hand: resolves callers through
+        /// <paramref name="globalFilters"/> exactly as before and builds the service itself (without logging).
+        /// </summary>
+        public SafeExchangeSecretStream(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IBlobHelper blobHelper, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
+            : this(
+                  new GlobalFiltersCallerResolver(globalFilters, tokenHelper, dbContext),
+                  new ChunkService(configuration, dbContext, purger, blobHelper, permissionsManager, auditWriter, NullLogger<ChunkService>.Instance))
+        {
         }
 
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
             string secretId, string contentId, string chunkId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
-
-            log.LogInformation($"{nameof(SafeExchangeSecretStream)} triggered for '{secretId}' ({contentId}, {chunkId}) by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
-
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretStream)} triggered for '{secretId}' ({contentId}, {chunkId}) by {caller.SubjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretStreamUpload(request, secretId, contentId, chunkId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.chunkService.UploadChunkAsync(caller, secretId, contentId, request.Body, ToUploadRequest(request.Headers, chunkId))).ToResponseAsync(request),
+                        "HandleSecretStreamUpload", log);
 
                 case "get":
-                    return await this.HandleSecretStreamDownload(request, secretId, contentId, chunkId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.chunkService.DownloadChunkAsync(caller, secretId, contentId, chunkId)).ToDownloadResponseAsync(request),
+                        "HandleSecretStreamDownload", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -110,38 +86,26 @@ namespace SafeExchange.Core.Functions
                         new BaseResponseObject<object> { Status = "error", Error = "Request method not recognized" });
             }
         }
-
-        // Audit-payload guarantee: secretId/contentId/chunkId are opaque identifiers, never
-        // derived from secret plaintext. The writer is a no-op for non-audited secrets.
-        private ValueTask EmitContentReadAsync(ObjectMetadata secret, string contentId, string chunkId, SubjectType actorType, string actorId, ILogger log)
-            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentRead, actorType, actorId, new { contentId, chunkId }, log);
-
-        private ValueTask EmitContentWrittenAsync(ObjectMetadata secret, string contentId, string chunkId, SubjectType actorType, string actorId, ILogger log)
-            => this.auditWriter.AppendAsync(secret, SecretAuditEventType.ContentWritten, actorType, actorId, new { contentId, chunkId }, log);
 
         public async Task<HttpResponseData> RunContentDownload(
             HttpRequestData request, string secretId, string contentId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
-
-            log.LogInformation($"{nameof(SafeExchangeSecretStream)}-ContentDownload triggered for '{secretId}' ({contentId}) by {subjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
-
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretStream)}-ContentDownload triggered for '{secretId}' ({contentId}) by {caller.SubjectType} (tid {TelemetryContext.Current}), [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleSecretContentStreamDownload(request, secretId, contentId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.chunkService.DownloadContentAsync(caller, secretId, contentId)).ToDownloadResponseAsync(request),
+                        "HandleSecretStreamDownload", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -150,517 +114,26 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private static (string accessTicket, string operationType) TryGetOperationTypeAndTicket(HttpHeadersCollection headers)
+        private static ChunkUploadRequest ToUploadRequest(HttpHeadersCollection headers, string chunkId)
         {
-            var accessTicket = string.Empty;
-            if (headers.TryGetValues(AccessTicketHeaderName, out var ticketHeaders))
+            var declaredLength = 0L;
+            if (headers.TryGetValues("Content-Length", out var lengthHeaders) &&
+                long.TryParse(lengthHeaders.FirstOrDefault(), out var clen))
             {
-                accessTicket = ticketHeaders.FirstOrDefault() ?? string.Empty;
+                declaredLength = clen;
             }
 
-            var type = string.Empty;
-            if (headers.TryGetValues(OperationTypeHeaderName, out var typeHeaders))
+            return new ChunkUploadRequest
             {
-                type = typeHeaders.FirstOrDefault() ?? string.Empty;
-            }
-
-            return (accessTicket, type);
-        }
-
-        private async Task<HttpResponseData> HandleSecretStreamUpload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
-        {
-            return await ActionResults.TryCatchAsync(request, async () =>
-            {
-                var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
-                if (existingMetadata == null)
-                {
-                    log.LogInformation($"Cannot upload content for secret '{secretId}', as secret not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-                }
-
-                if (!existingMetadata.KeepInStorage)
-                {
-                    log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-                }
-
-                if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-                {
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.Forbidden,
-                        ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-                }
-
-                var existingContent = existingMetadata.Content.FirstOrDefault(c => c.ContentName.Equals(contentId));
-                if (existingContent == null)
-                {
-                    log.LogInformation($"Cannot upload content '{contentId}' for secret '{secretId}', as content not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Content '{contentId}' does not exist." });
-                }
-
-                if (!string.IsNullOrEmpty(chunkId))
-                {
-                    log.LogInformation($"Cannot upload content for secret '{secretId}' with specified chunk Id.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.BadRequest,
-                        new BaseResponseObject<object> { Status = "bad_request", Error = $"Cannot specify chunk id on upload." });
-                }
-
-                (var accessTicket, var operationStatus) = TryGetOperationTypeAndTicket(request.Headers);
-
-                var existingAccessTicket = await this.TryGetAccessTicketAsync(existingContent, log);
-                if (!string.IsNullOrEmpty(existingAccessTicket) && !existingAccessTicket.Equals(accessTicket))
-                {
-                    log.LogInformation($"Cannot upload content for secret '{secretId}', is being changed by other user.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = "Content is being updated." });
-                }
-
-                if (string.IsNullOrEmpty(accessTicket))
-                {
-                    log.LogInformation($"Setting access ticket to '{existingContent.ContentName}'.");
-                    accessTicket = $"{Guid.NewGuid()}-{Random.Shared.NextInt64():00000000}";
-
-                    existingContent.Status = ContentStatus.Updating;
-                    existingContent.AccessTicket = accessTicket;
-                    existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
-
-                    await this.dbContext.SaveChangesAsync();
-                }
-
-                var newChunkName = $"{existingContent.ContentName}-{(existingContent.Chunks.Count):00000000}";
-
-                var hashHeader = request.Headers.TryGetValues(ChunkHashHeaderName, out var hvals)
-                    ? hvals.FirstOrDefault()
-                    : null;
-
-                // Main HTML content always flows through the sanitising legacy path —
-                // a hash header on main content is ignored (would otherwise bypass sanitisation).
-                var hashHeaderPresent = !existingContent.IsMain && !string.IsNullOrEmpty(hashHeader);
-
-                var mode = UploadModeResolver.Resolve(
-                    existingContent,
-                    hashHeaderPresent: hashHeaderPresent,
-                    allowLegacy: this.features.AllowLegacyAttachmentUploads,
-                    ignoreHeader: this.features.IgnoreChunkHashHeader || existingContent.IsMain);
-
-                switch (mode)
-                {
-                    case UploadMode.Reject:
-                        return await ActionResults.CreateResponseAsync(
-                            request, HttpStatusCode.BadRequest,
-                            new BaseResponseObject<object>
-                            {
-                                Status = "inconsistent_upload_mode",
-                                Error = "Chunk-hash header usage is inconsistent with the content's upload mode.",
-                            });
-
-                    case UploadMode.Hashed:
-                        return await this.HandleHashedChunkUpload(
-                            request, existingContent, newChunkName, existingMetadata,
-                            hashHeader!, operationStatus, accessTicket, subjectType, subjectId, log);
-
-                    case UploadMode.Legacy:
-                        return await this.HandleLegacyChunkUpload(
-                            request, existingContent, newChunkName, existingMetadata,
-                            operationStatus, accessTicket, subjectType, subjectId, log);
-                }
-
-                throw new InvalidOperationException("Unreachable.");
-
-            }, nameof(HandleSecretStreamUpload), log);
-        }
-
-        private async Task<HttpResponseData> HandleLegacyChunkUpload(
-            HttpRequestData request,
-            ContentMetadata existingContent,
-            string newChunkName,
-            ObjectMetadata existingMetadata,
-            string operationStatus,
-            string accessTicket,
-            SubjectType subjectType,
-            string subjectId,
-            ILogger log)
-        {
-            var dataStream = request.Body;
-
-            var dataLength = 0L;
-            if (existingContent.IsMain)
-            {
-                dataLength = await this.UploadMainContentAsync(newChunkName, dataStream, log);
-            }
-            else
-            {
-                await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, dataStream);
-
-                try
-                {
-                    dataLength = dataStream.Length;
-                }
-                catch (NotSupportedException exception)
-                {
-                    log.LogWarning(exception, $"Cannot get content length for '{existingContent.ContentName}': '{newChunkName}'.");
-                }
-            }
-
-            var newChunk = new ChunkMetadata()
-            {
-                ChunkName = newChunkName,
-                Hash = string.Empty,
-                Length = dataLength,
+                ChunkId = chunkId,
+                AccessTicket = FirstHeaderValue(headers, AccessTicketHeaderName) ?? string.Empty,
+                OperationType = FirstHeaderValue(headers, OperationTypeHeaderName) ?? string.Empty,
+                ChunkHash = FirstHeaderValue(headers, ChunkHashHeaderName),
+                DeclaredLength = declaredLength,
             };
-
-            existingContent.Chunks.Add(newChunk);
-
-            if (InterimOperationType.Equals(operationStatus, StringComparison.InvariantCultureIgnoreCase))
-            {
-                existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
-            }
-            else
-            {
-                log.LogInformation($"Clearing access ticket from '{existingContent.ContentName}'.");
-                accessTicket = string.Empty;
-                existingContent.Status = ContentStatus.Ready;
-                existingContent.AccessTicket = string.Empty;
-                existingContent.AccessTicketSetAt = DateTime.MinValue;
-            }
-
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync();
-
-            await this.EmitContentWrittenAsync(existingMetadata, existingContent.ContentName, newChunkName, subjectType, subjectId, log);
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ChunkCreationOutput> { Status = "ok", Result = newChunk.ToCreationDto(accessTicket) });
         }
 
-        private async Task<HttpResponseData> HandleHashedChunkUpload(
-            HttpRequestData request,
-            ContentMetadata existingContent,
-            string newChunkName,
-            ObjectMetadata existingMetadata,
-            string headerHash,
-            string operationStatus,
-            string accessTicket,
-            SubjectType subjectType,
-            string subjectId,
-            ILogger log)
-        {
-            var running = existingContent.RunningHashState is { Length: > 0 }
-                ? SerializableSha256.Restore(existingContent.RunningHashState)
-                : new SerializableSha256();
-
-            using var chunkHasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            long dataLength;
-
-            using (var tee = new HashingReadStream(request.Body, chunkHasher, running))
-            {
-                await this.blobHelper.EncryptAndUploadBlobAsync(newChunkName, tee);
-
-                dataLength = 0;
-                if (request.Headers.TryGetValues("Content-Length", out var lengthHeaders) &&
-                    long.TryParse(lengthHeaders.FirstOrDefault(), out var clen))
-                {
-                    dataLength = clen;
-                }
-            }
-
-            var serverHash = Convert.ToHexString(chunkHasher.GetHashAndReset()).ToLowerInvariant();
-            if (!serverHash.Equals(headerHash, StringComparison.OrdinalIgnoreCase))
-            {
-                log.LogWarning(
-                    "Chunk hash mismatch on {ChunkName}: client claimed {Claimed}, server computed {Computed}",
-                    newChunkName, headerHash, serverHash);
-                await this.blobHelper.DeleteBlobIfExistsAsync(newChunkName);
-
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<ChunkHashMismatch>
-                    {
-                        Status = "chunk_hash_mismatch",
-                        Error = "Received chunk bytes do not match the client-asserted hash.",
-                        Result = new ChunkHashMismatch { Expected = headerHash, Actual = serverHash },
-                    });
-            }
-
-            existingContent.Chunks.Add(new ChunkMetadata
-            {
-                ChunkName = newChunkName,
-                Hash = serverHash,
-                Length = dataLength,
-            });
-            existingContent.RunningHashState = running.SaveState();
-
-            // Hashed mode: ContentStatus.Ready is flipped only at commit - NOT here.
-            // Keep access-ticket alive. Update LastAccessedAt as existing code does.
-            existingContent.AccessTicketSetAt = DateTimeProvider.UtcNow;
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-            log.LogInformation(
-                "Chunk hash verified for '{ContentId}' chunk {ChunkIndex} ({Hash}, {Length} bytes)",
-                existingContent.ContentName, existingContent.Chunks.Count - 1, serverHash, dataLength);
-
-            await this.EmitContentWrittenAsync(existingMetadata, existingContent.ContentName, newChunkName, subjectType, subjectId, log);
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ChunkCreationOutput>
-                {
-                    Status = "ok",
-                    Result = new ChunkCreationOutput
-                    {
-                        ChunkName = newChunkName,
-                        Hash = serverHash,
-                        Length = dataLength,
-                        AccessTicket = accessTicket,
-                    },
-                });
-        }
-
-        private async Task<HttpResponseData> HandleSecretStreamDownload(HttpRequestData request, string secretId, string contentId, string chunkId, SubjectType subjectType, string subjectId, ILogger log)
-        {
-            return await ActionResults.TryCatchAsync(request, async () =>
-            {
-                var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
-                if (existingMetadata == null)
-                {
-                    log.LogInformation($"Cannot download content for secret '{secretId}', as secret not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-                }
-
-                if (!existingMetadata.KeepInStorage)
-                {
-                    log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-                }
-
-                if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
-                {
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.Forbidden,
-                        ActionResults.InsufficientPermissions(PermissionType.Read, secretId, string.Empty));
-                }
-
-                var existingContent = existingMetadata.Content.FirstOrDefault(c => c.ContentName.Equals(contentId));
-                if (existingContent == null)
-                {
-                    log.LogInformation($"Cannot download content '{contentId}' for secret '{secretId}', as content not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Content '{contentId}' does not exist." });
-                }
-
-                var existingAccessTicket = await this.TryGetAccessTicketAsync(existingContent, log);
-                if (!string.IsNullOrEmpty(existingAccessTicket))
-                {
-                    log.LogInformation($"Cannot download content '{contentId}' for secret '{secretId}', as content is being updated by other user.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = $"Content '{contentId}' is being updated." });
-                }
-
-                if (existingContent.Status != ContentStatus.Ready)
-                {
-                    log.LogInformation($"Cannot download content '{contentId}' for secret '{secretId}', as content is not ready.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = $"Content '{contentId}' is not ready." });
-                }
-
-                if (string.IsNullOrEmpty(chunkId))
-                {
-                    log.LogInformation($"Cannot download content for secret '{secretId}' without specified chunk Id.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.BadRequest,
-                        new BaseResponseObject<object> { Status = "bad_request", Error = $"Must specify chunk id on download." });
-                }
-
-                var existingChunk = existingContent.Chunks.FirstOrDefault(c => c.ChunkName.Equals(chunkId));
-                if (existingChunk == null)
-                {
-                    log.LogInformation($"Cannot download content for secret '{secretId}', as chunk '{chunkId}' for content '{contentId}' not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Chunk '{chunkId}' does not exist." });
-                }
-
-                var response = request.CreateResponse(HttpStatusCode.OK);
-                response.Headers.Add("Content-Type", string.IsNullOrEmpty(existingContent.ContentType) ? DefaultContentType : existingContent.ContentType);
-                response.Headers.Add("Content-Length", $"{existingChunk.Length}");
-
-                var dataStream = await this.blobHelper.DownloadAndDecryptBlobAsync(existingChunk.ChunkName);
-                await dataStream.CopyToAsync(response.Body);
-
-                existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-                await this.dbContext.SaveChangesAsync();
-
-                await this.EmitContentReadAsync(existingMetadata, existingContent.ContentName, existingChunk.ChunkName, subjectType, subjectId, log);
-
-                return response;
-
-            }, nameof(HandleSecretStreamDownload), log);
-        }
-
-        private async Task<HttpResponseData> HandleSecretContentStreamDownload(HttpRequestData request, string secretId, string contentId, SubjectType subjectType, string subjectId, ILogger log)
-        {
-            return await ActionResults.TryCatchAsync(request, async () =>
-            {
-                var existingMetadata = await this.dbContext.Objects.FindAsync(secretId);
-                if (existingMetadata == null)
-                {
-                    log.LogInformation($"Cannot download content for secret '{secretId}', as secret not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-                }
-
-                if (!existingMetadata.KeepInStorage)
-                {
-                    log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-                }
-
-                if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
-                {
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.Forbidden,
-                        ActionResults.InsufficientPermissions(PermissionType.Read, secretId, string.Empty));
-                }
-
-                var existingContent = existingMetadata.Content.FirstOrDefault(c => c.ContentName.Equals(contentId));
-                if (existingContent == null)
-                {
-                    log.LogInformation($"Cannot download content '{contentId}' for secret '{secretId}', as content not exists.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.NotFound,
-                        new BaseResponseObject<object> { Status = "not_found", Error = $"Content '{contentId}' not exists." });
-                }
-
-                var existingAccessTicket = await this.TryGetAccessTicketAsync(existingContent, log);
-                if (!string.IsNullOrEmpty(existingAccessTicket))
-                {
-                    log.LogInformation($"Cannot download content '{contentId}' for secret '{secretId}', as content is being updated by other user.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = $"Content '{contentId}' is being updated." });
-                }
-
-                if (existingContent.Status != ContentStatus.Ready)
-                {
-                    log.LogInformation($"Cannot download content '{contentId}' for secret '{secretId}', as content is not ready.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.UnprocessableEntity,
-                        new BaseResponseObject<object> { Status = "unprocessable", Error = $"Content '{contentId}' is not ready." });
-                }
-
-                var contentLength = 0L;
-                foreach (var chunk in existingContent.Chunks)
-                {
-                    contentLength += chunk.Length;
-                }
-
-                var response = request.CreateResponse(HttpStatusCode.OK);
-                response.Headers.Add("Content-Type", string.IsNullOrEmpty(existingContent.ContentType) ? DefaultContentType : existingContent.ContentType);
-                response.Headers.Add("Content-Length", $"{contentLength}");
-                response.Headers.Add("Content-Disposition", (new ContentDisposition { FileName = existingContent.FileName }).ToString());
-
-                foreach (var chunk in existingContent.Chunks)
-                {
-                    var chunkStream = await this.blobHelper.DownloadAndDecryptBlobAsync(chunk.ChunkName);
-                    await chunkStream.CopyToAsync(response.Body);
-                    await this.EmitContentReadAsync(existingMetadata, existingContent.ContentName, chunk.ChunkName, subjectType, subjectId, log);
-                }
-
-                existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-                await this.dbContext.SaveChangesAsync();
-
-                return response;
-
-            }, nameof(HandleSecretStreamDownload), log);
-        }
-
-        private async ValueTask<string> TryGetAccessTicketAsync(ContentMetadata content, ILogger log)
-        {
-            if (string.IsNullOrEmpty(content.AccessTicket))
-            {
-                return String.Empty;
-            }
-
-            var utcNow = DateTimeProvider.UtcNow;
-            if ((this.accessTicketConfiguration.AccessTicketTimeout > TimeSpan.Zero)
-                && utcNow > (content.AccessTicketSetAt + this.accessTicketConfiguration.AccessTicketTimeout))
-            {
-                log.LogInformation($"Access ticket '{content.AccessTicket}' expired (was set at {content.AccessTicketSetAt}) and is to be dropped. All data will be erased.");
-
-                await this.purger.DeleteContentDataAsync(content);
-
-                content.Chunks.Clear();
-                content.Status = ContentStatus.Blank;
-                content.RunningHashState = null;
-
-                content.AccessTicket = String.Empty;
-                content.AccessTicketSetAt = DateTime.MinValue;
-
-                await this.dbContext.SaveChangesAsync();
-            }
-
-            return content.AccessTicket;
-        }
-
-        private async Task<long> UploadMainContentAsync(string chunkName, Stream inputStream, ILogger log)
-        {
-            log.LogInformation("Sanitizing main content.");
-
-            string content;
-            using (var reader = new StreamReader(inputStream))
-            {
-                content = await reader.ReadToEndAsync();
-            }
-
-            var lengthBefore = content.Length;
-
-            var sanitizer = new HtmlSanitizer();
-            sanitizer.AllowedSchemes.Add("data");
-            sanitizer.AllowedAttributes.Add("class");
-            sanitizer.AllowedAttributes.Add("data-value");
-            sanitizer.AllowedAttributes.Add("data-bs-toggle");
-            sanitizer.AllowedAttributes.Add("data-bs-placement");
-            sanitizer.AllowedAttributes.Add("title");
-
-            // images-as-attachments spike: keep inline-image geometry/alignment
-            // (blotFormatter2 writes width/style) and the attachment reference marker
-            // so a stored <img data-saex-attachment="..."> survives upload sanitizing.
-            sanitizer.AllowedAttributes.Add("style");
-            sanitizer.AllowedAttributes.Add("width");
-            sanitizer.AllowedAttributes.Add("height");
-            sanitizer.AllowedAttributes.Add("alt");
-            sanitizer.AllowedAttributes.Add("data-saex-attachment");
-
-            content = sanitizer.Sanitize(content);
-
-            log.LogInformation($"Lenght before sanitizing: {lengthBefore}, after sanitizing: {content.Length}.");
-
-            using (var dataStream = new MemoryStream(Encoding.UTF8.GetBytes(content)))
-            {
-                await this.blobHelper.EncryptAndUploadBlobAsync(chunkName, dataStream);
-                return dataStream.Length;
-            }
-        }
-
+        private static string? FirstHeaderValue(HttpHeadersCollection headers, string name)
+            => headers.TryGetValues(name, out var values) ? values.FirstOrDefault() : null;
     }
 }
