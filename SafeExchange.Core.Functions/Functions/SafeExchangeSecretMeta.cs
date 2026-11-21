@@ -11,88 +11,85 @@ namespace SafeExchange.Core.Functions
     using System.IO;
 
     using Microsoft.Extensions.Configuration;
+    using Microsoft.Extensions.Logging.Abstractions;
     using SafeExchange.Core.Audit;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Filters;
-    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Model.Dto.Input;
-    using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
-    using SafeExchange.Core.Model.Dto.Output;
-    using SafeExchange.Core.Utilities;
+    using SafeExchange.Core.Services;
     using SafeExchange.Core.Telemetry;
-    using Microsoft.EntityFrameworkCore;
     using Microsoft.Azure.Functions.Worker.Http;
     using System.Collections.Generic;
     using System.Net;
 
+    /// <summary>
+    /// HTTP adapter for secret metadata (<c>/secret/{secretId}</c>, <c>/secret-list</c>) over <see cref="SecretService"/>.
+    /// </summary>
     public class SafeExchangeSecretMeta
     {
-        private readonly Features features;
+        private readonly ICallerResolver callerResolver;
 
-        private readonly SafeExchangeDbContext dbContext;
+        private readonly SecretService secretService;
 
-        private readonly ITokenHelper tokenHelper;
-
-        private readonly GlobalFilters globalFilters;
-
-        private readonly IPurger purger;
-
-        private readonly IPermissionsManager permissionsManager;
-
-        private readonly IAuditWriter auditWriter;
-
-        public SafeExchangeSecretMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
+        public SafeExchangeSecretMeta(ICallerResolver callerResolver, SecretService secretService)
         {
-            if (configuration == null)
-            {
-                throw new ArgumentNullException(nameof(configuration));
-            }
+            this.callerResolver = callerResolver ?? throw new ArgumentNullException(nameof(callerResolver));
+            this.secretService = secretService ?? throw new ArgumentNullException(nameof(secretService));
+        }
 
-            this.features = new Features();
-            configuration.GetSection("Features").Bind(this.features);
-
-            this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            this.tokenHelper = tokenHelper ?? throw new ArgumentNullException(nameof(tokenHelper));
-            this.globalFilters = globalFilters ?? throw new ArgumentNullException(nameof(globalFilters));
-            this.purger = purger ?? throw new ArgumentNullException(nameof(purger));
-            this.permissionsManager = permissionsManager ?? throw new ArgumentNullException(nameof(permissionsManager));
-            this.auditWriter = auditWriter ?? throw new ArgumentNullException(nameof(auditWriter));
+        /// <summary>
+        /// Pre-service constructor, kept for code that builds handlers by hand: resolves callers through
+        /// <paramref name="globalFilters"/> exactly as before and builds the service itself (without logging).
+        /// </summary>
+        public SafeExchangeSecretMeta(IConfiguration configuration, SafeExchangeDbContext dbContext, ITokenHelper tokenHelper, GlobalFilters globalFilters, IPurger purger, IPermissionsManager permissionsManager, IAuditWriter auditWriter)
+            : this(
+                  new GlobalFiltersCallerResolver(globalFilters, tokenHelper, dbContext),
+                  new SecretService(configuration, dbContext, purger, permissionsManager, auditWriter, NullLogger<SecretService>.Instance))
+        {
         }
 
         public async Task<HttpResponseData> Run(
             HttpRequestData request,
             string secretId, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {caller.SubjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)} triggered for '{secretId}' by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
-
-            await this.purger.PurgeIfNeededAsync(secretId, this.dbContext, this.auditWriter, this.features.AuditRetentionDays);
-            
             switch (request.Method.ToLower())
             {
                 case "post":
-                    return await this.HandleSecretMetaCreation(request, secretId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(request, async () =>
+                    {
+                        var input = await ReadInputAsync<MetadataCreationInput>(request, secretId, log);
+                        return await (await this.secretService.CreateAsync(caller, secretId, input)).ToResponseAsync(request);
+                    }, "HandleSecretMetaCreation", log);
 
                 case "get":
-                    return await this.HandleSecretMetaRead(request, secretId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.secretService.GetAsync(caller, secretId)).ToResponseAsync(request),
+                        "HandleSecretMetaRead", log);
 
                 case "patch":
-                    return await this.HandleSecretMetaUpdate(request, secretId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(request, async () =>
+                    {
+                        var input = await ReadInputAsync<MetadataUpdateInput>(request, secretId, log);
+                        return await (await this.secretService.UpdateAsync(caller, secretId, input)).ToResponseAsync(request);
+                    }, "HandleSecretMetaUpdate", log);
 
                 case "delete":
-                    return await this.HandleSecretMetaDeletion(request, secretId, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.secretService.DeleteAsync(caller, secretId)).ToResponseAsync(request),
+                        "HandleSecretMetaDeletion", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -104,24 +101,22 @@ namespace SafeExchange.Core.Functions
         public async Task<HttpResponseData> RunList(
             HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
-
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunList)} triggered by {caller.SubjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListSecretMeta(request, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.secretService.ListV2Async(caller, GetTagFilter(request))).ToResponseAsync(request),
+                        "HandleListSecretMeta", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -133,24 +128,22 @@ namespace SafeExchange.Core.Functions
         public async Task<HttpResponseData> RunListV3(
             HttpRequestData request, ClaimsPrincipal principal, ILogger log)
         {
-            var (shouldReturn, filterResult) = await this.globalFilters.GetFilterResultAsync(request, principal, this.dbContext);
-            if (shouldReturn)
+            var resolution = await this.callerResolver.ResolveAsync(principal, CallerChannels.Rest, null);
+            if (!resolution.IsAllowed)
             {
-                return filterResult ?? request.CreateResponse(HttpStatusCode.NoContent);
+                return await resolution.Denial.ToResponseAsync(request);
             }
 
-            (SubjectType subjectType, string subjectId) = await SubjectHelper.GetSubjectInfoAsync(this.tokenHelper, principal, this.dbContext);
-            if (SubjectType.Application.Equals(subjectType) && string.IsNullOrEmpty(subjectId))
-            {
-                return await ActionResults.ForbiddenAsync(request, "Application is not registered or disabled.");
-            }
-
-            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunListV3)} triggered by {subjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
+            var caller = resolution.Caller;
+            log.LogInformation($"{nameof(SafeExchangeSecretMeta)}-{nameof(RunListV3)} triggered by {caller.SubjectType} (tid {TelemetryContext.Current}) [{request.Method}].");
 
             switch (request.Method.ToLower())
             {
                 case "get":
-                    return await this.HandleListSecretMetaV3(request, subjectType, subjectId, log);
+                    return await ActionResults.ServiceCallAsync(
+                        request,
+                        async () => await (await this.secretService.ListAsync(caller, GetTagFilter(request))).ToResponseAsync(request),
+                        "HandleListSecretMetaV3", log);
 
                 default:
                     return await ActionResults.CreateResponseAsync(
@@ -159,404 +152,29 @@ namespace SafeExchange.Core.Functions
             }
         }
 
-        private async Task<HttpResponseData> HandleListSecretMeta(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
+        private static IReadOnlyList<string> GetTagFilter(HttpRequestData request)
         {
-            var (tagsOk, requiredTags, tagsError) = TryGetRequiredTags(request);
-            if (!tagsOk)
-            {
-                log.LogInformation($"Invalid tag filter: {tagsError}.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
-            }
-
-            var permissions = await this.dbContext.Permissions
-                .Where(p => p.SubjectType.Equals(subjectType) && p.SubjectId.Equals(subjectId) && p.CanRead)
-                .ToListAsync();
-
-            var names = permissions.Select(p => p.SecretName).Distinct().ToList();
-            var tagMap = await this.LoadTagMapAsync(names, requiredTags);
-
-            if (requiredTags.Count > 0)
-            {
-                var matched = new HashSet<string>(tagMap.Keys);
-                permissions = permissions.Where(p => matched.Contains(p.SecretName)).ToList();
-            }
-
-            var dtos = permissions.Select(p =>
-            {
-                var dto = p.ToDto();
-                dto.Tags = tagMap.TryGetValue(p.SecretName, out var t) ? t.ToList() : new List<string>();
-                return dto;
-            }).ToList();
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<List<SubjectPermissionsOutput>>
-                {
-                    Status = "ok",
-                    Result = dtos
-                });
-        }, nameof(HandleListSecretMeta), log);
-
-        private async Task<HttpResponseData> HandleListSecretMetaV3(HttpRequestData request, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var (tagsOk, requiredTags, tagsError) = TryGetRequiredTags(request);
-            if (!tagsOk)
-            {
-                log.LogInformation($"Invalid tag filter: {tagsError}.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
-            }
-
-            var readableSecrets = await this.permissionsManager.GetReadableSecretsAsync(subjectType, subjectId);
-
-            var names = readableSecrets.Select(e => e.SecretName).Distinct().ToList();
-            var tagMap = await this.LoadTagMapAsync(names, requiredTags);
-
-            if (requiredTags.Count > 0)
-            {
-                var matched = new HashSet<string>(tagMap.Keys);
-                readableSecrets = readableSecrets.Where(e => matched.Contains(e.SecretName)).ToList();
-            }
-
-            var dtos = readableSecrets.Select(e => new SecretListItemOutput
-            {
-                ObjectName = e.SecretName,
-                SubjectType = subjectType.ToDto(),
-                SubjectName = subjectId,
-                SubjectId = subjectId,
-                CanRead = (e.Direct & PermissionType.Read) == PermissionType.Read,
-                CanWrite = (e.Direct & PermissionType.Write) == PermissionType.Write,
-                CanGrantAccess = (e.Direct & PermissionType.GrantAccess) == PermissionType.GrantAccess,
-                CanRevokeAccess = (e.Direct & PermissionType.RevokeAccess) == PermissionType.RevokeAccess,
-                CallerEffectivePermissions = EffectivePermissionsOutput.FromPermissionType(e.Effective),
-                Tags = tagMap.TryGetValue(e.SecretName, out var t) ? t.ToList() : new List<string>(),
-            }).ToList();
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<List<SecretListItemOutput>>
-                {
-                    Status = "ok",
-                    Result = dtos
-                });
-        }, nameof(HandleListSecretMetaV3), log);
-
-        private static (bool ok, IReadOnlyList<string> requiredTags, string? error) TryGetRequiredTags(HttpRequestData request)
-        {
-            var rawTags = Array.Empty<string>();
             var query = request.Url?.Query;
-            if (!string.IsNullOrEmpty(query))
+            if (string.IsNullOrEmpty(query))
             {
-                rawTags = System.Web.HttpUtility.ParseQueryString(query).GetValues("tag") ?? Array.Empty<string>();
+                return Array.Empty<string>();
             }
 
-            return TagValidator.TryNormalizeList(rawTags);
+            return System.Web.HttpUtility.ParseQueryString(query).GetValues("tag") ?? Array.Empty<string>();
         }
 
-        private async Task<Dictionary<string, List<string>>> LoadTagMapAsync(List<string> names, IReadOnlyList<string> requiredTags)
+        private static async Task<T?> ReadInputAsync<T>(HttpRequestData request, string secretId, ILogger log) where T : class
         {
-            var tagMap = new Dictionary<string, List<string>>();
-            if (names.Count == 0)
-            {
-                return tagMap;
-            }
-
-            IQueryable<ObjectMetadata> tagQuery = this.dbContext.Objects
-                .Where(o => names.Contains(o.ObjectName));
-
-            foreach (var rt in requiredTags)
-            {
-                var tag = rt; // local capture so closure binds correctly
-                tagQuery = tagQuery.Where(o => o.Tags.Contains(tag));
-            }
-
-            var tagPairs = await tagQuery
-                .Select(o => new { o.ObjectName, o.Tags })
-                .ToListAsync();
-
-            foreach (var pair in tagPairs)
-            {
-                tagMap[pair.ObjectName] = pair.Tags?.ToList() ?? new List<string>();
-            }
-
-            return tagMap;
-        }
-
-        private async Task<HttpResponseData> HandleSecretMetaCreation(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata != null)
-            {
-                log.LogInformation($"Cannot create secret '{secretId}', as already exists");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Conflict,
-                    new BaseResponseObject<object> { Status = "conflict", Error = $"Secret '{secretId}' already exists." });
-            }
-
             var requestBody = await new StreamReader(request.Body ?? Stream.Null).ReadToEndAsync();
-            MetadataCreationInput? metadataInput;
             try
             {
-                metadataInput = DefaultJsonSerializer.Deserialize<MetadataCreationInput>(requestBody);
+                return DefaultJsonSerializer.Deserialize<T>(requestBody);
             }
             catch
             {
                 log.LogInformation($"Could not parse input data for '{secretId}'.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
+                return null;
             }
-
-            if ((metadataInput is null) || metadataInput.ExpirationSettings == null)
-            {
-                log.LogInformation($"Expiration settings for '{secretId}' not provided.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
-            }
-
-            // Creation-time naming contract, mirrored by the UI for immediate feedback.
-            // Deliberately not applied to read/update/delete: existing identifiers accepted
-            // under earlier behavior stay usable, subject to normal authorization.
-            if (!SecretNameValidator.TryValidate(secretId, out var secretIdError))
-            {
-                log.LogInformation($"Secret id value is not valid: {secretIdError}");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = secretIdError });
-            }
-
-            var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);
-            if (!tagsOk)
-            {
-                log.LogInformation($"Invalid tags for secret '{secretId}': {tagsError}.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
-            }
-            metadataInput.Tags = normalisedTags.ToList();
-
-            var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, metadataInput, subjectType, subjectId, log);
-            log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {subjectType} '(tid {TelemetryContext.Current})' are set.");
-
-            if (createdMetadata.AuditEnabled)
-            {
-                await this.auditWriter.EnsureAnchorAsync(createdMetadata, subjectId);
-                var creationPayload = new
-                {
-                    tags = createdMetadata.Tags ?? new List<string>(),
-                    expirationSettings = createdMetadata.ExpirationMetadata.ToDto(),
-                    auditEnabled = true,
-                };
-                await this.auditWriter.AppendAsync(
-                    createdMetadata, SecretAuditEventType.SecretCreated,
-                    subjectType, subjectId, creationPayload, log);
-            }
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = createdMetadata.ToDto() });
-        }, nameof(HandleSecretMetaCreation), log);
-
-        private async Task<HttpResponseData> HandleSecretMetaRead(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var metadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (metadata == null)
-            {
-                log.LogInformation($"Cannot get secret '{secretId}', as no metadata exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!metadata.KeepInStorage)
-            {
-                log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Read)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Read, secretId, string.Empty));
-            }
-
-            metadata.LastAccessedAt = DateTimeProvider.UtcNow;
-            await this.dbContext.SaveChangesAsync();
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = metadata.ToDto() });
-        }, nameof(HandleSecretMetaRead), log);
-
-        private async Task<HttpResponseData> HandleSecretMetaUpdate(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata == null)
-            {
-                log.LogInformation($"Cannot update secret '{secretId}', as no metadata exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!existingMetadata.KeepInStorage)
-            {
-                log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-            }
-
-            var requestBody = await new StreamReader(request.Body ?? Stream.Null).ReadToEndAsync();
-            MetadataUpdateInput? metadataInput;
-            try
-            {
-                metadataInput = DefaultJsonSerializer.Deserialize<MetadataUpdateInput>(requestBody);
-            }
-            catch
-            {
-                log.LogInformation($"Could not parse input data for '{secretId}'.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
-            }
-
-            if ((metadataInput is null) || metadataInput.ExpirationSettings == null)
-            {
-                log.LogInformation($"Expiration settings for '{secretId}' not provided.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Expiration settings are not provided." });
-            }
-
-            if (string.IsNullOrEmpty(secretId))
-            {
-                log.LogInformation("Secret id value is not provided.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.BadRequest,
-                    new BaseResponseObject<object> { Status = "bad_request", Error = "Secret id value is not provided." });
-            }
-
-            if (metadataInput.Tags is not null)
-            {
-                var (tagsOk, normalisedTags, tagsError) = TagValidator.TryNormalizeList(metadataInput.Tags);
-                if (!tagsOk)
-                {
-                    log.LogInformation($"Invalid tags for secret '{secretId}': {tagsError}.");
-                    return await ActionResults.CreateResponseAsync(
-                        request, HttpStatusCode.BadRequest,
-                        new BaseResponseObject<object> { Status = "bad_request", Error = tagsError });
-                }
-                metadataInput.Tags = normalisedTags.ToList();
-            }
-
-            // Build the audit diff against the live entity BEFORE UpdateMetadataAsync mutates
-            // it in place. MetadataDiffBuilder is the single canonical implementation; do not
-            // re-inline diff logic here.
-            string? diffJson = null;
-            if (existingMetadata.AuditEnabled)
-            {
-                diffJson = MetadataDiffBuilder.BuildDiff(existingMetadata, metadataInput);
-            }
-
-            var updatedMetadata = await this.UpdateMetadataAsync(existingMetadata, metadataInput, log);
-            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' updated metadata for secret '{existingMetadata.ObjectName}'.");
-
-            if (diffJson is not null)
-            {
-                var diffObj = System.Text.Json.JsonSerializer.Deserialize<object>(diffJson);
-                await this.auditWriter.AppendAsync(
-                    updatedMetadata, SecretAuditEventType.SecretMetadataUpdated,
-                    subjectType, subjectId, diffObj, log);
-            }
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<ObjectMetadataOutput> { Status = "ok", Result = updatedMetadata.ToDto() });
-        }, nameof(HandleSecretMetaUpdate), log);
-
-        private async Task<HttpResponseData> HandleSecretMetaDeletion(HttpRequestData request, string secretId, SubjectType subjectType, string subjectId, ILogger log)
-            => await ActionResults.TryCatchAsync(request, async () =>
-        {
-            var existingMetadata = await this.dbContext.Objects.FirstOrDefaultAsync(o => o.ObjectName.Equals(secretId));
-            if (existingMetadata == null)
-            {
-                log.LogInformation($"Cannot delete secret '{secretId}', as no metadata exists.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.NotFound,
-                    new BaseResponseObject<object> { Status = "not_found", Error = $"Secret '{secretId}' does not exist." });
-            }
-
-            if (!existingMetadata.KeepInStorage)
-            {
-                log.LogInformation($"The data is not kept in storage, cannot use this api.");
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.UnprocessableEntity,
-                    new BaseResponseObject<object> { Status = "unprocessable", Error = "Cannot use this endpoint for previous versions data." });
-            }
-
-            if (!(await this.permissionsManager.IsAuthorizedAsync(subjectType, subjectId, secretId, PermissionType.Write)))
-            {
-                return await ActionResults.CreateResponseAsync(
-                    request, HttpStatusCode.Forbidden,
-                    ActionResults.InsufficientPermissions(PermissionType.Write, secretId, string.Empty));
-            }
-
-            await this.purger.PurgeAsync(secretId, this.dbContext, this.auditWriter, subjectType, subjectId, this.features.AuditRetentionDays);
-            log.LogInformation($"{subjectType} '(tid {TelemetryContext.Current})' deleted secret '{secretId}'");
-
-            return await ActionResults.CreateResponseAsync(
-                request, HttpStatusCode.OK,
-                new BaseResponseObject<string> { Status = "ok", Result = "ok" });
-        }, nameof(HandleSecretMetaDeletion), log);
-
-        private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, SubjectType subjectType, string subjectId, ILogger log)
-        {
-            var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{subjectType} {subjectId}");
-            var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
-
-            var subjectName = subjectId;
-            await this.permissionsManager.SetPermissionAsync(subjectType, subjectId, subjectName, secretId, PermissionType.Full);
-            
-            await this.dbContext.SaveChangesAsync();
-
-            return entity.Entity;
         }
-
-        private async Task<ObjectMetadata> UpdateMetadataAsync(ObjectMetadata existingMetadata, MetadataUpdateInput metadataInput, ILogger log)
-        {
-            var updatedExpirationMetadata = new ExpirationMetadata(metadataInput.ExpirationSettings);
-            existingMetadata.ExpirationMetadata = updatedExpirationMetadata;
-            existingMetadata.LastAccessedAt = DateTimeProvider.UtcNow;
-
-            if (metadataInput.Tags is not null)
-            {
-                existingMetadata.Tags = metadataInput.Tags.ToList();
-            }
-
-            await this.dbContext.SaveChangesAsync();
-
-            return existingMetadata;
-        }
-
     }
 }

@@ -7,6 +7,7 @@ namespace SafeExchange.Core.Filters
     using Microsoft.Azure.Functions.Worker.Http;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
+    using SafeExchange.Core.Callers;
     using SafeExchange.Core.Configuration;
     using System.Security.Claims;
     using System.Threading.Tasks;
@@ -38,6 +39,13 @@ namespace SafeExchange.Core.Filters
 
             return (shouldReturn: false, response: null);
         }
+
+        /// <summary>
+        /// The global access-group decision of <see cref="GetFilterResultAsync"/> without writing a response:
+        /// <c>null</c> when the caller passes, otherwise the denial. Logs under this class, like the filter.
+        /// </summary>
+        public Task<CallerDenial?> GetGlobalAccessDenialAsync(ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
+            => new GlobalAccessPolicy(this.groupsConfiguration.CurrentValue, this.tokenHelper, this.log).EvaluateAsync(principal, dbContext);
 
         public async ValueTask<(bool shouldReturn, HttpResponseData? response)> GetAdminFilterResultAsync(HttpRequestData req, ClaimsPrincipal principal, SafeExchangeDbContext dbContext)
         {
