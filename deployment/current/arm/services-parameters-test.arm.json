@@ -44,6 +44,9 @@
         "settings-features-redactTelemetryPii": {
             "value": "True"
         },
+        "settings-features-mcpEndpoint": {
+            "value": "False"
+        },
         "deployer_ip_addresses": {
             "value": []
         },

@@ -28,6 +28,10 @@ SafeExchange recognizes two types of authenticated callers:
 
 Applications must be pre-registered in SafeExchange before they can access the API. Users are automatically recognized if they belong to the configured Entra ID tenant.
 
+### MCP
+
+The [MCP endpoint](mcp.md) (`POST /api/mcp`, when `Features.McpEndpoint` is on) uses the same token validation and caller resolution as REST, so both users and registered applications can call it. With MCP enabled, `401` responses carry `WWW-Authenticate: Bearer resource_metadata="…"` pointing to `/api/.well-known/oauth-protected-resource`. Disabling an application stops its MCP access on the next call.
+
 ## Authorization
 
 After authentication, every operation goes through the permissions engine to determine if the caller is allowed to perform the requested action.
