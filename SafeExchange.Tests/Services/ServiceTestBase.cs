@@ -90,7 +90,7 @@ namespace SafeExchange.Tests.Services
         [TearDown]
         public void ServiceTearDown()
         {
-            this.DbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.DbContext.Database);
             this.DbContext.Dispose();
             DateTimeProvider.SpecifiedDateTime = this.previousSpecifiedDateTime;
             DateTimeProvider.UseSpecifiedDateTime = this.previousUseSpecifiedDateTime;

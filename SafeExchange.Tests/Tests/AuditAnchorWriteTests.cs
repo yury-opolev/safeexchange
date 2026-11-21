@@ -61,7 +61,7 @@ namespace SafeExchange.Tests
         public async Task OneTimeTeardown()
         {
             await using var db = new SafeExchangeDbContext(this.dbContextOptions);
-            await db.Database.EnsureDeletedAsync();
+            await TestDatabase.EnsureDeletedTolerantAsync(db.Database);
         }
 
         [TearDown]

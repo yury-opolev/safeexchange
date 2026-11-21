@@ -52,7 +52,7 @@ namespace SafeExchange.Tests
         [TearDown]
         public void TearDown()
         {
-            this.dbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.dbContext.Database);
             this.dbContext.Dispose();
         }
 

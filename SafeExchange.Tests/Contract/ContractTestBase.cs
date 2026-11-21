@@ -208,7 +208,7 @@ namespace SafeExchange.Tests.Contract
         [TearDown]
         public void ContractTearDown()
         {
-            this.DbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.DbContext.Database);
             this.DbContext.Dispose();
 
             // TestFactory.FunctionContext and DateTimeProvider are process-wide; restore them so

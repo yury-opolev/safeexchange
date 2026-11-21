@@ -63,7 +63,7 @@ namespace SafeExchange.Tests
         [OneTimeTearDown]
         public void OneTimeCleanup()
         {
-            this.dbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.dbContext.Database);
             this.dbContext.Dispose();
         }
 

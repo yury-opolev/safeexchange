@@ -48,7 +48,7 @@ namespace SafeExchange.Tests
         [TearDown]
         public void Cleanup()
         {
-            this.dbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.dbContext.Database);
             this.dbContext.Dispose();
         }
 

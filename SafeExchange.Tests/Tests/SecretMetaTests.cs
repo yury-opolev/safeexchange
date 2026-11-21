@@ -129,7 +129,7 @@ namespace SafeExchange.Tests
         public void OneTimeCleanup()
         {
             DateTimeProvider.UseSpecifiedDateTime = false;
-            this.dbContext.Database.EnsureDeleted();
+            TestDatabase.EnsureDeletedTolerant(this.dbContext.Database);
             this.dbContext.Dispose();
         }
 
