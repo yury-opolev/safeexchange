@@ -10,6 +10,7 @@ namespace SafeExchange.Tests.Services
     using SafeExchange.Core;
     using SafeExchange.Core.Callers;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Functions.Mcp;
     using SafeExchange.Core.Mcp;
     using SafeExchange.Tests.Contract;
     using System.Collections.Generic;
@@ -66,6 +67,8 @@ namespace SafeExchange.Tests.Services
             Assert.That(handlers.GetRequiredService<SafeExchangeContentCommit>(), Is.Not.Null);
             Assert.That(handlers.GetRequiredService<SafeExchangeAccess>(), Is.Not.Null);
             Assert.That(handlers.GetRequiredService<SafeExchangeSecretAudit>(), Is.Not.Null);
+            Assert.That(handlers.GetRequiredService<McpHandler>(), Is.Not.Null);
+            Assert.That(handlers.GetRequiredService<OAuthProtectedResourceHandler>(), Is.Not.Null);
             var toolNames = handlers.GetServices<IMcpTool>().Select(t => t.Name).ToList();
             Assert.That(toolNames, Has.Count.EqualTo(16));
             Assert.That(toolNames, Is.Unique);

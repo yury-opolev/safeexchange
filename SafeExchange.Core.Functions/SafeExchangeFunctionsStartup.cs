@@ -11,6 +11,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Callers;
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
+    using SafeExchange.Core.Functions.Mcp;
     using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Services;
 
@@ -20,10 +21,17 @@ namespace SafeExchange.Core
             => context.FunctionDefinition.InputBindings.Values
                 .First(a => a.Type.EndsWith("Trigger")).Type == "httpTrigger";
 
+        /// <summary>
+        /// HTTP triggers that need a bearer token: all except the anonymous protected-resource metadata.
+        /// </summary>
+        public static bool IsAuthenticatedHttpTrigger(FunctionContext context)
+            => IsHttpTrigger(context)
+                && !string.Equals(context.FunctionDefinition.Name, McpRoutes.ProtectedResourceMetadataFunctionName, StringComparison.Ordinal);
+
         public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
         {
-            builder.UseWhen<DefaultAuthenticationMiddleware>(IsHttpTrigger);
-            builder.UseWhen<TokenFilterMiddleware>(IsHttpTrigger);
+            builder.UseWhen<DefaultAuthenticationMiddleware>(IsAuthenticatedHttpTrigger);
+            builder.UseWhen<TokenFilterMiddleware>(IsAuthenticatedHttpTrigger);
 
             // After auth so failed-auth requests still get the dimension,
             // but before any handler logs so downstream ILogger scopes
@@ -48,6 +56,8 @@ namespace SafeExchange.Core
             services.AddScoped(sp => new SafeExchangeContentCommit(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<ContentService>()));
             services.AddScoped(sp => new SafeExchangeAccess(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<AccessService>()));
             services.AddScoped(sp => new SafeExchangeSecretAudit(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<AuditQueryService>()));
+            services.AddScoped<McpHandler>();
+            services.AddScoped<OAuthProtectedResourceHandler>();
 
             // Stamps customDimensions.saex.sessionId on every telemetry
             // item emitted within a request that carried the header. Works

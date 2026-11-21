@@ -7,7 +7,9 @@ namespace SafeExchange.Core.Middleware
     using Microsoft.Azure.Functions.Worker.Middleware;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
     using Microsoft.Azure.Functions.Worker.Http;
+    using SafeExchange.Core.Configuration;
     using System.Net;
     using System.IdentityModel.Tokens.Jwt;
     using System.Net.Http.Headers;
@@ -35,11 +37,14 @@ namespace SafeExchange.Core.Middleware
 
         private readonly ITokenValidationParametersProvider validationParametersProvider;
 
+        private readonly IOptionsMonitor<Features> features;
+
         private readonly ILogger log;
 
-        public DefaultAuthenticationMiddleware(ITokenValidationParametersProvider validationParametersProvider, ILogger<DefaultAuthenticationMiddleware> log)
+        public DefaultAuthenticationMiddleware(ITokenValidationParametersProvider validationParametersProvider, IOptionsMonitor<Features> features, ILogger<DefaultAuthenticationMiddleware> log)
         {
             this.validationParametersProvider = validationParametersProvider ?? throw new ArgumentNullException(nameof(validationParametersProvider));
+            this.features = features ?? throw new ArgumentNullException(nameof(features));
             this.tokenHandler = new JwtSecurityTokenHandler();
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
@@ -97,12 +102,9 @@ namespace SafeExchange.Core.Middleware
             await next(context);
         }
 
-        private static async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)
+        private async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)
         {
-            var response = httpRequestData!.CreateResponse();
-            response.StatusCode = HttpStatusCode.Unauthorized;
-            await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = errorMessage });
-            context.GetInvocationResult().Value = response;
+            context.GetInvocationResult().Value = await UnauthorizedResponse.CreateAsync(httpRequestData!, errorMessage, this.features.CurrentValue.McpEndpoint);
         }
     }
 }

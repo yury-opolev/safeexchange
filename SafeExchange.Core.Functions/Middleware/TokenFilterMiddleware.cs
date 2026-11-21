@@ -9,16 +9,21 @@ namespace SafeExchange.Core.Middleware
     using Microsoft.Azure.Functions.Worker.Middleware;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
+    using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Telemetry;
     using System.Net;
     using System.Security.Claims;
 
     public class TokenFilterMiddleware : IFunctionsWorkerMiddleware
     {
+        private readonly IOptionsMonitor<Features> features;
+
         private readonly ILogger log;
 
-        public TokenFilterMiddleware(ILogger<TokenFilterMiddleware> log)
+        public TokenFilterMiddleware(IOptionsMonitor<Features> features, ILogger<TokenFilterMiddleware> log)
         {
+            this.features = features ?? throw new ArgumentNullException(nameof(features));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -65,12 +70,9 @@ namespace SafeExchange.Core.Middleware
             }
         }
 
-        private static async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)
+        private async Task UnauthorizedAsync(FunctionContext context, HttpRequestData? httpRequestData, string errorMessage)
         {
-            var response = httpRequestData!.CreateResponse();
-            response.StatusCode = HttpStatusCode.Unauthorized;
-            await response.WriteAsJsonAsync(new BaseResponseObject<object> { Status = "unauthorized", Error = errorMessage });
-
+            var response = await UnauthorizedResponse.CreateAsync(httpRequestData!, errorMessage, this.features.CurrentValue.McpEndpoint);
             SetResponse(context, response);
         }
 

@@ -37,6 +37,8 @@ namespace SafeExchange.Tests
                 "Scoped SafeExchangeContentCommit <- factory",
                 "Scoped SafeExchangeAccess <- factory",
                 "Scoped SafeExchangeSecretAudit <- factory",
+                "Scoped McpHandler <- McpHandler",
+                "Scoped OAuthProtectedResourceHandler <- OAuthProtectedResourceHandler",
                 "Singleton ITelemetryInitializer <- SessionCorrelationTelemetryInitializer",
                 "Singleton ITelemetryInitializer <- ApiVersionTelemetryInitializer",
             }));
