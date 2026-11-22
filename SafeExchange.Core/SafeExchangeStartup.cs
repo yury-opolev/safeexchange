@@ -17,6 +17,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Callers;
     using SafeExchange.Core.LocalDev;
     using SafeExchange.Core.Mcp;
+    using SafeExchange.Core.Mcp.OAuth;
     using SafeExchange.Core.Blob;
     using SafeExchange.Core.Graph;
     using SafeExchange.Core.Permissions;
@@ -184,6 +185,7 @@ namespace SafeExchange.Core
             services.Configure<AdminConfiguration>(configuration.GetSection("AdminConfiguration"));
             services.Configure<CosmosDbConfiguration>(configuration.GetSection("CosmosDb"));
             services.Configure<WebClientTelemetryConfiguration>(configuration.GetSection("WebClientTelemetry"));
+            services.Configure<McpOAuthOptions>(configuration.GetSection(McpOAuthOptions.SectionName));
 
             // Stamps customDimensions.saex.telemetryId — a pseudonymous, weekly-rotating
             // id — on every telemetry item so traces can be correlated per user without

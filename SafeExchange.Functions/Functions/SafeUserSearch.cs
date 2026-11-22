@@ -16,7 +16,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeUserSearch
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private SafeExchangeUserSearch safeExchangeUserSearchHandler;
 

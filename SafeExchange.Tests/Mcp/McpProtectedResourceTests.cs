@@ -9,11 +9,18 @@ namespace SafeExchange.Tests.Mcp
     using NUnit.Framework;
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Mcp;
+    using SafeExchange.Core.Mcp.OAuth;
+    using SafeExchange.Tests.Mcp.OAuth;
+    using System;
 
     [TestFixture]
     public class McpProtectedResourceTests
     {
         private const string Authority = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001";
+
+        private const string BrokerClientId = "00000000-0000-0000-0000-0000000000c9";
+
+        private static readonly Uri ApiBase = new("https://safeexchange.test/api/");
 
         [Test]
         public void Defaults_AreDerivedFromTheAuthenticationSection()
@@ -59,17 +66,49 @@ namespace SafeExchange.Tests.Mcp
         }
 
         [Test]
-        public void ToMetadata_IsTheRfc9728Document()
+        public void ToMetadata_IsTheRfc9728Document_WithTheMcpUrlAsResource()
         {
-            var metadata = Create(new AuthenticationConfiguration { Authority = Authority, ValidAudiences = "api://safeexchange.test" }).ToMetadata();
+            var resource = Create(new AuthenticationConfiguration { Authority = Authority, ValidAudiences = "api://safeexchange.test" });
 
-            Assert.That(metadata.Resource, Is.EqualTo("api://safeexchange.test"));
+            var metadata = resource.ToMetadata(ApiBase);
+
+            Assert.That(resource.IsBrokerConfigured, Is.False);
+            Assert.That(metadata.Resource, Is.EqualTo("https://safeexchange.test/api/mcp"));
             Assert.That(metadata.AuthorizationServers, Is.EqualTo(new[] { Authority + "/v2.0" }));
             Assert.That(metadata.ScopesSupported, Is.EqualTo(new[] { "api://safeexchange.test/user_impersonation" }));
             Assert.That(metadata.BearerMethodsSupported, Is.EqualTo(new[] { "header" }));
         }
 
-        private static McpProtectedResource Create(AuthenticationConfiguration configuration)
-            => new(Mock.Of<IOptionsMonitor<AuthenticationConfiguration>>(x => x.CurrentValue == configuration));
+        [Test]
+        public void ToMetadata_WithTheBrokerConfigured_NamesThisHostAsTheAuthorizationServer()
+        {
+            var resource = Create(new AuthenticationConfiguration { Authority = Authority, ValidAudiences = "api://safeexchange.test" }, BrokerClientId);
+
+            var metadata = resource.ToMetadata(ApiBase);
+
+            Assert.That(resource.IsBrokerConfigured, Is.True);
+            Assert.That(metadata.Resource, Is.EqualTo("https://safeexchange.test/api/mcp"));
+            Assert.That(metadata.AuthorizationServers, Is.EqualTo(new[] { "https://safeexchange.test/api" }));
+            Assert.That(metadata.ScopesSupported, Is.EqualTo(new[] { "api://safeexchange.test/user_impersonation" }));
+        }
+
+        [TestCase("", Authority, McpOAuthTestKey.Value)]
+        [TestCase("   ", Authority, McpOAuthTestKey.Value)]
+        [TestCase(BrokerClientId, "", McpOAuthTestKey.Value)]
+        [TestCase(BrokerClientId, "http://login.microsoftonline.com/00000000-0000-0000-0000-000000000001", McpOAuthTestKey.Value)]
+        [TestCase(BrokerClientId, Authority, "")]
+        [TestCase(BrokerClientId, Authority, "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHw==")]
+        public void TheBroker_NeedsAClientIdAnHttpsAuthorityAndAStateKey(string clientId, string authority, string stateKey)
+        {
+            var resource = Create(new AuthenticationConfiguration { Authority = authority, ValidAudiences = "api://safeexchange.test" }, clientId, stateKey);
+
+            Assert.That(resource.IsBrokerConfigured, Is.False);
+            Assert.That(resource.ToMetadata(ApiBase).AuthorizationServers, Does.Not.Contain("https://safeexchange.test/api"));
+        }
+
+        private static McpProtectedResource Create(AuthenticationConfiguration configuration, string clientId = "", string stateKey = McpOAuthTestKey.Value)
+            => new(
+                Mock.Of<IOptionsMonitor<AuthenticationConfiguration>>(x => x.CurrentValue == configuration),
+                Mock.Of<IOptionsMonitor<McpOAuthOptions>>(x => x.CurrentValue == new McpOAuthOptions { ClientId = clientId, StateKey = stateKey }));
     }
 }

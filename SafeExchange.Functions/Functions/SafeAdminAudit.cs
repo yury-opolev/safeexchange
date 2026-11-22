@@ -13,7 +13,7 @@ namespace SafeExchange.Functions
 
     public class SafeAdminAudit
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private readonly SafeExchangeAdminAudit handler;
         private readonly ILogger log;

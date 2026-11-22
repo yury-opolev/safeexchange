@@ -7,15 +7,17 @@ namespace SafeExchange.Core.Mcp
     using Microsoft.Extensions.Options;
     using ModelContextProtocol.Authentication;
     using SafeExchange.Core.Configuration;
+    using SafeExchange.Core.Mcp.OAuth;
     using System;
     using System.Collections.Generic;
     using System.Linq;
 
     /// <summary>
-    /// The OAuth facts an MCP client needs, derived from the <c>Authentication</c> section (RFC 9728 protected
-    /// resource metadata): <c>resource</c> is the first <c>api://</c> entry of <c>ValidAudiences</c> (else the
-    /// first entry), <c>authorization_servers</c> is <c>Authority</c> ending in <c>/v2.0</c>, and
-    /// <c>scopes_supported</c> is <c>McpScopes</c> or <c>{resource}/user_impersonation</c>.
+    /// The OAuth facts an MCP client needs (RFC 9728 protected resource metadata). <see cref="Resource"/> (the API's
+    /// identifier for scopes) is the first <c>api://</c> entry of <c>ValidAudiences</c> (else the first entry) and
+    /// <see cref="Scopes"/> is <c>McpScopes</c> or <c>{Resource}/user_impersonation</c>. The published document names
+    /// the MCP URL as <c>resource</c> and, when the OAuth broker is configured, this host's broker as the
+    /// authorization server; otherwise <c>Authority</c> ending in <c>/v2.0</c>.
     /// </summary>
     public sealed class McpProtectedResource
     {
@@ -27,9 +29,12 @@ namespace SafeExchange.Core.Mcp
 
         private readonly IOptionsMonitor<AuthenticationConfiguration> authentication;
 
-        public McpProtectedResource(IOptionsMonitor<AuthenticationConfiguration> authentication)
+        private readonly IOptionsMonitor<McpOAuthOptions> oauth;
+
+        public McpProtectedResource(IOptionsMonitor<AuthenticationConfiguration> authentication, IOptionsMonitor<McpOAuthOptions> oauth)
         {
             this.authentication = authentication ?? throw new ArgumentNullException(nameof(authentication));
+            this.oauth = oauth ?? throw new ArgumentNullException(nameof(oauth));
         }
 
         public string Resource
@@ -87,13 +92,31 @@ namespace SafeExchange.Core.Mcp
             }
         }
 
-        public ProtectedResourceMetadata ToMetadata() => new()
+        /// <summary>
+        /// True when <c>Mcp:OAuth:ClientId</c> is set, <c>Mcp:OAuth:StateKey</c> is a valid key and
+        /// <c>Authentication:Authority</c> gives Entra endpoints.
+        /// </summary>
+        public bool IsBrokerConfigured
+            => !string.IsNullOrWhiteSpace(this.oauth.CurrentValue.ClientId)
+                && McpOAuthStateKey.TryDecode(this.oauth.CurrentValue.StateKey, out _)
+                && EntraEndpoints.FromAuthority(this.authentication.CurrentValue.Authority) is not null;
+
+        /// <summary>
+        /// The RFC 9728 document for the MCP endpoint under <paramref name="apiBaseUri"/> (<c>https://host/api/</c>).
+        /// </summary>
+        public ProtectedResourceMetadata ToMetadata(Uri apiBaseUri)
         {
-            Resource = this.Resource,
-            AuthorizationServers = this.AuthorizationServers.ToList(),
-            ScopesSupported = this.Scopes.ToList(),
-            BearerMethodsSupported = new List<string> { "header" },
-        };
+            ArgumentNullException.ThrowIfNull(apiBaseUri);
+            return new ProtectedResourceMetadata
+            {
+                Resource = McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Mcp),
+                AuthorizationServers = this.IsBrokerConfigured
+                    ? new List<string> { McpOAuthPaths.Issuer(apiBaseUri) }
+                    : this.AuthorizationServers.ToList(),
+                ScopesSupported = this.Scopes.ToList(),
+                BearerMethodsSupported = new List<string> { "header" },
+            };
+        }
 
         private static IReadOnlyList<string> SplitList(string? value)
             => (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

@@ -19,7 +19,7 @@ namespace SafeExchange.Tests.Mcp
 
     /// <summary>
     /// The 401 written by the authentication middlewares (RFC 9728 challenge only while MCP is enabled, body
-    /// unchanged) and the predicate that leaves only the metadata trigger anonymous.
+    /// unchanged) and the predicate that leaves only the metadata and OAuth broker triggers anonymous.
     /// </summary>
     [TestFixture]
     public class McpChallengeTests : McpHttpTestBase
@@ -53,10 +53,24 @@ namespace SafeExchange.Tests.Mcp
         }
 
         [TestCase("SafeExchange-OAuthProtectedResource", "httpTrigger", false)]
+        [TestCase("SafeExchange-OAuthAuthorizationServerMetadata", "httpTrigger", false)]
+        [TestCase("SafeExchange-OAuthOpenIdConfiguration", "httpTrigger", false)]
+        [TestCase("SafeExchange-OAuthRegister", "httpTrigger", false)]
+        [TestCase("SafeExchange-OAuthAuthorize", "httpTrigger", false)]
+        [TestCase("SafeExchange-OAuthCallback", "httpTrigger", false)]
+        [TestCase("SafeExchange-OAuthToken", "httpTrigger", false)]
+        [TestCase("SafeExchange-WellKnownAuthorizationServerApi", "httpTrigger", false)]
+        [TestCase("SafeExchange-WellKnownOpenIdConfigurationApi", "httpTrigger", false)]
+        [TestCase("SafeExchange-WellKnownProtectedResourceApiMcp", "httpTrigger", false)]
+        [TestCase("SafeExchange-WellKnownNotFound", "httpTrigger", false)]
+        [TestCase("safeexchange-wellknownnotfound", "httpTrigger", true)]
+        [TestCase("safeexchange-oauthtoken", "httpTrigger", true)]
+        [TestCase("SafeExchange-OAuthToken2", "httpTrigger", true)]
+        [TestCase("SafeExchange-OAuth", "httpTrigger", true)]
         [TestCase("SafeExchange-Mcp", "httpTrigger", true)]
         [TestCase("SafeExchange-SecretMeta", "httpTrigger", true)]
         [TestCase("SafeExchange-Purge", "timerTrigger", false)]
-        public void OnlyTheMetadataTrigger_SkipsAuthentication(string functionName, string triggerType, bool authenticated)
+        public void OnlyTheMetadataAndBrokerTriggers_SkipAuthentication_ByExactName(string functionName, string triggerType, bool authenticated)
         {
             var context = new TestFunctionContext(Definition(functionName, triggerType), new Mock<FunctionInvocation>().Object);
 

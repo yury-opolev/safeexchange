@@ -14,6 +14,7 @@ namespace SafeExchange.Tests.Mcp
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Groups;
     using SafeExchange.Core.Mcp;
+    using SafeExchange.Core.Mcp.OAuth;
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Services;
@@ -104,6 +105,7 @@ namespace SafeExchange.Tests.Mcp
             services.Configure<AuthenticationConfiguration>(configuration.GetSection("Authentication"));
             services.Configure<OrphanedSecretConfiguration>(configuration.GetSection("OrphanedSecret"));
             services.Configure<GloballyAllowedGroupsConfiguration>(configuration.GetSection("GlobalAllowLists"));
+            services.Configure<McpOAuthOptions>(configuration.GetSection(McpOAuthOptions.SectionName));
 
             services.AddSingleton(this.DbContext);
             services.AddSingleton(this.Purger);

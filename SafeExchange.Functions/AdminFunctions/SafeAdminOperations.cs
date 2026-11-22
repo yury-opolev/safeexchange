@@ -16,7 +16,7 @@ namespace SafeExchange.Functions
 
     public class SafeAdminOperations
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private SafeExchangeAdminOperations adminOperationsHandler;
 

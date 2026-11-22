@@ -27,7 +27,7 @@ namespace SafeExchange.Functions
         // GET and DELETE are routed here only to answer 405: the endpoint has no server-initiated stream and no sessions.
         [Function(McpRoutes.McpFunctionName)]
         public async Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", Route = McpRoutes.Mcp)]
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", "get", "delete", Route = McpRoutes.ApiRoutePrefix + McpRoutes.Mcp)]
             HttpRequestData request)
         {
             var principal = request.FunctionContext.GetPrincipal();

@@ -14,7 +14,7 @@ namespace SafeExchange.Functions
 
     public class SafeSecret
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private SafeExchangeSecretMeta metaHandler;
 
