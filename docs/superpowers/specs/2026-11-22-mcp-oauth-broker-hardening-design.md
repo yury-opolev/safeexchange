@@ -58,11 +58,17 @@ an MCP client such as Copilot CLI." Headers: `Content-Security-Policy: default-s
 `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`,
 `Content-Type: text/html; charset=utf-8`. The environment name is not shown (no reliable source).
 
-### B. Rate limiting — deferred
+### B. Rate limiting
 
-Deferred by the owner. An in-memory per-instance limiter is weak (scale-out, IP rotation) and adds
-false-positive risk; the impact is availability of MCP sign-in only. Follow-up before production: edge
-rate limiting (Front Door WAF or APIM ate-limit-by-key) for the anonymous `/api/oauth/*` routes.
+In-memory, per-instance, per-client-IP token bucket for all anonymous broker endpoints
+(`/api/oauth/register|authorize|callback|token`): default 30 requests/minute burst 30 per IP for token,
+60/min for the others (config `Mcp:OAuth:RateLimit:*`, sensible defaults). Exceeded → 429 with
+`Retry-After` (seconds) and RFC 6749-style JSON `{"error":"slow_down"}` for token, plain 429 page/JSON for
+the others. Client IP: the first entry of `X-Forwarded-For` set by the App Service front end, else the
+connection remote address (document that it is best-effort; edge rate limiting is the stronger option).
+Bucket store bounded (LRU / max 10k keys) to avoid memory growth. Also cap concurrent outbound Entra
+token calls per instance (default 16) with `SemaphoreSlim`; when saturated beyond a short wait (2 s) →
+503 `{"error":"temporarily_unavailable"}` with `Retry-After: 2`.
 
 ### C. Robust JSON handling
 
@@ -83,9 +89,8 @@ function app's egress IP, so IP/location-based Conditional Access and Identity P
 
 ### F. Logging
 
-- Broker refusals (`Refuse`, `RedirectError`, consent failures, state verification failures, rate-limit
-  hits) log at **Warning** with the existing safe templates (never codes, tokens, verifiers, state,
-  cookies or nonces).
+- Broker refusals (`Refuse`, `RedirectError`, consent failures, state verification failures, rate-limit hits) log at
+  **Warning** with the existing safe templates (never codes, tokens, verifiers, state, cookies or nonces).
 - The "could not reach Entra" warning includes `HttpRequestException.HttpRequestError` and the inner
   exception type name.
 
@@ -102,8 +107,7 @@ function app's egress IP, so IP/location-based Conditional Access and Identity P
 TDD for every item. Unit tests in `SafeExchange.Tests\Mcp\OAuth` for: consent GET page content/headers/
 cookie; POST allow/deny; POST with missing/mismatched cookie, tampered token, tampered parameters,
 expired nonce; `prompt` never forwarded (GET and POST, incl. `prompt=none`); signed state round-trip,
-tamper, expiry, nonce/cookie mismatch at callback; rate limiting (burst then 429 + Retry-After; per-IP
-isolation; bounded store); concurrency cap (503); JSON edge cases; no-store headers; https enforcement;
+tamper, expiry, nonce/cookie mismatch at callback; rate limiting (burst then 429 + Retry-After; per-IP isolation; bounded store); concurrency cap (503); JSON edge cases; no-store headers; https enforcement;
 Warning-level logs and no secrets in logs (extend the existing log-capture test with the cookie nonce and
 state); non-JSON / unexpected-status Entra responses → 502. Functions adapter tests for cookies (`Set-Cookie`
 attributes) and HTML headers. Contract tests and the route guard test stay green (the authorize function
@@ -111,5 +115,5 @@ gains the POST method — update `FunctionRouteTests` expected methods for that 
 
 ## Out of scope
 
-Rate limiting (section B, deferred), persisted per-client registrations, remembering approvals, alert
+Edge (Front Door/APIM) rate limiting (the in-app limiter is per instance and best-effort), persisted per-client registrations, remembering approvals, alert
 rules, removing `localhost` from the loopback allow-list.
