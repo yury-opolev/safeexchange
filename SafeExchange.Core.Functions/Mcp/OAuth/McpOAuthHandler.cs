@@ -10,21 +10,28 @@ namespace SafeExchange.Core.Functions.Mcp.OAuth
     using System.Globalization;
     using System.IO;
     using System.Net;
+    using System.Text;
     using System.Threading.Tasks;
 
     /// <summary>
-    /// Functions adapters for the anonymous OAuth broker routes: request URL, body and consent cookie into
-    /// <see cref="McpOAuthBroker"/>, its result out as status, <c>Location</c>, <c>Set-Cookie</c>, <c>Retry-After</c>,
-    /// a JSON or HTML body (HTML with <see cref="ConsentPage.SecurityHeaders"/>) and <c>Cache-Control: no-store</c>.
-    /// A disabled broker answers a bare 404.
+    /// Functions adapters for the anonymous OAuth broker routes: each request is first checked against
+    /// <see cref="McpOAuthThrottle"/> (client address = last <c>X-Forwarded-For</c> entry), then the request URL, the
+    /// UTF-8 body and the consent cookie go into <see cref="McpOAuthBroker"/>, and its result goes out as status,
+    /// <c>Location</c>, <c>Set-Cookie</c>, <c>Retry-After</c>, a JSON or HTML body (HTML with
+    /// <see cref="ConsentPage.SecurityHeaders"/>) and <c>Cache-Control: no-store</c>. A disabled broker answers a bare 404.
     /// </summary>
     public sealed class McpOAuthHandler
     {
+        private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
         private readonly McpOAuthBroker broker;
 
-        public McpOAuthHandler(McpOAuthBroker broker)
+        private readonly McpOAuthThrottle throttle;
+
+        public McpOAuthHandler(McpOAuthBroker broker, McpOAuthThrottle throttle)
         {
             this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            this.throttle = throttle ?? throw new ArgumentNullException(nameof(throttle));
         }
 
         public Task<HttpResponseData> Metadata(HttpRequestData request)
@@ -36,7 +43,9 @@ namespace SafeExchange.Core.Functions.Mcp.OAuth
         public async Task<HttpResponseData> Register(HttpRequestData request)
         {
             ArgumentNullException.ThrowIfNull(request);
-            return await WriteAsync(request, this.broker.Register(McpHandler.ApiBaseUri(request.Url), await ReadBodyAsync(request)));
+            var result = this.Throttle(request, McpOAuthThrottle.Register)
+                ?? this.broker.Register(McpHandler.ApiBaseUri(request.Url), await ReadBodyAsync(request));
+            return await WriteAsync(request, result);
         }
 
         /// <summary>
@@ -46,39 +55,58 @@ namespace SafeExchange.Core.Functions.Mcp.OAuth
         {
             ArgumentNullException.ThrowIfNull(request);
             var apiBaseUri = McpHandler.ApiBaseUri(request.Url);
-            var result = string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase)
-                ? this.broker.AuthorizeConsent(apiBaseUri, await ReadBodyAsync(request), ReadConsentCookie(request))
-                : this.broker.Authorize(apiBaseUri, request.Url.Query);
+            var result = this.Throttle(request, McpOAuthThrottle.Authorize)
+                ?? (string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase)
+                    ? this.broker.AuthorizeConsent(apiBaseUri, await ReadBodyAsync(request), ReadConsentCookie(request))
+                    : this.broker.Authorize(apiBaseUri, request.Url.Query));
             return await WriteAsync(request, result);
         }
 
         public Task<HttpResponseData> Callback(HttpRequestData request)
         {
             ArgumentNullException.ThrowIfNull(request);
-            return WriteAsync(request, this.broker.Callback(McpHandler.ApiBaseUri(request.Url), request.Url.Query, ReadConsentCookie(request)));
+            var result = this.Throttle(request, McpOAuthThrottle.Callback)
+                ?? this.broker.Callback(McpHandler.ApiBaseUri(request.Url), request.Url.Query, ReadConsentCookie(request));
+            return WriteAsync(request, result);
         }
 
         public async Task<HttpResponseData> Token(HttpRequestData request)
         {
             ArgumentNullException.ThrowIfNull(request);
-            var result = await this.broker.TokenAsync(McpHandler.ApiBaseUri(request.Url), await ReadBodyAsync(request), request.FunctionContext.CancellationToken);
+            var result = this.Throttle(request, McpOAuthThrottle.Token)
+                ?? await this.broker.TokenAsync(McpHandler.ApiBaseUri(request.Url), await ReadBodyAsync(request), request.FunctionContext.CancellationToken);
             return await WriteAsync(request, result);
         }
+
+        // A disabled broker is not throttled: it answers 404 to everything.
+        private McpOAuthResult? Throttle(HttpRequestData request, string endpoint)
+            => this.broker.IsEnabled ? this.throttle.Check(endpoint, ReadClientAddress(request)) : null;
+
+        private static string? ReadClientAddress(HttpRequestData request)
+            => request.Headers.TryGetValues("X-Forwarded-For", out var values) ? ClientAddress.FromForwardedFor(string.Join(",", values)) : null;
 
         // HTTP/2 may split Cookie into several header fields; they are joined with "; " (RFC 9113 §8.2.3).
         private static string? ReadConsentCookie(HttpRequestData request)
             => request.Headers.TryGetValues("Cookie", out var values) ? ConsentCookie.Read(string.Join("; ", values)) : null;
 
         // Reads one character more than the broker accepts, so an oversize body is refused without buffering all of it.
-        private static async Task<string> ReadBodyAsync(HttpRequestData request)
+        // A body that is not valid UTF-8 reads as null, which the broker refuses like an empty one.
+        private static async Task<string?> ReadBodyAsync(HttpRequestData request)
         {
-            using var reader = new StreamReader(request.Body ?? Stream.Null);
+            using var reader = new StreamReader(request.Body ?? Stream.Null, StrictUtf8);
             var buffer = new char[McpOAuthBroker.MaxBodyLength + 1];
             var length = 0;
             int read;
-            while (length < buffer.Length && (read = await reader.ReadAsync(buffer.AsMemory(length))) > 0)
+            try
             {
-                length += read;
+                while (length < buffer.Length && (read = await reader.ReadAsync(buffer.AsMemory(length))) > 0)
+                {
+                    length += read;
+                }
+            }
+            catch (DecoderFallbackException)
+            {
+                return null;
             }
 
             return new string(buffer, 0, length);
