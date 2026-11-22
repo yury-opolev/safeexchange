@@ -56,6 +56,8 @@ namespace SafeExchange.Core.Mcp.OAuth
 
         private readonly IEntraTokenClient tokenClient;
 
+        private readonly EntraCallGate entraCallGate;
+
         private readonly ILogger log;
 
         public McpOAuthBroker(
@@ -64,6 +66,7 @@ namespace SafeExchange.Core.Mcp.OAuth
             IOptionsMonitor<AuthenticationConfiguration> authentication,
             IOptionsMonitor<Features> features,
             IEntraTokenClient tokenClient,
+            EntraCallGate entraCallGate,
             ILogger<McpOAuthBroker> log)
         {
             this.protectedResource = protectedResource ?? throw new ArgumentNullException(nameof(protectedResource));
@@ -71,6 +74,7 @@ namespace SafeExchange.Core.Mcp.OAuth
             this.authentication = authentication ?? throw new ArgumentNullException(nameof(authentication));
             this.features = features ?? throw new ArgumentNullException(nameof(features));
             this.tokenClient = tokenClient ?? throw new ArgumentNullException(nameof(tokenClient));
+            this.entraCallGate = entraCallGate ?? throw new ArgumentNullException(nameof(entraCallGate));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
@@ -114,7 +118,7 @@ namespace SafeExchange.Core.Mcp.OAuth
                 return this.Refuse("register", "invalid_redirect_uri", "redirect_uris must list 1 to 10 loopback http URIs (127.0.0.1, localhost or [::1]) without fragment or user info.");
             }
 
-            if (request["token_endpoint_auth_method"] is JsonNode method && !(method is JsonValue value && value.TryGetValue<string>(out var name) && name == "none"))
+            if (request["token_endpoint_auth_method"] is JsonNode method && !(TryGetString(method, out var name) && name == "none"))
             {
                 return this.Refuse("register", "invalid_client_metadata", "Only public clients (token_endpoint_auth_method none) can register.");
             }
@@ -322,7 +326,9 @@ namespace SafeExchange.Core.Mcp.OAuth
         /// Forwards an <c>authorization_code</c> (with <c>code</c> and <c>code_verifier</c>) or <c>refresh_token</c>
         /// grant to Entra's fixed token endpoint with the broker's client ID, callback and scope; everything else the
         /// client sent (<c>resource</c>, <c>client_secret</c>, its own <c>redirect_uri</c> and <c>scope</c>) is dropped.
-        /// Entra's status and body are returned unchanged.
+        /// Entra's status and body are returned unchanged when the status is 200, 400 or 401 and the body is a JSON
+        /// object; anything else is 502 <c>server_error</c>. At most <see cref="EntraCallGate"/> calls run at once; beyond
+        /// that the answer is 503 <c>temporarily_unavailable</c> with <c>Retry-After</c>.
         /// </summary>
         public async Task<McpOAuthResult> TokenAsync(Uri apiBaseUri, string? body, CancellationToken cancellationToken = default)
         {
@@ -387,6 +393,13 @@ namespace SafeExchange.Core.Mcp.OAuth
 
             form.Add(new("scope", string.Join(' ', this.Scopes)));
 
+            if (!await this.entraCallGate.TryEnterAsync(cancellationToken))
+            {
+                this.log.LogWarning("MCP OAuth token ({GrantType}) found every Entra call slot busy; answered 503.", grantType);
+                return McpOAuthResult.Error(HttpStatusCode.ServiceUnavailable, "temporarily_unavailable", "Too many sign-ins are in progress; retry shortly.")
+                    with { RetryAfterSeconds = EntraCallGate.RetryAfterSeconds };
+            }
+
             EntraTokenResponse response;
             try
             {
@@ -394,15 +407,31 @@ namespace SafeExchange.Core.Mcp.OAuth
             }
             catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
-                this.log.LogWarning("MCP OAuth token ({GrantType}) could not reach Entra: {ExceptionType}.", grantType, ex.GetType().Name);
+                this.log.LogWarning(
+                    "MCP OAuth token ({GrantType}) could not reach Entra: {ExceptionType} ({HttpRequestError}, inner {InnerExceptionType}).",
+                    grantType,
+                    ex.GetType().Name,
+                    ex is HttpRequestException requestException ? requestException.HttpRequestError.ToString() : "none",
+                    ex.InnerException?.GetType().Name ?? "none");
                 return McpOAuthResult.Error(HttpStatusCode.BadGateway, "server_error", "The identity provider could not be reached.");
+            }
+            finally
+            {
+                this.entraCallGate.Exit();
+            }
+
+            if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized)
+                || !TryReadEntraError(response.Body, out var entraError))
+            {
+                this.log.LogWarning("MCP OAuth token ({GrantType}) got an unexpected Entra response with status {StatusCode}.", grantType, (int)response.StatusCode);
+                return McpOAuthResult.Error(HttpStatusCode.BadGateway, "server_error", "The identity provider returned an unexpected response.");
             }
 
             this.log.LogInformation(
                 "MCP OAuth token ({GrantType}) relayed Entra status {StatusCode} (error: {EntraError}).",
                 grantType,
                 (int)response.StatusCode,
-                LogSafeErrorCode(EntraErrorCode(response.Body)));
+                entraError);
             return McpOAuthResult.Json(response.StatusCode, response.Body);
         }
 
@@ -473,7 +502,7 @@ namespace SafeExchange.Core.Mcp.OAuth
 
         private McpOAuthResult Refuse(string endpoint, string error, string description)
         {
-            this.log.LogInformation("MCP OAuth {Endpoint} refused the request with {Error}.", endpoint, error);
+            this.log.LogWarning("MCP OAuth {Endpoint} refused the request with {Error}.", endpoint, error);
             return McpOAuthResult.Error(HttpStatusCode.BadRequest, error, description);
         }
 
@@ -501,7 +530,7 @@ namespace SafeExchange.Core.Mcp.OAuth
 
             foreach (var item in array)
             {
-                if (item is not JsonValue value || !value.TryGetValue<string>(out var text))
+                if (!TryGetString(item, out var text))
                 {
                     return false;
                 }
@@ -512,6 +541,21 @@ namespace SafeExchange.Core.Mcp.OAuth
             return true;
         }
 
+        // A string with an invalid UTF-16 escape (e.g. a lone "\uD800") throws InvalidOperationException on read.
+        private static bool TryGetString(JsonNode? node, [NotNullWhen(true)] out string? text)
+        {
+            text = null;
+            try
+            {
+                return node is JsonValue value && value.TryGetValue(out text);
+            }
+            catch (InvalidOperationException)
+            {
+                text = null;
+                return false;
+            }
+        }
+
         private static bool IsAbsentOrSubset(JsonObject request, string name, IReadOnlyCollection<string> allowed)
             => request[name] is null || (TryGetStrings(request, name, out var values) && values.All(allowed.Contains));
 
@@ -520,7 +564,7 @@ namespace SafeExchange.Core.Mcp.OAuth
 
         private McpOAuthResult RedirectError(string endpoint, string redirectUri, string? clientState, string error, string description)
         {
-            this.log.LogInformation("MCP OAuth {Endpoint} redirected {Error} to the client.", endpoint, error);
+            this.log.LogWarning("MCP OAuth {Endpoint} redirected {Error} to the client.", endpoint, error);
             return McpOAuthResult.Redirect(AppendQuery(redirectUri, new KeyValuePair<string, string?>[]
             {
                 new("error", error),
@@ -548,20 +592,33 @@ namespace SafeExchange.Core.Mcp.OAuth
         private static string LogSafeErrorCode(string? error)
             => error is { Length: > 0 and <= 64 } && error.All(c => char.IsAsciiLetterLower(c) || c == '_') ? error : "unrecognized";
 
-        private static string? EntraErrorCode(string body)
+        // False unless the body is a JSON object; errorCode is its log-safe "error" ("none" when absent).
+        private static bool TryReadEntraError(string body, out string errorCode)
         {
+            errorCode = "none";
             try
             {
                 using var document = JsonDocument.Parse(body);
-                return document.RootElement.ValueKind == JsonValueKind.Object
-                    && document.RootElement.TryGetProperty("error", out var error)
-                    && error.ValueKind == JsonValueKind.String
-                        ? error.GetString()
-                        : "none";
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return false;
+                }
+
+                if (document.RootElement.TryGetProperty("error", out var error))
+                {
+                    errorCode = error.ValueKind == JsonValueKind.String ? LogSafeErrorCode(error.GetString()) : "unrecognized";
+                }
+
+                return true;
             }
             catch (JsonException)
             {
-                return null;
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                errorCode = "unrecognized";
+                return true;
             }
         }
 

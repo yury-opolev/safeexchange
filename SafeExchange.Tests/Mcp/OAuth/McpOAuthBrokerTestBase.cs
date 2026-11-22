@@ -57,7 +57,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             this.Broker = this.CreateBroker();
         }
 
-        protected McpOAuthBroker CreateBroker(bool mcpEnabled = true, string clientId = BrokerClientId, string authority = Tenant, string stateKey = McpOAuthTestKey.Value)
+        protected McpOAuthBroker CreateBroker(bool mcpEnabled = true, string clientId = BrokerClientId, string authority = Tenant, string stateKey = McpOAuthTestKey.Value, EntraCallGate? gate = null)
         {
             var authentication = Mock.Of<IOptionsMonitor<AuthenticationConfiguration>>(x => x.CurrentValue == new AuthenticationConfiguration
             {
@@ -67,7 +67,14 @@ namespace SafeExchange.Tests.Mcp.OAuth
             var oauth = Mock.Of<IOptionsMonitor<McpOAuthOptions>>(x => x.CurrentValue == new McpOAuthOptions { ClientId = clientId, StateKey = stateKey });
             var features = Mock.Of<IOptionsMonitor<Features>>(x => x.CurrentValue == new Features { McpEndpoint = mcpEnabled });
             var loggerFactory = new LoggerFactory(new[] { this.Logs });
-            return new McpOAuthBroker(new McpProtectedResource(authentication, oauth), oauth, authentication, features, this.Entra, loggerFactory.CreateLogger<McpOAuthBroker>());
+            return new McpOAuthBroker(
+                new McpProtectedResource(authentication, oauth),
+                oauth,
+                authentication,
+                features,
+                this.Entra,
+                gate ?? new EntraCallGate(16, EntraCallGate.DefaultWait),
+                loggerFactory.CreateLogger<McpOAuthBroker>());
         }
 
         protected static JsonObject Json(string? body) => JsonNode.Parse(body!)!.AsObject();

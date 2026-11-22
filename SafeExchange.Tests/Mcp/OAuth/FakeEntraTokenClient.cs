@@ -13,7 +13,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
     using System.Threading.Tasks;
 
     /// <summary>
-    /// Records every form the broker forwards and answers with <see cref="Response"/> (or throws <see cref="Failure"/>).
+    /// Records every form the broker forwards and answers with <see cref="Response"/> (or throws <see cref="Failure"/>),
+    /// after <see cref="Hold"/> completes when it is set.
     /// </summary>
     public sealed class FakeEntraTokenClient : IEntraTokenClient
     {
@@ -31,15 +32,22 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
         public Exception? Failure { get; set; }
 
-        public Task<EntraTokenResponse> RedeemAsync(IReadOnlyList<KeyValuePair<string, string>> form, CancellationToken cancellationToken = default)
+        public Task? Hold { get; set; }
+
+        public async Task<EntraTokenResponse> RedeemAsync(IReadOnlyList<KeyValuePair<string, string>> form, CancellationToken cancellationToken = default)
         {
             this.Requests.Add(form.ToDictionary(p => p.Key, p => p.Value));
+            if (this.Hold is not null)
+            {
+                await this.Hold;
+            }
+
             if (this.Failure is not null)
             {
                 throw this.Failure;
             }
 
-            return Task.FromResult(this.Response);
+            return this.Response;
         }
     }
 }
