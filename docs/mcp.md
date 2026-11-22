@@ -68,7 +68,7 @@ The anonymous metadata document at that URL tells the client where to sign in (h
 }
 ```
 
-The metadata lives under `/api` because Azure Functions serves every HTTP trigger under the `api` route prefix; the challenge points to it explicitly, so clients that follow `resource_metadata` find it. Clients that ignore the hint and probe `https://<host>/.well-known/oauth-protected-resource` get `404`.
+The metadata lives under `/api`; the challenge points to it explicitly, so clients that follow `resource_metadata` find it. Clients that ignore the hint probe the host root instead, so the same documents are also served there (see [Discovery at the host root](#discovery-at-the-host-root)).
 
 `resource` is always the MCP URL (RFC 9728; MCP clients such as Copilot CLI reject anything else). Without `Mcp:OAuth:ClientId`, `authorization_servers` names Entra directly; Entra has no dynamic client registration and rejects the MCP URL as `resource`, so most MCP clients cannot finish OAuth that way and need the [fallback](#fallback-bearer-header-from-the-azure-cli).
 
@@ -93,7 +93,21 @@ Rules the broker enforces:
 - **Logging.** The broker logs route, outcome and Entra error codes only, never codes, verifiers, tokens or state. The Functions platform's own request telemetry may still record request URLs, which for the callback include the single-use, PKCE-bound code.
 - **Off by default.** Every broker route answers `404` unless `Features.McpEndpoint` is on, `Mcp:OAuth:ClientId` is set and `Authentication:Authority` is an https URL.
 
+#### Discovery at the host root
+
+On Azure the Functions platform only routes paths under the route prefix; any other path answers `502`, and some MCP clients (Copilot CLI) treat a `5xx` during discovery as fatal while a `404` makes them try the next candidate. So `host.json` sets `extensions.http.routePrefix` to `""` and every trigger route spells out its own `api/` prefix (all public URLs stay `/api/...`, byte-identical). With no prefix the host can also serve the discovery documents at the root, in the issuer-relative and resource-relative forms clients probe:
+
+| Root path (anonymous, `GET`) | Same document as |
+|------------------------------|------------------|
+| `/.well-known/oauth-authorization-server/api` | `/api/.well-known/oauth-authorization-server` |
+| `/.well-known/openid-configuration/api` | `/api/.well-known/openid-configuration` |
+| `/.well-known/oauth-protected-resource/api/mcp` | `/api/.well-known/oauth-protected-resource` |
+
+They share the handlers and gating of their `/api` twins (`404` while the feature or broker is off), and the documents' URLs do not change (issuer `https://<host>/api`, resource `https://<host>/api/mcp`). Every other `/.well-known/*` path (for example `/.well-known/oauth-authorization-server/api/mcp`) answers a plain `404`.
+
 #### Entra setup (once per environment)
+
+The broker client can be a separate public client app (below) or the API app itself: mark it as a public client (`--is-fallback-public-client true`) and add the redirect URI `https://<host>/api/oauth/callback` to its public-client (mobile and desktop) redirect URIs. The staging environment uses the API app as the broker client. A separate client needs the pre-authorisation in step 3; the API app itself does not.
 
 Create a public client app for the broker and pre-authorise it on the API app, so users get no consent prompt. In PowerShell, signed in with `az login` as someone who can manage both apps:
 

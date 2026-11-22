@@ -13,7 +13,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafePinnedGroups
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private SafeExchangePinnedGroups safeExchangePinnedGroupsHandler;
 

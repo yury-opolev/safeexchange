@@ -9,32 +9,45 @@ namespace SafeExchange.Core.Functions.Mcp
     using System.Collections.Generic;
 
     /// <summary>
-    /// Routes and function names of the MCP triggers. Azure Functions serves HTTP triggers under the
-    /// <c>api</c> route prefix (host.json sets no other), so the metadata document lives at
-    /// <c>/api/.well-known/oauth-protected-resource</c>; the <c>WWW-Authenticate</c> challenge points there.
+    /// Routes and function names of the MCP triggers. host.json sets an empty route prefix, so every route spells
+    /// out the <see cref="RoutePrefix"/> itself and the public URLs stay under <c>/api</c>: the metadata document
+    /// lives at <c>/api/.well-known/oauth-protected-resource</c> (the <c>WWW-Authenticate</c> challenge points there).
     /// The OAuth broker's issuer is <c>https://host/api</c>, so its metadata is served at
     /// <c>/api/.well-known/openid-configuration</c> (the issuer-relative form MCP clients try) and
     /// <c>/api/.well-known/oauth-authorization-server</c>.
+    /// The platform answers 502 to paths outside the route prefix, so the documents are also served at the host
+    /// root in the forms MCP clients probe (the issuer path or the resource path appended to the well-known
+    /// segment, RFC 8414 / RFC 9728), and any other <c>/.well-known/*</c> path answers 404.
     /// </summary>
     public static class McpRoutes
     {
         public const string RoutePrefix = "api";
 
-        public const string Mcp = "mcp";
+        public const string Mcp = RoutePrefix + "/" + McpOAuthPaths.Mcp;
 
-        public const string ProtectedResourceMetadata = ".well-known/oauth-protected-resource";
+        public const string ProtectedResourceMetadataDocument = ".well-known/oauth-protected-resource";
 
-        public const string OAuthAuthorizationServerMetadata = McpOAuthPaths.AuthorizationServerMetadata;
+        public const string ProtectedResourceMetadata = RoutePrefix + "/" + ProtectedResourceMetadataDocument;
 
-        public const string OAuthOpenIdConfiguration = McpOAuthPaths.OpenIdConfiguration;
+        public const string OAuthAuthorizationServerMetadata = RoutePrefix + "/" + McpOAuthPaths.AuthorizationServerMetadata;
 
-        public const string OAuthRegister = McpOAuthPaths.Register;
+        public const string OAuthOpenIdConfiguration = RoutePrefix + "/" + McpOAuthPaths.OpenIdConfiguration;
 
-        public const string OAuthAuthorize = McpOAuthPaths.Authorize;
+        public const string OAuthRegister = RoutePrefix + "/" + McpOAuthPaths.Register;
 
-        public const string OAuthCallback = McpOAuthPaths.Callback;
+        public const string OAuthAuthorize = RoutePrefix + "/" + McpOAuthPaths.Authorize;
 
-        public const string OAuthToken = McpOAuthPaths.Token;
+        public const string OAuthCallback = RoutePrefix + "/" + McpOAuthPaths.Callback;
+
+        public const string OAuthToken = RoutePrefix + "/" + McpOAuthPaths.Token;
+
+        public const string WellKnownAuthorizationServerApi = McpOAuthPaths.AuthorizationServerMetadata + "/" + RoutePrefix;
+
+        public const string WellKnownOpenIdConfigurationApi = McpOAuthPaths.OpenIdConfiguration + "/" + RoutePrefix;
+
+        public const string WellKnownProtectedResourceApiMcp = ProtectedResourceMetadataDocument + "/" + Mcp;
+
+        public const string WellKnownNotFound = ".well-known/{*rest}";
 
         public const string McpFunctionName = "SafeExchange-Mcp";
 
@@ -52,7 +65,15 @@ namespace SafeExchange.Core.Functions.Mcp
 
         public const string OAuthTokenFunctionName = "SafeExchange-OAuthToken";
 
-        public const string ProtectedResourceMetadataPath = "/" + RoutePrefix + "/" + ProtectedResourceMetadata;
+        public const string WellKnownAuthorizationServerApiFunctionName = "SafeExchange-WellKnownAuthorizationServerApi";
+
+        public const string WellKnownOpenIdConfigurationApiFunctionName = "SafeExchange-WellKnownOpenIdConfigurationApi";
+
+        public const string WellKnownProtectedResourceApiMcpFunctionName = "SafeExchange-WellKnownProtectedResourceApiMcp";
+
+        public const string WellKnownNotFoundFunctionName = "SafeExchange-WellKnownNotFound";
+
+        public const string ProtectedResourceMetadataPath = "/" + ProtectedResourceMetadata;
 
         /// <summary>
         /// The functions the authentication middleware skips, matched by exact (ordinal) name.
@@ -66,6 +87,10 @@ namespace SafeExchange.Core.Functions.Mcp
             OAuthAuthorizeFunctionName,
             OAuthCallbackFunctionName,
             OAuthTokenFunctionName,
+            WellKnownAuthorizationServerApiFunctionName,
+            WellKnownOpenIdConfigurationApiFunctionName,
+            WellKnownProtectedResourceApiMcpFunctionName,
+            WellKnownNotFoundFunctionName,
         };
     }
 }

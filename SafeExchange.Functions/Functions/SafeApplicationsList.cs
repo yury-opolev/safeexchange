@@ -13,7 +13,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeApplicationsList
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private SafeExchangeApplicationsList safeExchangeApplicationsListHandler;
 

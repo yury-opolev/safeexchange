@@ -202,9 +202,10 @@ public class SafeMcpOAuth
 
 Requirements:
 
-- Your authentication middleware must skip the anonymous functions (`McpRoutes.AnonymousFunctionNames`: the metadata and the six broker functions), which is what `IsAuthenticatedHttpTrigger` does.
+- Your authentication middleware must skip the anonymous functions (`McpRoutes.AnonymousFunctionNames`: the metadata, the six broker functions and the four root well-known functions), which is what `IsAuthenticatedHttpTrigger` does.
 - The metadata is derived from the request URL and the `Authentication` section (`Authority`, `ValidAudiences`, `McpScopes`); the broker also needs `Mcp:OAuth:ClientId` and an Entra public client app (see [mcp.md](mcp.md#entra-setup-once-per-environment)).
-- `McpRoutes.RoutePrefix` is `api` (the Functions default). If your `host.json` sets another route prefix, the challenge URL and `file_transfer_info` URLs will be wrong.
+- `McpRoutes.RoutePrefix` is `api`, and the route constants already include it (`McpRoutes.Mcp` is `api/mcp`): the function app sets `extensions.http.routePrefix` to `""` in `host.json` and every trigger route starts with `api/` (the `{apiVersion}` routes use `api/{apiVersion}`). Copy that setup: set the empty route prefix and prefix your own routes with `api/`, or keep a prefix of your own and drop the root routes below; either way the challenge URL and `file_transfer_info` URLs assume the public paths `/api/...`.
+- `SafeWellKnownRoot` adds the root discovery routes (`/.well-known/oauth-authorization-server/api`, `/.well-known/openid-configuration/api`, `/.well-known/oauth-protected-resource/api/mcp` and a `/.well-known/{*rest}` catch-all answering `404`), which need the empty route prefix and whose function names are in `McpRoutes.AnonymousFunctionNames`; see [mcp.md](mcp.md#discovery-at-the-host-root). Without them Azure answers `502` to MCP clients' root probes.
 - If your principals' claims differ from ours, register your own `ICallerResolver` (section 5); the MCP handler resolves the caller through it for every request.
 
 ## Migration checklist

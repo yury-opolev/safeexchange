@@ -19,7 +19,7 @@ namespace SafeExchange.Functions
 
     public class SafeAccessGiveUp
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private readonly SafeExchangeAccessGiveUp giveUpHandler;
 

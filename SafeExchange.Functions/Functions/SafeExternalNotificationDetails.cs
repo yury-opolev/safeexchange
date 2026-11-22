@@ -16,7 +16,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafeExternalNotificationDetails
     {
-        private const string Version = "v1";
+        private const string Version = "api/v1";
 
         private SafeExchangeExternalNotificationDetails notificationDetailsHandler;
 

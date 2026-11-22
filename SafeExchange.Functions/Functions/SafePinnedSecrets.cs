@@ -18,7 +18,7 @@ namespace SafeExchange.Functions.Functions
 
     public class SafePinnedSecrets
     {
-        private const string Version = "{apiVersion}";
+        private const string Version = "api/{apiVersion}";
 
         private SafeExchangePinnedSecrets safeExchangePinnedSecretsHandler;
 
