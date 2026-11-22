@@ -5,6 +5,7 @@
 namespace SafeExchange.Tests.Mcp
 {
     using NUnit.Framework;
+    using SafeExchange.Tests.Mcp.OAuth;
     using SafeExchange.Tests.Utilities;
     using System;
     using System.Net;
@@ -33,7 +34,7 @@ namespace SafeExchange.Tests.Mcp
         [Test]
         public async Task Metadata_WithTheBrokerConfigured_NamesThisHostAsTheAuthorizationServer()
         {
-            this.BuildProvider(("Mcp:OAuth:ClientId", "00000000-0000-0000-0000-0000000000c9"));
+            this.BuildProvider(("Mcp:OAuth:ClientId", "00000000-0000-0000-0000-0000000000c9"), ("Mcp:OAuth:StateKey", McpOAuthTestKey.Value));
 
             var response = await this.MetadataHandler.Run(MetadataRequest());
 

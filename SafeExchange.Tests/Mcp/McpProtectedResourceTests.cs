@@ -10,6 +10,7 @@ namespace SafeExchange.Tests.Mcp
     using SafeExchange.Core.Configuration;
     using SafeExchange.Core.Mcp;
     using SafeExchange.Core.Mcp.OAuth;
+    using SafeExchange.Tests.Mcp.OAuth;
     using System;
 
     [TestFixture]
@@ -91,21 +92,23 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(metadata.ScopesSupported, Is.EqualTo(new[] { "api://safeexchange.test/user_impersonation" }));
         }
 
-        [TestCase("", Authority)]
-        [TestCase("   ", Authority)]
-        [TestCase(BrokerClientId, "")]
-        [TestCase(BrokerClientId, "http://login.microsoftonline.com/00000000-0000-0000-0000-000000000001")]
-        public void TheBroker_NeedsAClientIdAndAnHttpsAuthority(string clientId, string authority)
+        [TestCase("", Authority, McpOAuthTestKey.Value)]
+        [TestCase("   ", Authority, McpOAuthTestKey.Value)]
+        [TestCase(BrokerClientId, "", McpOAuthTestKey.Value)]
+        [TestCase(BrokerClientId, "http://login.microsoftonline.com/00000000-0000-0000-0000-000000000001", McpOAuthTestKey.Value)]
+        [TestCase(BrokerClientId, Authority, "")]
+        [TestCase(BrokerClientId, Authority, "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHw==")]
+        public void TheBroker_NeedsAClientIdAnHttpsAuthorityAndAStateKey(string clientId, string authority, string stateKey)
         {
-            var resource = Create(new AuthenticationConfiguration { Authority = authority, ValidAudiences = "api://safeexchange.test" }, clientId);
+            var resource = Create(new AuthenticationConfiguration { Authority = authority, ValidAudiences = "api://safeexchange.test" }, clientId, stateKey);
 
             Assert.That(resource.IsBrokerConfigured, Is.False);
             Assert.That(resource.ToMetadata(ApiBase).AuthorizationServers, Does.Not.Contain("https://safeexchange.test/api"));
         }
 
-        private static McpProtectedResource Create(AuthenticationConfiguration configuration, string clientId = "")
+        private static McpProtectedResource Create(AuthenticationConfiguration configuration, string clientId = "", string stateKey = McpOAuthTestKey.Value)
             => new(
                 Mock.Of<IOptionsMonitor<AuthenticationConfiguration>>(x => x.CurrentValue == configuration),
-                Mock.Of<IOptionsMonitor<McpOAuthOptions>>(x => x.CurrentValue == new McpOAuthOptions { ClientId = clientId }));
+                Mock.Of<IOptionsMonitor<McpOAuthOptions>>(x => x.CurrentValue == new McpOAuthOptions { ClientId = clientId, StateKey = stateKey }));
     }
 }

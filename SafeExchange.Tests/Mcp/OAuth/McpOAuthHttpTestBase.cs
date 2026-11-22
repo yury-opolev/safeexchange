@@ -14,8 +14,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
     using System.Text;
 
     /// <summary>
-    /// <see cref="McpHttpTestBase"/> with the broker configured (<c>Mcp:OAuth:ClientId</c>), the
-    /// <see cref="McpOAuthHandler"/> adapter and a <see cref="FakeEntraTokenClient"/> in place of Entra.
+    /// <see cref="McpHttpTestBase"/> with the broker configured (<c>Mcp:OAuth:ClientId</c> and <c>Mcp:OAuth:StateKey</c>),
+    /// the <see cref="McpOAuthHandler"/> adapter and a <see cref="FakeEntraTokenClient"/> in place of Entra.
     /// </summary>
     public abstract class McpOAuthHttpTestBase : McpHttpTestBase
     {
@@ -28,7 +28,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [SetUp]
         public void OAuthSetUp()
         {
-            this.BuildProvider(("Mcp:OAuth:ClientId", BrokerClientId));
+            this.BuildProvider(("Mcp:OAuth:ClientId", BrokerClientId), ("Mcp:OAuth:StateKey", McpOAuthTestKey.Value));
         }
 
         protected override void ConfigureServices(IServiceCollection services)

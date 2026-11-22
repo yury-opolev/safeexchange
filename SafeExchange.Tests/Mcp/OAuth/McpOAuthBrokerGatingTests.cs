@@ -12,18 +12,20 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
     /// <summary>
     /// Every broker endpoint answers a bare 404 unless <c>Features.McpEndpoint</c> is on, <c>Mcp:OAuth:ClientId</c> is
-    /// set and <c>Authentication:Authority</c> gives Entra endpoints.
+    /// set, <c>Mcp:OAuth:StateKey</c> is a valid key and <c>Authentication:Authority</c> gives Entra endpoints.
     /// </summary>
     [TestFixture]
     public class McpOAuthBrokerGatingTests : McpOAuthBrokerTestBase
     {
-        [TestCase(false, BrokerClientId, Tenant)]
-        [TestCase(true, "", Tenant)]
-        [TestCase(true, "   ", Tenant)]
-        [TestCase(true, BrokerClientId, "")]
-        public async Task EveryEndpoint_IsNotFound_UnlessTheBrokerIsFullyConfigured(bool mcpEnabled, string clientId, string authority)
+        [TestCase(false, BrokerClientId, Tenant, McpOAuthTestKey.Value)]
+        [TestCase(true, "", Tenant, McpOAuthTestKey.Value)]
+        [TestCase(true, "   ", Tenant, McpOAuthTestKey.Value)]
+        [TestCase(true, BrokerClientId, "", McpOAuthTestKey.Value)]
+        [TestCase(true, BrokerClientId, Tenant, "")]
+        [TestCase(true, BrokerClientId, Tenant, "dG9vIHNob3J0")]
+        public async Task EveryEndpoint_IsNotFound_UnlessTheBrokerIsFullyConfigured(bool mcpEnabled, string clientId, string authority, string stateKey)
         {
-            var broker = this.CreateBroker(mcpEnabled, clientId, authority);
+            var broker = this.CreateBroker(mcpEnabled, clientId, authority, stateKey);
 
             Assert.That(broker.IsEnabled, Is.False);
             foreach (var result in await AllEndpointsAsync(broker))

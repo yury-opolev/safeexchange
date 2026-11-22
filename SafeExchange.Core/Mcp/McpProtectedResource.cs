@@ -93,10 +93,12 @@ namespace SafeExchange.Core.Mcp
         }
 
         /// <summary>
-        /// True when <c>Mcp:OAuth:ClientId</c> is set and <c>Authentication:Authority</c> gives Entra endpoints.
+        /// True when <c>Mcp:OAuth:ClientId</c> is set, <c>Mcp:OAuth:StateKey</c> is a valid key and
+        /// <c>Authentication:Authority</c> gives Entra endpoints.
         /// </summary>
         public bool IsBrokerConfigured
             => !string.IsNullOrWhiteSpace(this.oauth.CurrentValue.ClientId)
+                && McpOAuthStateKey.TryDecode(this.oauth.CurrentValue.StateKey, out _)
                 && EntraEndpoints.FromAuthority(this.authentication.CurrentValue.Authority) is not null;
 
         /// <summary>
