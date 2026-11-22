@@ -259,6 +259,13 @@
                 "description": "Application (client) ID of the Entra public client app used by the MCP OAuth broker (/api/oauth/*, /api/.well-known/oauth-authorization-server). Empty: the Mcp--OAuth--ClientId secret is not written (an existing value is kept; without one the broker answers 404). See docs/mcp.md."
             }
         },
+        "settings-mcp-oauthStateKey": {
+            "defaultValue": "[base64(concat(newGuid(), newGuid()))]",
+            "type": "securestring",
+            "metadata": {
+                "description": "HMAC key (base64, at least 32 bytes) that signs the MCP OAuth broker's consent token and state. Written to the Mcp--OAuth--StateKey secret only when settings-mcp-oauthClientId is set. Leave it unset: the default is new on every deployment (a redeploy rotates the key; only sign-ins in progress at that moment fail). See docs/mcp.md."
+            }
+        },
         "settings-limits-maxAppsPerRegistrar": {
             "defaultValue": "3",
             "type": "string",
@@ -2348,6 +2355,23 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-mcp-oauthClientId')]"
+            }
+        },
+        {
+            "condition": "[not(empty(parameters('settings-mcp-oauthClientId')))]",
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Mcp--OAuth--StateKey')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-mcp-oauthStateKey')]"
             }
         },
         {
