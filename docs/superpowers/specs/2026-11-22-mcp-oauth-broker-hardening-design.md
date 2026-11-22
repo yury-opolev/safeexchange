@@ -58,17 +58,11 @@ an MCP client such as Copilot CLI." Headers: `Content-Security-Policy: default-s
 `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`,
 `Content-Type: text/html; charset=utf-8`. The environment name is not shown (no reliable source).
 
-### B. Rate limiting
+### B. Rate limiting — deferred
 
-In-memory, per-instance, per-client-IP token bucket for all anonymous broker endpoints
-(`/api/oauth/register|authorize|callback|token`): default 30 requests/minute burst 30 per IP for token,
-60/min for the others (config `Mcp:OAuth:RateLimit:*`, sensible defaults). Exceeded → 429 with
-`Retry-After` (seconds) and RFC 6749-style JSON `{"error":"slow_down"}` for token, plain 429 page/JSON for
-the others. Client IP: the first entry of `X-Forwarded-For` set by the App Service front end, else the
-connection remote address (document that it is best-effort; edge rate limiting is the stronger option).
-Bucket store bounded (LRU / max 10k keys) to avoid memory growth. Also cap concurrent outbound Entra
-token calls per instance (default 16) with `SemaphoreSlim`; when saturated beyond a short wait (2 s) →
-503 `{"error":"temporarily_unavailable"}` with `Retry-After: 2`.
+Deferred by the owner. An in-memory per-instance limiter is weak (scale-out, IP rotation) and adds
+false-positive risk; the impact is availability of MCP sign-in only. Follow-up before production: edge
+rate limiting (Front Door WAF or APIM ate-limit-by-key) for the anonymous `/api/oauth/*` routes.
 
 ### C. Robust JSON handling
 
@@ -117,5 +111,5 @@ gains the POST method — update `FunctionRouteTests` expected methods for that 
 
 ## Out of scope
 
-Persisted per-client registrations, remembering approvals, edge (Front Door/APIM) rate limiting, alert
+Rate limiting (section B, deferred), persisted per-client registrations, remembering approvals, alert
 rules, removing `localhost` from the loopback allow-list.
