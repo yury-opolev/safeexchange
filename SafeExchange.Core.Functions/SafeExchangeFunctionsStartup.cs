@@ -12,6 +12,7 @@ namespace SafeExchange.Core
     using SafeExchange.Core.Filters;
     using SafeExchange.Core.Functions;
     using SafeExchange.Core.Functions.Mcp;
+    using SafeExchange.Core.Functions.Mcp.OAuth;
     using SafeExchange.Core.Middleware;
     using SafeExchange.Core.Services;
 
@@ -22,11 +23,12 @@ namespace SafeExchange.Core
                 .First(a => a.Type.EndsWith("Trigger")).Type == "httpTrigger";
 
         /// <summary>
-        /// HTTP triggers that need a bearer token: all except the anonymous protected-resource metadata.
+        /// HTTP triggers that need a bearer token: all except the anonymous protected-resource metadata and the
+        /// OAuth broker (<see cref="McpRoutes.AnonymousFunctionNames"/>, matched by exact name).
         /// </summary>
         public static bool IsAuthenticatedHttpTrigger(FunctionContext context)
             => IsHttpTrigger(context)
-                && !string.Equals(context.FunctionDefinition.Name, McpRoutes.ProtectedResourceMetadataFunctionName, StringComparison.Ordinal);
+                && !McpRoutes.AnonymousFunctionNames.Contains(context.FunctionDefinition.Name);
 
         public static void ConfigureWorkerDefaults(HostBuilderContext context, IFunctionsWorkerApplicationBuilder builder)
         {
@@ -80,6 +82,7 @@ namespace SafeExchange.Core
             services.AddScoped(sp => new SafeExchangeSecretAudit(sp.GetRequiredService<ICallerResolver>(), sp.GetRequiredService<AuditQueryService>()));
             services.AddScoped<McpHandler>();
             services.AddScoped<OAuthProtectedResourceHandler>();
+            services.AddScoped<McpOAuthHandler>();
 
             // Stamps customDimensions.saex.sessionId on every telemetry
             // item emitted within a request that carried the header. Works
