@@ -42,6 +42,7 @@ namespace SafeExchange.Core.Mcp
             services.AddScoped<McpToolRegistry>();
             services.AddScoped<McpRequestDispatcher>();
             services.AddSingleton<McpProtectedResource>();
+            services.AddSingleton<McpBaseUriGuard>();
 
             services.AddHttpClient(EntraTokenClient.HttpClientName, client => client.Timeout = EntraTokenClient.Timeout)
                 .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });

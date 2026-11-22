@@ -58,6 +58,8 @@ namespace SafeExchange.Core.Mcp.OAuth
 
         private readonly EntraCallGate entraCallGate;
 
+        private readonly McpBaseUriGuard baseUriGuard;
+
         private readonly ILogger log;
 
         public McpOAuthBroker(
@@ -67,6 +69,7 @@ namespace SafeExchange.Core.Mcp.OAuth
             IOptionsMonitor<Features> features,
             IEntraTokenClient tokenClient,
             EntraCallGate entraCallGate,
+            McpBaseUriGuard baseUriGuard,
             ILogger<McpOAuthBroker> log)
         {
             this.protectedResource = protectedResource ?? throw new ArgumentNullException(nameof(protectedResource));
@@ -75,18 +78,20 @@ namespace SafeExchange.Core.Mcp.OAuth
             this.features = features ?? throw new ArgumentNullException(nameof(features));
             this.tokenClient = tokenClient ?? throw new ArgumentNullException(nameof(tokenClient));
             this.entraCallGate = entraCallGate ?? throw new ArgumentNullException(nameof(entraCallGate));
+            this.baseUriGuard = baseUriGuard ?? throw new ArgumentNullException(nameof(baseUriGuard));
             this.log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
         /// <summary>
-        /// False (every endpoint answers 404) unless <c>Features.McpEndpoint</c> is on and the broker is configured.
+        /// False (every endpoint answers 404) unless <c>Features.McpEndpoint</c> is on and the broker is configured. Each
+        /// endpoint also answers 404 for a base URL that <see cref="McpBaseUriGuard"/> refuses (plain http, not loopback).
         /// </summary>
         public bool IsEnabled => this.features.CurrentValue.McpEndpoint && this.protectedResource.IsBrokerConfigured;
 
         public McpOAuthResult Metadata(Uri apiBaseUri)
         {
             ArgumentNullException.ThrowIfNull(apiBaseUri);
-            if (!this.IsEnabled)
+            if (!this.IsEnabledFor(apiBaseUri))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -98,9 +103,10 @@ namespace SafeExchange.Core.Mcp.OAuth
         /// RFC 7591 registration: every client gets the configured Entra public client ID; only loopback redirect
         /// URIs, the code flow and <c>token_endpoint_auth_method: none</c> are accepted.
         /// </summary>
-        public McpOAuthResult Register(string? body)
+        public McpOAuthResult Register(Uri apiBaseUri, string? body)
         {
-            if (!this.IsEnabled)
+            ArgumentNullException.ThrowIfNull(apiBaseUri);
+            if (!this.IsEnabledFor(apiBaseUri))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -153,7 +159,7 @@ namespace SafeExchange.Core.Mcp.OAuth
         public McpOAuthResult Authorize(Uri apiBaseUri, string? query)
         {
             ArgumentNullException.ThrowIfNull(apiBaseUri);
-            if (!this.TryGetStateKey(out var key))
+            if (!this.TryGetStateKey(apiBaseUri, out var key))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -196,7 +202,7 @@ namespace SafeExchange.Core.Mcp.OAuth
         {
             ArgumentNullException.ThrowIfNull(apiBaseUri);
             var endpoints = this.EnabledEndpoints;
-            if (endpoints is null || !this.TryGetStateKey(out var key))
+            if (endpoints is null || !this.TryGetStateKey(apiBaseUri, out var key))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -272,9 +278,10 @@ namespace SafeExchange.Core.Mcp.OAuth
         /// <c>error_description</c> and <c>state</c>) to the loopback redirect and expires the cookie. Without a valid
         /// state and cookie there is nowhere safe to go, so the answer is the 400 page.
         /// </summary>
-        public McpOAuthResult Callback(string? query, string? consentCookie)
+        public McpOAuthResult Callback(Uri apiBaseUri, string? query, string? consentCookie)
         {
-            if (!this.TryGetStateKey(out var key))
+            ArgumentNullException.ThrowIfNull(apiBaseUri);
+            if (!this.TryGetStateKey(apiBaseUri, out var key))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -333,7 +340,7 @@ namespace SafeExchange.Core.Mcp.OAuth
         public async Task<McpOAuthResult> TokenAsync(Uri apiBaseUri, string? body, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(apiBaseUri);
-            if (!this.IsEnabled)
+            if (!this.IsEnabledFor(apiBaseUri))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -440,10 +447,12 @@ namespace SafeExchange.Core.Mcp.OAuth
         private IReadOnlyList<string> Scopes
             => this.protectedResource.Scopes.Append(OfflineAccessScope).Distinct(StringComparer.Ordinal).ToList();
 
-        private bool TryGetStateKey([NotNullWhen(true)] out byte[]? key)
+        private bool IsEnabledFor(Uri apiBaseUri) => this.IsEnabled && this.baseUriGuard.IsAllowed(apiBaseUri);
+
+        private bool TryGetStateKey(Uri apiBaseUri, [NotNullWhen(true)] out byte[]? key)
         {
             key = null;
-            return this.IsEnabled && McpOAuthStateKey.TryDecode(this.oauth.CurrentValue.StateKey, out key);
+            return this.IsEnabledFor(apiBaseUri) && McpOAuthStateKey.TryDecode(this.oauth.CurrentValue.StateKey, out key);
         }
 
         // The checks shared by the authorize request and the consent form post, in RFC 6749 order.

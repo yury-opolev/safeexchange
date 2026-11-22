@@ -27,7 +27,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [TestCase("{\"redirect_uris\":[\"http://127.0.0.1/cb\"],\"grant_types\":[\"\\uD800\"]}", "invalid_client_metadata")]
         public void Register_WithAnInvalidUtf16Escape_IsRefused(string body, string error)
         {
-            var result = this.Broker.Register(body);
+            var result = this.Broker.Register(ApiBase, body);
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
             Assert.That(Json(result.Body)["error"]!.GetValue<string>(), Is.EqualTo(error));
@@ -113,7 +113,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public void RefusalsAndRedirectedErrors_LogAtWarning()
         {
-            this.Broker.Register("not json");
+            this.Broker.Register(ApiBase, "not json");
             this.Broker.Authorize(ApiBase, ValidQuery().Replace("response_type=code", "response_type=token"));
 
             Assert.That(this.Logs.Entries, Has.Some.StartsWith("Warning SafeExchange.Core.Mcp.OAuth.McpOAuthBroker: MCP OAuth register refused the request with invalid_client_metadata."));

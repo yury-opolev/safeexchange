@@ -30,7 +30,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public void Register_AnRmcpClient_ReturnsTheConfiguredPublicClient()
         {
-            var result = this.Broker.Register(RmcpRegistration);
+            var result = this.Broker.Register(ApiBase, RmcpRegistration);
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Created));
             Assert.That(result.Location, Is.Null);
@@ -45,7 +45,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public void Register_WithOnlyRedirectUris_EchoesThemAll()
         {
-            var result = this.Broker.Register("{\"redirect_uris\":[\"http://localhost:8080/cb\",\"http://[::1]:8080/cb\"]}");
+            var result = this.Broker.Register(ApiBase, "{\"redirect_uris\":[\"http://localhost:8080/cb\",\"http://[::1]:8080/cb\"]}");
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Created));
             Assert.That(Json(result.Body)["redirect_uris"]!.ToJsonString(), Is.EqualTo("[\"http://localhost:8080/cb\",\"http://[::1]:8080/cb\"]"));
@@ -63,7 +63,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [TestCase("{\"client_name\":\"no redirect\"}")]
         public void Register_WithoutOnlyLoopbackRedirectUris_IsInvalidRedirectUri(string body)
         {
-            var result = this.Broker.Register(body);
+            var result = this.Broker.Register(ApiBase, body);
 
             AssertError(result, "invalid_redirect_uri");
         }
@@ -73,7 +73,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             var uris = string.Join(',', Enumerable.Range(1, 11).Select(i => $"\"http://127.0.0.1:{i}/cb\""));
 
-            AssertError(this.Broker.Register($"{{\"redirect_uris\":[{uris}]}}"), "invalid_redirect_uri");
+            AssertError(this.Broker.Register(ApiBase, $"{{\"redirect_uris\":[{uris}]}}"), "invalid_redirect_uri");
         }
 
         [TestCase(null)]
@@ -87,7 +87,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [TestCase("{\"redirect_uris\":[\"http://127.0.0.1/cb\"],\"response_types\":[\"token\"]}")]
         public void Register_WithOtherInvalidMetadata_IsInvalidClientMetadata(string? body)
         {
-            AssertError(this.Broker.Register(body), "invalid_client_metadata");
+            AssertError(this.Broker.Register(ApiBase, body), "invalid_client_metadata");
         }
 
         [Test]
@@ -95,7 +95,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             var body = "{\"redirect_uris\":[\"http://127.0.0.1/cb\"],\"client_name\":\"" + new string('n', McpOAuthBroker.MaxBodyLength) + "\"}";
 
-            AssertError(this.Broker.Register(body), "invalid_client_metadata");
+            AssertError(this.Broker.Register(ApiBase, body), "invalid_client_metadata");
         }
 
         private static void AssertError(McpOAuthResult result, string error)

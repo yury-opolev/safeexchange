@@ -6,7 +6,9 @@ namespace SafeExchange.Tests.Mcp.OAuth
 {
     using NUnit.Framework;
     using SafeExchange.Core.Mcp.OAuth;
+    using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Net;
     using System.Threading.Tasks;
 
@@ -28,7 +30,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             var broker = this.CreateBroker(mcpEnabled, clientId, authority, stateKey);
 
             Assert.That(broker.IsEnabled, Is.False);
-            foreach (var result in await AllEndpointsAsync(broker))
+            foreach (var result in await AllEndpointsAsync(broker, ApiBase))
             {
                 Assert.That(result, Is.EqualTo(McpOAuthResult.NotFound));
             }
@@ -37,20 +39,41 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [Test]
-        public void TheBroker_IsEnabled_WithMcpOnAClientIdAndAnAuthority()
+        public void TheBroker_IsEnabled_WithMcpOnAClientIdAStateKeyAndAnAuthority()
         {
             Assert.That(this.Broker.IsEnabled, Is.True);
         }
 
-        private static async Task<List<McpOAuthResult>> AllEndpointsAsync(McpOAuthBroker broker)
+        [Test]
+        public async Task EveryEndpoint_IsNotFound_ForAPlainHttpBase_AndOneWarningIsLogged()
+        {
+            foreach (var result in await AllEndpointsAsync(this.Broker, new Uri("http://safeexchange.test/api/")))
+            {
+                Assert.That(result, Is.EqualTo(McpOAuthResult.NotFound));
+            }
+
+            Assert.That(this.Entra.Requests, Is.Empty);
+            Assert.That(this.Logs.Entries.Single(), Does.StartWith("Warning SafeExchange.Core.Mcp.McpBaseUriGuard: "));
+        }
+
+        [Test]
+        public void APlainHttpLoopbackBase_IsServed_ForLocalDevelopment()
+        {
+            var result = this.Broker.Metadata(new Uri("http://localhost:7071/api/"));
+
+            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(result.Body, Does.StartWith("{\"issuer\":\"http://localhost:7071/api\","));
+        }
+
+        private static async Task<List<McpOAuthResult>> AllEndpointsAsync(McpOAuthBroker broker, Uri apiBase)
             => new List<McpOAuthResult>
             {
-                broker.Metadata(ApiBase),
-                broker.Register("{\"redirect_uris\":[\"http://127.0.0.1:1/cb\"]}"),
-                broker.Authorize(ApiBase, $"client_id={BrokerClientId}&redirect_uri=http%3A%2F%2F127.0.0.1%3A1%2Fcb&response_type=code&code_challenge={Challenge}&code_challenge_method=S256"),
-                broker.AuthorizeConsent(ApiBase, $"client_id={BrokerClientId}&decision=allow", "bm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm8"),
-                broker.Callback("code=c&state=eyJyIjoiaHR0cDovLzEyNy4wLjAuMToxL2NiIn0", "bm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm8"),
-                await broker.TokenAsync(ApiBase, "grant_type=refresh_token&refresh_token=r"),
+                broker.Metadata(apiBase),
+                broker.Register(apiBase, "{\"redirect_uris\":[\"http://127.0.0.1:1/cb\"]}"),
+                broker.Authorize(apiBase, $"client_id={BrokerClientId}&redirect_uri=http%3A%2F%2F127.0.0.1%3A1%2Fcb&response_type=code&code_challenge={Challenge}&code_challenge_method=S256"),
+                broker.AuthorizeConsent(apiBase, $"client_id={BrokerClientId}&decision=allow", "bm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm8"),
+                broker.Callback(apiBase, "code=c&state=eyJyIjoiaHR0cDovLzEyNy4wLjAuMToxL2NiIn0", "bm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm8"),
+                await broker.TokenAsync(apiBase, "grant_type=refresh_token&refresh_token=r"),
             };
     }
 }

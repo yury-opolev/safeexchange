@@ -36,7 +36,7 @@ namespace SafeExchange.Core.Functions.Mcp.OAuth
         public async Task<HttpResponseData> Register(HttpRequestData request)
         {
             ArgumentNullException.ThrowIfNull(request);
-            return await WriteAsync(request, this.broker.Register(await ReadBodyAsync(request)));
+            return await WriteAsync(request, this.broker.Register(McpHandler.ApiBaseUri(request.Url), await ReadBodyAsync(request)));
         }
 
         /// <summary>
@@ -55,7 +55,7 @@ namespace SafeExchange.Core.Functions.Mcp.OAuth
         public Task<HttpResponseData> Callback(HttpRequestData request)
         {
             ArgumentNullException.ThrowIfNull(request);
-            return WriteAsync(request, this.broker.Callback(request.Url.Query, ReadConsentCookie(request)));
+            return WriteAsync(request, this.broker.Callback(McpHandler.ApiBaseUri(request.Url), request.Url.Query, ReadConsentCookie(request)));
         }
 
         public async Task<HttpResponseData> Token(HttpRequestData request)

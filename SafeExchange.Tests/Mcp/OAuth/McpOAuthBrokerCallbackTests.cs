@@ -24,7 +24,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             var (state, nonce) = this.AllowConsent(ValidQuery());
             var query = Query(("code", Code), ("state", state), ("session_state", "00000000-0000-0000-0000-0000000000aa"), ("iss", "https://login.microsoftonline.com/x/v2.0"));
 
-            var result = this.Broker.Callback(query, nonce);
+            var result = this.Broker.Callback(ApiBase, query, nonce);
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Found));
             Assert.That(result.Body, Is.Null);
@@ -35,7 +35,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public void Callback_AppendsToARedirectThatHasAQuery_AndOmitsAMissingClientState()
         {
-            var result = this.Broker.Callback(Query(("code", Code), ("state", Sign("http://localhost:8080/cb?session=7", null))), Nonce);
+            var result = this.Broker.Callback(ApiBase, Query(("code", Code), ("state", Sign("http://localhost:8080/cb?session=7", null))), Nonce);
 
             Assert.That(result.Location, Is.EqualTo($"http://localhost:8080/cb?session=7&code={Uri.EscapeDataString(Code)}"));
         }
@@ -50,7 +50,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 ("correlation_id", "00000000-0000-0000-0000-0000000000cc"),
                 ("state", Sign(ClientRedirect, "csrf-2")));
 
-            var result = this.Broker.Callback(query, Nonce);
+            var result = this.Broker.Callback(ApiBase, query, Nonce);
 
             var (target, parameters) = SplitLocation(result.Location);
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Found));
@@ -66,7 +66,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public void Callback_WithNeitherCodeNorError_RedirectsServerErrorToTheClient()
         {
-            var (target, parameters) = SplitLocation(this.Broker.Callback(Query(("state", Sign(ClientRedirect, "csrf-3"))), Nonce).Location);
+            var (target, parameters) = SplitLocation(this.Broker.Callback(ApiBase, Query(("state", Sign(ClientRedirect, "csrf-3"))), Nonce).Location);
 
             Assert.That(target, Is.EqualTo(ClientRedirect));
             Assert.That(parameters["error"], Is.EqualTo("server_error"));
@@ -80,7 +80,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             var query = state is null ? Query(("code", Code)) : Query(("code", Code), ("state", state));
 
-            AssertInvalidPage(this.Broker.Callback(query, Nonce));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, query, Nonce));
         }
 
         [TestCase("https://evil.example/callback")]
@@ -90,8 +90,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             var crafted = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{{\"r\":\"{redirectUri}\",\"s\":\"x\",\"n\":\"{Nonce}\",\"e\":4102444800}}")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", crafted)), Nonce));
-            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", crafted + ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")), Nonce));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, Query(("code", Code), ("state", crafted)), Nonce));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, Query(("code", Code), ("state", crafted + ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")), Nonce));
         }
 
         [Test]
@@ -99,7 +99,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             var query = Query(("code", Code), ("state", Sign(ClientRedirect, "a")), ("state", Sign("http://localhost:1/other", "b")));
 
-            AssertInvalidPage(this.Broker.Callback(query, Nonce));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, query, Nonce));
         }
 
         [Test]
@@ -107,9 +107,9 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             var query = Query(("code", Code), ("state", Sign(ClientRedirect, "csrf-4")));
 
-            AssertInvalidPage(this.Broker.Callback(query, null));
-            AssertInvalidPage(this.Broker.Callback(query, "short"));
-            AssertInvalidPage(this.Broker.Callback(query, ConsentToken.NewNonce()));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, query, null));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, query, "short"));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, query, ConsentToken.NewNonce()));
         }
 
         [Test]
@@ -118,8 +118,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(SignedBrokerState.TryCreate(McpOAuthTestKey.Bytes, ClientRedirect, "csrf-5", Nonce, DateTimeProvider.UtcNow.AddMinutes(-10), out var expired), Is.True);
             Assert.That(SignedBrokerState.TryCreate(new byte[32], ClientRedirect, "csrf-5", Nonce, DateTimeProvider.UtcNow, out var otherKey), Is.True);
 
-            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", expired!)), Nonce));
-            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", otherKey!)), Nonce));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, Query(("code", Code), ("state", expired!)), Nonce));
+            AssertInvalidPage(this.Broker.Callback(ApiBase, Query(("code", Code), ("state", otherKey!)), Nonce));
         }
 
         private static string Sign(string redirectUri, string? clientState)

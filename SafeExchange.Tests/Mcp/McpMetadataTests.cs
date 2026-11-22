@@ -24,6 +24,7 @@ namespace SafeExchange.Tests.Mcp
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(response.Headers.GetValues("Content-Type"), Is.EqualTo(new[] { "application/json" }));
+            Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
             Assert.That(BodyOf(response), Is.EqualTo(
                 "{\"resource\":\"https://safeexchange.test/api/mcp\","
                 + $"\"authorization_servers\":[\"https://login.microsoftonline.com/{TenantId}/v2.0\"],"
@@ -69,10 +70,28 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(BodyOf(response), Is.Empty);
         }
 
-        private static TestHttpRequestData MetadataRequest()
+        [Test]
+        public async Task Metadata_OverPlainHttpToANonLoopbackHost_AnswersNotFound()
+        {
+            var response = await this.MetadataHandler.Run(MetadataRequest("http://safeexchange.test"));
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+            Assert.That(BodyOf(response), Is.Empty);
+        }
+
+        [Test]
+        public async Task Metadata_OverPlainHttpToLocalhost_IsServed()
+        {
+            var response = await this.MetadataHandler.Run(MetadataRequest("http://localhost:7071"));
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(BodyOf(response), Does.StartWith("{\"resource\":\"http://localhost:7071/api/mcp\","));
+        }
+
+        private static TestHttpRequestData MetadataRequest(string origin = "https://safeexchange.test")
         {
             var request = TestFactory.CreateHttpRequestData("get");
-            request.SetUrl(new Uri("https://safeexchange.test/api/.well-known/oauth-protected-resource"));
+            request.SetUrl(new Uri(origin + "/api/.well-known/oauth-protected-resource"));
             return request;
         }
     }

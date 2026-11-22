@@ -74,6 +74,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 features,
                 this.Entra,
                 gate ?? new EntraCallGate(16, EntraCallGate.DefaultWait),
+                new McpBaseUriGuard(loggerFactory.CreateLogger<McpBaseUriGuard>()),
                 loggerFactory.CreateLogger<McpOAuthBroker>());
         }
 
