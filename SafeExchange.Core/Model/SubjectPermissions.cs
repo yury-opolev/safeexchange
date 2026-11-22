@@ -5,6 +5,7 @@
 namespace SafeExchange.Core.Model
 {
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
 
     public class SubjectPermissions
@@ -57,10 +58,6 @@ namespace SafeExchange.Core.Model
             CanRevokeAccess = this.CanRevokeAccess,
         };
 
-        private string GetPartitionKey()
-        {
-            var hashString = this.SecretName.GetHashCode().ToString("0000");
-            return hashString.Substring(hashString.Length - 4, 4);
-        }
+        private string GetPartitionKey() => StablePartitionKey.From(this.SecretName);
     }
 }

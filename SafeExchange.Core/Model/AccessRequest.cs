@@ -7,6 +7,7 @@ namespace SafeExchange.Core.Model
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
     using SafeExchange.Core.Permissions;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.ComponentModel.DataAnnotations;
 
@@ -103,10 +104,6 @@ namespace SafeExchange.Core.Model
             RequestedAt = this.RequestedAt.ToUniversalTime()
         };
 
-        private string GetPartitionKey()
-        {
-            var hashString = this.Id.GetHashCode().ToString("0000");
-            return hashString.Substring(hashString.Length - 4, 4);
-        }
+        private string GetPartitionKey() => StablePartitionKey.From(this.Id);
     }
 }
