@@ -20,6 +20,9 @@
         "settings-authentication-validIssuers": {
             "value": null
         },
+        "settings-mcp-oauthClientId": {
+            "value": ""
+        },
         "deployer_ip_addresses": {
             "value": []
         },

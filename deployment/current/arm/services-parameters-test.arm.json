@@ -47,6 +47,9 @@
         "settings-features-mcpEndpoint": {
             "value": "True"
         },
+        "settings-mcp-oauthClientId": {
+            "value": ""
+        },
         "deployer_ip_addresses": {
             "value": []
         },

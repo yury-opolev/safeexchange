@@ -252,6 +252,13 @@
                 "description": "Enables the first-party MCP endpoint (POST /api/mcp and /api/.well-known/oauth-protected-resource). When False both routes return 404. Default off; see docs/mcp.md."
             }
         },
+        "settings-mcp-oauthClientId": {
+            "defaultValue": "",
+            "type": "string",
+            "metadata": {
+                "description": "Application (client) ID of the Entra public client app used by the MCP OAuth broker (/api/oauth/*, /api/.well-known/oauth-authorization-server). Empty: the Mcp--OAuth--ClientId secret is not written (an existing value is kept; without one the broker answers 404). See docs/mcp.md."
+            }
+        },
         "settings-limits-maxAppsPerRegistrar": {
             "defaultValue": "3",
             "type": "string",
@@ -2324,6 +2331,23 @@
                 },
                 "contentType": "text/plain",
                 "value": "[parameters('settings-features-mcpEndpoint')]"
+            }
+        },
+        {
+            "condition": "[not(empty(parameters('settings-mcp-oauthClientId')))]",
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "apiVersion": "2023-02-01",
+            "name": "[concat(parameters('safeexchange_kv_name'), '/Mcp--OAuth--ClientId')]",
+            "location": "[parameters('default_location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('safeexchange_kv_name'))]"
+            ],
+            "properties": {
+                "attributes": {
+                    "enabled": true
+                },
+                "contentType": "text/plain",
+                "value": "[parameters('settings-mcp-oauthClientId')]"
             }
         },
         {
