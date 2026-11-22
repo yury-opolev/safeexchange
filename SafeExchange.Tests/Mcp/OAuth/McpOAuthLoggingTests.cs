@@ -43,9 +43,9 @@ namespace SafeExchange.Tests.Mcp.OAuth
             var callback = await handler.Callback(OAuthRequest("get", $"oauth/callback?code={Code}&state={wrappedState}"));
             await handler.Callback(OAuthRequest("get", $"oauth/callback?error=access_denied&error_description={Uri.EscapeDataString(EntraDescription)}&state={wrappedState}"));
             await handler.Token(OAuthRequest("post", "oauth/token", $"grant_type=authorization_code&code={Code}&code_verifier={Verifier}&client_id={BrokerClientId}"));
-            await handler.Token(OAuthRequest("post", "oauth/token", $"grant_type=refresh_token&refresh_token={FakeEntraTokenClient.RefreshToken}"));
+            await handler.Token(OAuthRequest("post", "oauth/token", $"grant_type=refresh_token&refresh_token={FakeEntraTokenClient.RefreshToken}&client_id={BrokerClientId}"));
             this.Entra.Response = new EntraTokenResponse(HttpStatusCode.BadRequest, $"{{\"error\":\"invalid_grant\",\"error_description\":\"{EntraDescription}\"}}");
-            await handler.Token(OAuthRequest("post", "oauth/token", $"grant_type=refresh_token&refresh_token={FakeEntraTokenClient.RefreshToken}"));
+            await handler.Token(OAuthRequest("post", "oauth/token", $"grant_type=refresh_token&refresh_token={FakeEntraTokenClient.RefreshToken}&client_id={BrokerClientId}"));
             Assert.That(callback.Headers.GetValues("Location").Single(), Does.Contain(Code), "Arrange: the flow moved the code.");
 
             var logs = string.Join('\n', this.Logs.Entries);

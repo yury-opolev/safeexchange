@@ -107,6 +107,14 @@ namespace SafeExchange.Tests.Mcp.OAuth
             AssertNoRedirect(this.Broker.Authorize(ApiBase, query), "invalid_request");
         }
 
+        [Test]
+        public void Authorize_WithoutAResponseType_RedirectsInvalidRequestToTheClient()
+        {
+            var query = Query(("client_id", BrokerClientId), ("redirect_uri", ClientRedirect), ("code_challenge", Challenge), ("code_challenge_method", "S256"), ("state", ClientState));
+
+            AssertClientError(this.Broker.Authorize(ApiBase, query), "invalid_request");
+        }
+
         [TestCase("token", "unsupported_response_type")]
         [TestCase("code id_token", "unsupported_response_type")]
         public void Authorize_WithAnotherResponseType_RedirectsTheErrorToTheClient(string responseType, string error)

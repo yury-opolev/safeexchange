@@ -49,7 +49,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public async Task RefreshToken_IsForwardedWithTheBrokersClientAndScope_AndNothingElse()
         {
-            var body = Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("resource", "https://safeexchange.test/api/mcp"), ("client_secret", "x"));
+            var body = Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("client_id", BrokerClientId), ("resource", "https://safeexchange.test/api/mcp"), ("client_secret", "x"));
 
             var result = await this.Broker.TokenAsync(ApiBase, body);
 
@@ -72,20 +72,22 @@ namespace SafeExchange.Tests.Mcp.OAuth
             const string EntraError = "{\"error\":\"invalid_grant\",\"error_description\":\"AADSTS70008: The provided authorization code or refresh token has expired.\",\"error_codes\":[70008]}";
             this.Entra.Response = new EntraTokenResponse(HttpStatusCode.BadRequest, EntraError);
 
-            var result = await this.Broker.TokenAsync(ApiBase, Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken)));
+            var result = await this.Broker.TokenAsync(ApiBase, Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("client_id", BrokerClientId)));
 
             Assert.That(result, Is.EqualTo(McpOAuthResult.Json(HttpStatusCode.BadRequest, EntraError)));
         }
 
-        [TestCase("grant_type=client_credentials&scope=x", "unsupported_grant_type")]
-        [TestCase("grant_type=password&username=u&password=p", "unsupported_grant_type")]
-        [TestCase("code=c&code_verifier=" + Verifier, "unsupported_grant_type")]
-        [TestCase("grant_type=authorization_code&code_verifier=" + Verifier, "invalid_request")]
-        [TestCase("grant_type=authorization_code&code=c", "invalid_request")]
-        [TestCase("grant_type=authorization_code&code=c&code_verifier=too-short", "invalid_request")]
-        [TestCase("grant_type=refresh_token", "invalid_request")]
-        [TestCase("grant_type=refresh_token&refresh_token=a&refresh_token=b", "invalid_request")]
+        [TestCase("grant_type=client_credentials&scope=x&client_id=" + BrokerClientId, "unsupported_grant_type")]
+        [TestCase("grant_type=password&username=u&password=p&client_id=" + BrokerClientId, "unsupported_grant_type")]
+        [TestCase("code=c&code_verifier=" + Verifier + "&client_id=" + BrokerClientId, "invalid_request")]
+        [TestCase("grant_type=authorization_code&code_verifier=" + Verifier + "&client_id=" + BrokerClientId, "invalid_request")]
+        [TestCase("grant_type=authorization_code&code=c&client_id=" + BrokerClientId, "invalid_request")]
+        [TestCase("grant_type=authorization_code&code=c&code_verifier=too-short&client_id=" + BrokerClientId, "invalid_request")]
+        [TestCase("grant_type=refresh_token&client_id=" + BrokerClientId, "invalid_request")]
+        [TestCase("grant_type=refresh_token&refresh_token=a&refresh_token=b&client_id=" + BrokerClientId, "invalid_request")]
         [TestCase("grant_type=refresh_token&refresh_token=a&client_id=00000000-0000-0000-0000-0000000000ff", "invalid_client")]
+        [TestCase("grant_type=refresh_token&refresh_token=a", "invalid_client")]
+        [TestCase("grant_type=refresh_token&refresh_token=a&client_id=", "invalid_client")]
         [TestCase("", "invalid_request")]
         public async Task AnInvalidRequest_IsRefused_WithoutCallingEntra(string body, string error)
         {
@@ -99,7 +101,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public async Task ABodyOver16KB_IsRefused_WithoutCallingEntra()
         {
-            var body = Query(("grant_type", "refresh_token"), ("refresh_token", new string('r', McpOAuthBroker.MaxBodyLength)));
+            var body = Query(("grant_type", "refresh_token"), ("refresh_token", new string('r', McpOAuthBroker.MaxBodyLength)), ("client_id", BrokerClientId));
 
             var result = await this.Broker.TokenAsync(ApiBase, body);
 
@@ -112,7 +114,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             this.Entra.Failure = new HttpRequestException("No such host is known. (login.microsoftonline.com:443)");
 
-            var result = await this.Broker.TokenAsync(ApiBase, Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken)));
+            var result = await this.Broker.TokenAsync(ApiBase, Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("client_id", BrokerClientId)));
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadGateway));
             Assert.That(Json(result.Body)["error"]!.GetValue<string>(), Is.EqualTo("server_error"));
@@ -123,7 +125,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             this.Entra.Failure = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing.");
 
-            var result = await this.Broker.TokenAsync(ApiBase, Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken)));
+            var result = await this.Broker.TokenAsync(ApiBase, Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("client_id", BrokerClientId)));
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadGateway));
         }

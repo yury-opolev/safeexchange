@@ -163,7 +163,13 @@ namespace SafeExchange.Core.Mcp.OAuth
             }
 
             var clientState = Get(parameters, "state");
-            if (Get(parameters, "response_type") != "code")
+            var responseType = Get(parameters, "response_type");
+            if (responseType is null)
+            {
+                return this.RedirectError("authorize", redirectUri, clientState, "invalid_request", "response_type is required.");
+            }
+
+            if (responseType != "code")
             {
                 return this.RedirectError("authorize", redirectUri, clientState, "unsupported_response_type", "Only response_type=code is supported.");
             }
@@ -259,16 +265,25 @@ namespace SafeExchange.Core.Mcp.OAuth
                 return this.Refuse("token", "invalid_request", "The token request must be a form of at most 16 KB without repeated parameters.");
             }
 
-            var clientId = Get(parameters, "client_id");
-            if (clientId is not null && !string.Equals(clientId, this.ClientId, StringComparison.Ordinal))
+            if (!string.Equals(Get(parameters, "client_id"), this.ClientId, StringComparison.Ordinal))
             {
-                return this.Refuse("token", "invalid_client", "Unknown client_id.");
+                return this.Refuse("token", "invalid_client", "Unknown client_id; register at the registration endpoint first.");
             }
 
             var grantType = Get(parameters, "grant_type");
+            if (grantType is null)
+            {
+                return this.Refuse("token", "invalid_request", "grant_type is required.");
+            }
+
+            if (grantType is not ("authorization_code" or "refresh_token"))
+            {
+                return this.Refuse("token", "unsupported_grant_type", "Only authorization_code and refresh_token are supported.");
+            }
+
             var form = new List<KeyValuePair<string, string>>
             {
-                new("grant_type", grantType ?? string.Empty),
+                new("grant_type", grantType),
                 new("client_id", this.ClientId),
             };
             switch (grantType)
