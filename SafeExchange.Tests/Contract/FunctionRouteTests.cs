@@ -95,7 +95,7 @@ namespace SafeExchange.Tests.Contract
             "SafeExchange-WellKnownAuthorizationServerApi|get|.well-known/oauth-authorization-server/api",
             "SafeExchange-WellKnownOpenIdConfigurationApi|get|.well-known/openid-configuration/api",
             "SafeExchange-WellKnownProtectedResourceApiMcp|get|.well-known/oauth-protected-resource/api/mcp",
-            "SafeExchange-WellKnownNotFound|get|.well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/mcp)$).*$)}",
+            "SafeExchange-WellKnownNotFound|get|.well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/mcp)/?$).*$)}",
         };
 
         [Test]

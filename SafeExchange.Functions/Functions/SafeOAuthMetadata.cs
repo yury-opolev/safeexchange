@@ -22,7 +22,7 @@ namespace SafeExchange.Functions
         // Anonymous: SafeExchangeFunctionsStartup.IsAuthenticatedHttpTrigger excludes this function from the auth middleware.
         [Function(McpRoutes.ProtectedResourceMetadataFunctionName)]
         public Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.ProtectedResourceMetadata)]
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.ApiRoutePrefix + McpRoutes.ProtectedResourceMetadata)]
             HttpRequestData request)
             => this.handler.Run(request);
     }
