@@ -159,7 +159,7 @@ namespace SafeExchange.Core.Mcp.OAuth
         public McpOAuthResult Authorize(Uri apiBaseUri, string? query)
         {
             ArgumentNullException.ThrowIfNull(apiBaseUri);
-            if (!this.TryGetStateKey(apiBaseUri, out var key))
+            if (!this.TryGetStateKey(apiBaseUri, out var key) || this.EnabledEndpoints is not { } endpoints)
             {
                 return McpOAuthResult.NotFound;
             }
@@ -185,18 +185,24 @@ namespace SafeExchange.Core.Mcp.OAuth
 
             var fields = request.Fields(SignedBrokerState.UnixSeconds(now + ConsentCookie.Lifetime));
             fields.Add(new(ConsentTokenField, ConsentToken.Create(key, nonce, fields)));
-            var page = ConsentPage.Render(McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Authorize), Origin(request.RedirectUri), fields);
+            var clientOrigin = Origin(request.RedirectUri);
+            var page = ConsentPage.Render(McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Authorize), clientOrigin, fields);
 
             this.log.LogInformation("MCP OAuth authorize answered the consent page.");
-            return McpOAuthResult.Html(HttpStatusCode.OK, page) with { Cookie = ConsentCookie.Issue(nonce) };
+            return McpOAuthResult.Html(HttpStatusCode.OK, page) with
+            {
+                Cookie = ConsentCookie.Issue(nonce),
+                FormActionOrigins = new[] { endpoints.AuthorizeOrigin, clientOrigin },
+            };
         }
 
         /// <summary>
         /// The consent form post: re-validates the parameters like <see cref="Authorize"/>, requires the consent cookie
         /// and a consent token that matches it and the parameters, and is valid for <see cref="ConsentCookie.Lifetime"/>.
         /// <c>allow</c> redirects to Entra with the broker's client ID, callback and scope, the client's S256 challenge,
-        /// <c>login_hint</c> when present and the signed state; <c>deny</c> redirects <c>access_denied</c> to the
-        /// client. Any failure answers the 400 page and never redirects.
+        /// <c>login_hint</c> when present and the signed state, and re-issues the consent cookie with a fresh
+        /// <see cref="ConsentCookie.Lifetime"/> so that it lives as long as the state; <c>deny</c> redirects
+        /// <c>access_denied</c> to the client. Any failure answers the 400 page and never redirects.
         /// </summary>
         public McpOAuthResult AuthorizeConsent(Uri apiBaseUri, string? form, string? consentCookie)
         {
@@ -269,7 +275,7 @@ namespace SafeExchange.Core.Mcp.OAuth
             };
 
             this.log.LogInformation("MCP OAuth authorize redirected to Entra.");
-            return McpOAuthResult.Redirect(AppendQuery(endpoints.Authorize, entraParameters));
+            return McpOAuthResult.Redirect(AppendQuery(endpoints.Authorize, entraParameters)) with { Cookie = ConsentCookie.Issue(consentCookie) };
         }
 
         /// <summary>

@@ -11,8 +11,9 @@ namespace SafeExchange.Core.Mcp.OAuth
 
     /// <summary>
     /// Per-instance, per-client-address rate limits of the anonymous broker endpoints (<c>Mcp:OAuth:RateLimit</c>;
-    /// token 30/min burst 30, the others 60/min burst 60). Best effort: every instance counts on its own, and requests
-    /// without a client address share the bucket <c>unknown</c>. Logs each refusal at Warning without the address.
+    /// token 30/min burst 30, the others 60/min burst 60). Best effort: every instance counts on its own, clients are
+    /// keyed by <see cref="ClientAddress"/> (IPv6 by /64 prefix) and requests without a client address share the bucket
+    /// <c>unknown</c>. Logs each refusal at Warning without the address.
     /// </summary>
     public sealed class McpOAuthThrottle
     {

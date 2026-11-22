@@ -141,7 +141,7 @@ namespace SafeExchange.Core.Functions.Mcp.OAuth
                 response.Headers.Add("Content-Type", result.ContentType);
                 if (result.IsHtml)
                 {
-                    foreach (var header in ConsentPage.SecurityHeaders)
+                    foreach (var header in ConsentPage.SecurityHeaders(result.FormActionOrigins))
                     {
                         response.Headers.Add(header.Key, header.Value);
                     }

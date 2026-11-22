@@ -34,5 +34,13 @@ namespace SafeExchange.Tests.Mcp.OAuth
         {
             Assert.That(EntraEndpoints.FromAuthority(authority), Is.Null);
         }
+
+        [TestCase(Tenant, "https://login.microsoftonline.com")]
+        [TestCase("https://login.example:8443/tenant-1/v2.0", "https://login.example:8443")]
+        [TestCase("https://login.example:443/tenant-1", "https://login.example")]
+        public void TheAuthorizeOrigin_IsSchemeHostAndNonDefaultPortOnly(string authority, string expected)
+        {
+            Assert.That(EntraEndpoints.FromAuthority(authority)!.AuthorizeOrigin, Is.EqualTo(expected));
+        }
     }
 }

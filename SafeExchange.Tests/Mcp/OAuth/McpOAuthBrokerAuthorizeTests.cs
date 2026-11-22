@@ -33,6 +33,47 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [Test]
+        public void Authorize_FormActionOrigins_AreTheEntraAuthorityAndTheValidatedRedirectOrigin()
+        {
+            var result = this.Broker.Authorize(ApiBase, ValidQuery());
+
+            Assert.That(result.FormActionOrigins, Is.EqualTo(new[] { "https://login.microsoftonline.com", "http://127.0.0.1:53682" }));
+        }
+
+        [TestCase("http://localhost:4000/cb?x=1;script-src%20*", "http://localhost:4000")]
+        [TestCase("http://[::1]:4000/cb", "http://[::1]:4000")]
+        [TestCase("http://127.0.0.1/cb", "http://127.0.0.1")]
+        [TestCase("http://LOCALHOST:4000/cb", "http://localhost:4000")]
+        public void Authorize_ClientOrigin_IsOnlySchemeHostAndPort_WhateverTheRestOfTheRedirectHolds(string redirectUri, string expected)
+        {
+            var query = Query(("client_id", BrokerClientId), ("redirect_uri", redirectUri), ("response_type", "code"), ("code_challenge", Challenge), ("code_challenge_method", "S256"));
+
+            var result = this.Broker.Authorize(ApiBase, query);
+
+            Assert.That(result.FormActionOrigins, Is.EqualTo(new[] { "https://login.microsoftonline.com", expected }));
+            Assert.That(result.FormActionOrigins, Has.All.Match(@"^https?://(\[[0-9a-f:]+\]|[a-z0-9.\-]+)(:[0-9]{1,5})?$"));
+            Assert.That(ConsentPage.ContentSecurityPolicy(result.FormActionOrigins), Does.Contain($"form-action 'self' https://login.microsoftonline.com {expected}; frame-ancestors"));
+        }
+
+        [Test]
+        public void TheAuthorityOrigin_KeepsANonDefaultPort_AndDropsThePath()
+        {
+            var broker = this.CreateBroker(authority: "https://login.example:8443/tenant-1/v2.0");
+
+            var result = broker.Authorize(ApiBase, ValidQuery());
+
+            Assert.That(result.FormActionOrigins, Is.EqualTo(new[] { "https://login.example:8443", "http://127.0.0.1:53682" }));
+        }
+
+        [Test]
+        public void EveryOtherAnswer_HasNoFormActionOrigins()
+        {
+            Assert.That(this.Broker.Authorize(ApiBase, "client_id=x").FormActionOrigins, Is.Empty);
+            Assert.That(this.Broker.AuthorizeConsent(ApiBase, "x=1", null).FormActionOrigins, Is.Empty);
+            Assert.That(this.Broker.Callback(ApiBase, "code=c", null).FormActionOrigins, Is.Empty);
+        }
+
+        [Test]
         public void Authorize_KeepsScopeAndLoginHintInTheForm_ButNeverPromptOrUnknownParameters()
         {
             var (fields, _) = this.OpenConsent(ValidQuery(

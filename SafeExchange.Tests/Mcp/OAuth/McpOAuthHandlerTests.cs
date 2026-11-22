@@ -51,7 +51,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             var response = await this.OAuthHandler.Authorize(OAuthRequest("get", AuthorizeQuery + "&resource=https%3A%2F%2Fsafeexchange.test%2Fapi%2Fmcp"));
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            AssertHtmlNoStore(response);
+            AssertHtmlNoStore(response, "'self' https://login.microsoftonline.com http://127.0.0.1:53682");
             Assert.That(response.Headers.GetValues("Set-Cookie").Single(), Does.Match("^__Host-saex-mcp-consent=[A-Za-z0-9_-]{43}; Max-Age=600; Path=/; Secure; HttpOnly; SameSite=Lax$"));
             Assert.That(response.Headers.Contains("Location"), Is.False);
             Assert.That(BodyOf(response), Does.Contain("<form method=\"post\" action=\"https://safeexchange.test/api/oauth/authorize\">"));
@@ -68,7 +68,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Found));
             Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
             Assert.That(response.Headers.GetValues("Location").Single(), Does.StartWith($"https://login.microsoftonline.com/{TenantId}/oauth2/v2.0/authorize?client_id={BrokerClientId}&"));
-            Assert.That(response.Headers.Contains("Set-Cookie"), Is.False);
+            Assert.That(response.Headers.GetValues("Set-Cookie").Single(), Is.EqualTo($"{CookieFrom(page)}; Max-Age=600; Path=/; Secure; HttpOnly; SameSite=Lax"));
             Assert.That(response.Headers.Contains("Content-Type"), Is.False);
             Assert.That(BodyOf(response), Is.Empty);
         }
@@ -81,7 +81,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             var response = await this.OAuthHandler.Authorize(OAuthRequest("post", "oauth/authorize", ConsentForm.Post(ConsentForm.HiddenFields(BodyOf(page)))));
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-            AssertHtmlNoStore(response);
+            AssertHtmlNoStore(response, "'none'");
             Assert.That(response.Headers.Contains("Location"), Is.False);
             Assert.That(BodyOf(response), Does.Contain(ConsentPage.InvalidRequestMessage));
         }
@@ -170,11 +170,11 @@ namespace SafeExchange.Tests.Mcp.OAuth
         private const string AuthorizeQuery = "oauth/authorize?client_id=" + BrokerClientId + "&redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fcallback"
             + "&response_type=code&code_challenge=" + Challenge + "&code_challenge_method=S256&state=abc";
 
-        private static void AssertHtmlNoStore(HttpResponseData response)
+        private static void AssertHtmlNoStore(HttpResponseData response, string formAction)
         {
             Assert.That(response.Headers.GetValues("Content-Type"), Is.EqualTo(new[] { "text/html; charset=utf-8" }));
             Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
-            Assert.That(response.Headers.GetValues("Content-Security-Policy"), Is.EqualTo(new[] { "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }));
+            Assert.That(response.Headers.GetValues("Content-Security-Policy"), Is.EqualTo(new[] { $"default-src 'none'; style-src 'unsafe-inline'; form-action {formAction}; frame-ancestors 'none'; base-uri 'none'" }));
             Assert.That(response.Headers.GetValues("X-Frame-Options"), Is.EqualTo(new[] { "DENY" }));
             Assert.That(response.Headers.GetValues("X-Content-Type-Options"), Is.EqualTo(new[] { "nosniff" }));
             Assert.That(response.Headers.GetValues("Referrer-Policy"), Is.EqualTo(new[] { "no-referrer" }));

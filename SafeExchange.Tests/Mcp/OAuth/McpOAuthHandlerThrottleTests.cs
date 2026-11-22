@@ -61,6 +61,21 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [Test]
+        public async Task TwoHostsOfOneIPv6Slash64_ShareABucket_AndAMappedIPv4SharesTheIPv4Bucket()
+        {
+            await this.OAuthHandler.Token(Forwarded(OAuthRequest("post", "oauth/token", RefreshBody), "[2001:db8:1:2::1]:50123"));
+            await this.OAuthHandler.Token(Forwarded(OAuthRequest("post", "oauth/token", RefreshBody), "203.0.113.7:50123"));
+
+            var sameSlash64 = await this.OAuthHandler.Token(Forwarded(OAuthRequest("post", "oauth/token", RefreshBody), "[2001:db8:1:2:aaaa:bbbb:cccc:dddd]:50124"));
+            var mappedIPv4 = await this.OAuthHandler.Token(Forwarded(OAuthRequest("post", "oauth/token", RefreshBody), "[::ffff:203.0.113.7]:50124"));
+            var otherSlash64 = await this.OAuthHandler.Token(Forwarded(OAuthRequest("post", "oauth/token", RefreshBody), "[2001:db8:1:3::1]:50124"));
+
+            Assert.That(sameSlash64.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
+            Assert.That(mappedIPv4.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
+            Assert.That(otherSlash64.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        }
+
+        [Test]
         public async Task Authorize_BeyondTheBurst_IsTheTooManyRequestsPage()
         {
             var query = $"oauth/authorize?client_id={BrokerClientId}&redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fcallback&response_type=code"
@@ -73,6 +88,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(limited.Headers.GetValues("Retry-After").Single(), Is.EqualTo("60"));
             Assert.That(limited.Headers.GetValues("Content-Type"), Is.EqualTo(new[] { "text/html; charset=utf-8" }));
             Assert.That(limited.Headers.GetValues("X-Frame-Options"), Is.EqualTo(new[] { "DENY" }));
+            Assert.That(limited.Headers.GetValues("Content-Security-Policy").Single(), Does.Contain("form-action 'none';"));
             Assert.That(limited.Headers.Contains("Set-Cookie"), Is.False);
             Assert.That(BodyOf(limited), Does.Contain(ConsentPage.TooManyRequestsMessage));
         }

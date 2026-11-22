@@ -29,7 +29,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Found));
             Assert.That(result.Body, Is.Null);
-            Assert.That(result.Cookie, Is.Null, "The cookie is still needed at the callback.");
+            Assert.That(result.Cookie, Is.EqualTo(ConsentCookie.Issue(nonce)), "The cookie is re-issued with the same nonce so that it lives as long as the signed state.");
+            Assert.That(result.Cookie!.MaxAgeSeconds, Is.EqualTo(600));
             var (target, parameters) = SplitLocation(result.Location);
             Assert.That(target, Is.EqualTo(Tenant + "/oauth2/v2.0/authorize"));
             Assert.That(parameters.Keys, Is.EquivalentTo(new[] { "client_id", "response_type", "redirect_uri", "response_mode", "scope", "code_challenge", "code_challenge_method", "state" }));

@@ -15,6 +15,9 @@ namespace SafeExchange.Core.Mcp.OAuth
     {
         private const string V2Suffix = "/v2.0";
 
+        /// <summary><c>scheme://host[:port]</c> of the authorize endpoint (the default port is omitted).</summary>
+        public string AuthorizeOrigin => new Uri(this.Authorize).GetLeftPart(UriPartial.Authority);
+
         public static EntraEndpoints? FromAuthority(string? authority)
         {
             var value = (authority ?? string.Empty).Trim().TrimEnd('/');

@@ -31,8 +31,10 @@ security best practices say proxies with static client IDs MUST obtain user cons
    cookie nonce with `CryptographicOperations.FixedTimeEquals`; on any failure → 400 page "This sign-in
    request is invalid or expired. Start the sign-in again from your MCP client." (no redirect).
    - `deny` → 302 to the client redirect with `error=access_denied` (+ client `state`).
-   - `allow` → 302 to Entra authorize (as today) with the **signed state** below. `prompt` is never
-     forwarded (not on GET, not on POST). `login_hint` keeps being forwarded when present.
+   - `allow` → 302 to Entra authorize (as today) with the **signed state** below, re-issuing the consent
+     cookie with the same nonce and a fresh `Max-Age=600` so it lives as long as the state (10 minutes from
+     the allow). `prompt` is never forwarded (not on GET, not on POST). `login_hint` keeps being forwarded
+     when present.
 3. `GET /api/oauth/callback`: decode and verify the signed state (HMAC, expiry), require the cookie
    and that its nonce equals the state's nonce, re-validate loopback; then forward `code`/`state` (or
    `error`/`error_description`/`state`) to the client as today, and expire the cookie
@@ -53,8 +55,16 @@ redeploy rotates the key; only sign-ins in progress at that moment fail. Tests u
 title "Sign in an MCP client to SafeExchange", text: "An application on this computer is asking for
 access to SafeExchange as you. It will receive the result at <b>{scheme://host:port}</b>. Access
 requested: read and manage your secrets; stay signed in. Only continue if you just started a sign-in in
-an MCP client such as Copilot CLI." Headers: `Content-Security-Policy: default-src 'none'; style-src
-'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`, `X-Frame-Options: DENY`,
+an MCP client such as Copilot CLI." Headers: `Content-Security-Policy` built per response:
+`default-src 'none'; style-src 'unsafe-inline'; form-action 'self' {entraOrigin} {clientOrigin};
+frame-ancestors 'none'; base-uri 'none'`, where `{entraOrigin}` is the scheme://host[:port] of the
+configured Entra authorize endpoint and `{clientOrigin}` is the scheme://host:port of the validated
+loopback `redirect_uri` shown on the page (Chromium and WebKit apply `form-action` to the 302 that follows
+the form post, so the allow redirect to Entra and the deny redirect to the client must be listed; with
+`'self'` alone Chrome, Edge and Safari block both). Both origins come only from validated values
+(configuration and the validated loopback redirect) and are re-checked against a strict
+`http(s)://host[:port]` pattern, so a value can never add a directive. Error and message pages have no form
+and use `form-action 'none'`. Other headers: `X-Frame-Options: DENY`,
 `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`,
 `Content-Type: text/html; charset=utf-8`. The environment name is not shown (no reliable source).
 
@@ -66,6 +76,8 @@ In-memory, per-instance, per-client-IP token bucket for all anonymous broker end
 `Retry-After` (seconds) and RFC 6749-style JSON `{"error":"slow_down"}` for token, plain 429 page/JSON for
 the others. Client IP: the first entry of `X-Forwarded-For` set by the App Service front end, else the
 connection remote address (document that it is best-effort; edge rate limiting is the stronger option).
+IPv6 clients are keyed by their /64 prefix (`2001:db8:1:2::/64`) because one host controls a whole /64;
+IPv4-mapped IPv6 (`::ffff:a.b.c.d`) is keyed as that IPv4 address.
 Bucket store bounded (LRU / max 10k keys) to avoid memory growth. Also cap concurrent outbound Entra
 token calls per instance (default 16) with `SemaphoreSlim`; when saturated beyond a short wait (2 s) →
 503 `{"error":"temporarily_unavailable"}` with `Retry-After: 2`.
