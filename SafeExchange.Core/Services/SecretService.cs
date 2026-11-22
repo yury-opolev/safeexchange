@@ -4,6 +4,7 @@
 
 namespace SafeExchange.Core.Services
 {
+    using Microsoft.Azure.Cosmos;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ namespace SafeExchange.Core.Services
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Threading.Tasks;
 
     /// <summary>
@@ -182,7 +184,14 @@ namespace SafeExchange.Core.Services
                 }
                 input.Tags = normalisedTags.ToList();
 
-                var createdMetadata = await this.CreateMetadataAndPermissionsAsync(secretId, input, caller);
+                var createdMetadata = await this.TryClaimNameAsync(secretId, input, caller);
+                if (createdMetadata is null)
+                {
+                    this.log.LogInformation($"Cannot create secret '{secretId}', as already exists");
+                    return ServiceResult.Conflict($"Secret '{secretId}' already exists.");
+                }
+
+                await this.SetCallerFullPermissionsAsync(secretId, caller);
                 this.log.LogInformation($"Metadata for secret '{secretId}' added, full permissions for {caller.SubjectType} '(tid {TelemetryContext.Current})' are set.");
 
                 if (createdMetadata.AuditEnabled)
@@ -372,17 +381,34 @@ namespace SafeExchange.Core.Services
             return tagMap;
         }
 
-        private async Task<ObjectMetadata> CreateMetadataAndPermissionsAsync(string secretId, MetadataCreationInput metadataInput, Caller caller)
+        // The object and permission rows live in different containers, so a single save is not atomic.
+        // The object is saved alone first: a create that loses the name race must not leave a permission row.
+        private async Task<ObjectMetadata?> TryClaimNameAsync(string secretId, MetadataCreationInput metadataInput, Caller caller)
         {
             var objectMetadata = new ObjectMetadata(secretId, metadataInput, $"{caller.SubjectType} {caller.SubjectId}");
             var entity = await this.dbContext.Objects.AddAsync(objectMetadata);
 
+            try
+            {
+                await this.dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException dbUpdateException)
+                when (dbUpdateException.InnerException is CosmosException cosmosException &&
+                      cosmosException.StatusCode == HttpStatusCode.Conflict)
+            {
+                this.dbContext.Entry(objectMetadata).State = EntityState.Detached;
+                return null;
+            }
+
+            return entity.Entity;
+        }
+
+        private async Task SetCallerFullPermissionsAsync(string secretId, Caller caller)
+        {
             var subjectName = caller.SubjectId;
             await this.permissionsManager.SetPermissionAsync(caller.SubjectType, caller.SubjectId, subjectName, secretId, PermissionType.Full);
 
             await this.dbContext.SaveChangesAsync();
-
-            return entity.Entity;
         }
 
         private async Task<ObjectMetadata> UpdateMetadataAsync(ObjectMetadata existingMetadata, MetadataUpdateInput metadataInput)
