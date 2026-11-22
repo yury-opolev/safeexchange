@@ -6,6 +6,7 @@ namespace SafeExchange.Core.Model
 {
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.Collections.Generic;
     using System.ComponentModel.DataAnnotations;
@@ -111,10 +112,6 @@ namespace SafeExchange.Core.Model
             AuditEnabled = this.AuditEnabled
         };
 
-        private string GetPartitionKey()
-        {
-            var hashString = this.ObjectName.GetHashCode().ToString("0000");
-            return hashString.Substring(hashString.Length - 4, 4);
-        }
+        private string GetPartitionKey() => StablePartitionKey.From(this.ObjectName);
     }
 }
