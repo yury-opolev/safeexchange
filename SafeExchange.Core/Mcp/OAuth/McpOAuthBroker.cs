@@ -12,8 +12,11 @@ namespace SafeExchange.Core.Mcp.OAuth
     using System.Diagnostics.CodeAnalysis;
     using System.Linq;
     using System.Net;
+    using System.Net.Http;
     using System.Text.Json;
     using System.Text.Json.Nodes;
+    using System.Threading;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// A standards-shaped OAuth authorization server for MCP clients that delegates every decision to Entra ID:
@@ -237,6 +240,85 @@ namespace SafeExchange.Core.Mcp.OAuth
             }));
         }
 
+        /// <summary>
+        /// Forwards an <c>authorization_code</c> (with <c>code</c> and <c>code_verifier</c>) or <c>refresh_token</c>
+        /// grant to Entra's fixed token endpoint with the broker's client ID, callback and scope; everything else the
+        /// client sent (<c>resource</c>, <c>client_secret</c>, its own <c>redirect_uri</c> and <c>scope</c>) is dropped.
+        /// Entra's status and body are returned unchanged.
+        /// </summary>
+        public async Task<McpOAuthResult> TokenAsync(Uri apiBaseUri, string? body, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(apiBaseUri);
+            if (!this.IsEnabled)
+            {
+                return McpOAuthResult.NotFound;
+            }
+
+            if (string.IsNullOrEmpty(body) || body.Length > MaxBodyLength || !OAuthParameters.TryParse(body, out var parameters))
+            {
+                return this.Refuse("token", "invalid_request", "The token request must be a form of at most 16 KB without repeated parameters.");
+            }
+
+            var clientId = Get(parameters, "client_id");
+            if (clientId is not null && !string.Equals(clientId, this.ClientId, StringComparison.Ordinal))
+            {
+                return this.Refuse("token", "invalid_client", "Unknown client_id.");
+            }
+
+            var grantType = Get(parameters, "grant_type");
+            var form = new List<KeyValuePair<string, string>>
+            {
+                new("grant_type", grantType ?? string.Empty),
+                new("client_id", this.ClientId),
+            };
+            switch (grantType)
+            {
+                case "authorization_code":
+                    var code = Get(parameters, "code");
+                    var verifier = Get(parameters, "code_verifier");
+                    if (code is null || !IsPkceValue(verifier))
+                    {
+                        return this.Refuse("token", "invalid_request", "authorization_code needs code and a valid code_verifier.");
+                    }
+
+                    form.Add(new("code", code));
+                    form.Add(new("code_verifier", verifier));
+                    form.Add(new("redirect_uri", McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Callback)));
+                    break;
+                case "refresh_token":
+                    var refreshToken = Get(parameters, "refresh_token");
+                    if (refreshToken is null)
+                    {
+                        return this.Refuse("token", "invalid_request", "refresh_token is required.");
+                    }
+
+                    form.Add(new("refresh_token", refreshToken));
+                    break;
+                default:
+                    return this.Refuse("token", "unsupported_grant_type", "Only authorization_code and refresh_token are supported.");
+            }
+
+            form.Add(new("scope", string.Join(' ', this.Scopes)));
+
+            EntraTokenResponse response;
+            try
+            {
+                response = await this.tokenClient.RedeemAsync(form, cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                this.log.LogWarning("MCP OAuth token ({GrantType}) could not reach Entra: {ExceptionType}.", grantType, ex.GetType().Name);
+                return McpOAuthResult.Error(HttpStatusCode.BadGateway, "server_error", "The identity provider could not be reached.");
+            }
+
+            this.log.LogInformation(
+                "MCP OAuth token ({GrantType}) relayed Entra status {StatusCode} (error: {EntraError}).",
+                grantType,
+                (int)response.StatusCode,
+                LogSafeErrorCode(EntraErrorCode(response.Body)));
+            return McpOAuthResult.Json(response.StatusCode, response.Body);
+        }
+
         private string ClientId => this.oauth.CurrentValue.ClientId.Trim();
 
         private IReadOnlyList<string> Scopes
@@ -318,5 +400,22 @@ namespace SafeExchange.Core.Mcp.OAuth
         // Entra error codes are short snake_case words; anything else is not echoed into logs.
         private static string LogSafeErrorCode(string? error)
             => error is { Length: > 0 and <= 64 } && error.All(c => char.IsAsciiLetterLower(c) || c == '_') ? error : "unrecognized";
+
+        private static string? EntraErrorCode(string body)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(body);
+                return document.RootElement.ValueKind == JsonValueKind.Object
+                    && document.RootElement.TryGetProperty("error", out var error)
+                    && error.ValueKind == JsonValueKind.String
+                        ? error.GetString()
+                        : "none";
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
     }
 }

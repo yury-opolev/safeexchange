@@ -30,6 +30,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
             {
                 Assert.That(result, Is.EqualTo(McpOAuthResult.NotFound));
             }
+
+            Assert.That(this.Entra.Requests, Is.Empty);
         }
 
         [Test]
@@ -38,13 +40,14 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(this.Broker.IsEnabled, Is.True);
         }
 
-        private static Task<List<McpOAuthResult>> AllEndpointsAsync(McpOAuthBroker broker)
-            => Task.FromResult(new List<McpOAuthResult>
+        private static async Task<List<McpOAuthResult>> AllEndpointsAsync(McpOAuthBroker broker)
+            => new List<McpOAuthResult>
             {
                 broker.Metadata(ApiBase),
                 broker.Register("{\"redirect_uris\":[\"http://127.0.0.1:1/cb\"]}"),
                 broker.Authorize(ApiBase, $"client_id={BrokerClientId}&redirect_uri=http%3A%2F%2F127.0.0.1%3A1%2Fcb&response_type=code&code_challenge={Challenge}&code_challenge_method=S256"),
                 broker.Callback("code=c&state=eyJyIjoiaHR0cDovLzEyNy4wLjAuMToxL2NiIn0"),
-            });
+                await broker.TokenAsync(ApiBase, "grant_type=refresh_token&refresh_token=r"),
+            };
     }
 }
