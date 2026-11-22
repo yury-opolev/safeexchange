@@ -39,7 +39,7 @@ namespace SafeExchange.Core.Functions.Mcp
 
             var response = request.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", "application/json");
-            await response.WriteStringAsync(JsonSerializer.Serialize(this.protectedResource.ToMetadata(), McpJsonUtilities.DefaultOptions));
+            await response.WriteStringAsync(JsonSerializer.Serialize(this.protectedResource.ToMetadata(McpHandler.ApiBaseUri(request.Url)), McpJsonUtilities.DefaultOptions));
             return response;
         }
     }

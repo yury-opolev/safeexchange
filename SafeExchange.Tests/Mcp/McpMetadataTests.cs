@@ -24,8 +24,22 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(response.Headers.GetValues("Content-Type"), Is.EqualTo(new[] { "application/json" }));
             Assert.That(BodyOf(response), Is.EqualTo(
-                "{\"resource\":\"api://safeexchange.test\","
+                "{\"resource\":\"https://safeexchange.test/api/mcp\","
                 + $"\"authorization_servers\":[\"https://login.microsoftonline.com/{TenantId}/v2.0\"],"
+                + "\"bearer_methods_supported\":[\"header\"],"
+                + "\"scopes_supported\":[\"api://safeexchange.test/user_impersonation\"]}"));
+        }
+
+        [Test]
+        public async Task Metadata_WithTheBrokerConfigured_NamesThisHostAsTheAuthorizationServer()
+        {
+            this.BuildProvider(("Mcp:OAuth:ClientId", "00000000-0000-0000-0000-0000000000c9"));
+
+            var response = await this.MetadataHandler.Run(MetadataRequest());
+
+            Assert.That(BodyOf(response), Is.EqualTo(
+                "{\"resource\":\"https://safeexchange.test/api/mcp\","
+                + "\"authorization_servers\":[\"https://safeexchange.test/api\"],"
                 + "\"bearer_methods_supported\":[\"header\"],"
                 + "\"scopes_supported\":[\"api://safeexchange.test/user_impersonation\"]}"));
         }
