@@ -5,6 +5,7 @@
 namespace SafeExchange.Tests.Mcp.OAuth
 {
     using NUnit.Framework;
+    using SafeExchange.Core;
     using SafeExchange.Core.Mcp.OAuth;
     using System;
     using System.Net;
@@ -15,22 +16,26 @@ namespace SafeExchange.Tests.Mcp.OAuth
     {
         private const string Code = "1.AQEA-fake-entra-authorization-code";
 
-        [Test]
-        public void Callback_ForwardsTheCodeAndTheClientsState_ToTheLoopbackRedirect()
-        {
-            var query = Query(("code", Code), ("state", Wrap(ClientRedirect, "csrf-1")), ("session_state", "00000000-0000-0000-0000-0000000000aa"), ("iss", "https://login.microsoftonline.com/x/v2.0"));
+        private const string Nonce = "bm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm9uY2Utbm8";
 
-            var result = this.Broker.Callback(query);
+        [Test]
+        public void Callback_ForwardsTheCodeAndTheClientsState_ToTheLoopbackRedirect_AndExpiresTheCookie()
+        {
+            var (state, nonce) = this.AllowConsent(ValidQuery());
+            var query = Query(("code", Code), ("state", state), ("session_state", "00000000-0000-0000-0000-0000000000aa"), ("iss", "https://login.microsoftonline.com/x/v2.0"));
+
+            var result = this.Broker.Callback(query, nonce);
 
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Found));
             Assert.That(result.Body, Is.Null);
-            Assert.That(result.Location, Is.EqualTo($"{ClientRedirect}?code={Uri.EscapeDataString(Code)}&state=csrf-1"));
+            Assert.That(result.Location, Is.EqualTo($"{ClientRedirect}?code={Uri.EscapeDataString(Code)}&state={ClientState}"));
+            Assert.That(result.Cookie, Is.EqualTo(ConsentCookie.Expire));
         }
 
         [Test]
         public void Callback_AppendsToARedirectThatHasAQuery_AndOmitsAMissingClientState()
         {
-            var result = this.Broker.Callback(Query(("code", Code), ("state", Wrap("http://localhost:8080/cb?session=7", null))));
+            var result = this.Broker.Callback(Query(("code", Code), ("state", Sign("http://localhost:8080/cb?session=7", null))), Nonce);
 
             Assert.That(result.Location, Is.EqualTo($"http://localhost:8080/cb?session=7&code={Uri.EscapeDataString(Code)}"));
         }
@@ -43,9 +48,9 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 ("error_description", "AADSTS65004: User declined to consent."),
                 ("error_uri", "https://login.microsoftonline.com/error?code=65004"),
                 ("correlation_id", "00000000-0000-0000-0000-0000000000cc"),
-                ("state", Wrap(ClientRedirect, "csrf-2")));
+                ("state", Sign(ClientRedirect, "csrf-2")));
 
-            var result = this.Broker.Callback(query);
+            var result = this.Broker.Callback(query, Nonce);
 
             var (target, parameters) = SplitLocation(result.Location);
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Found));
@@ -55,12 +60,13 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(parameters["error"], Is.EqualTo("access_denied"));
             Assert.That(parameters["error_description"], Is.EqualTo("AADSTS65004: User declined to consent."));
             Assert.That(parameters["state"], Is.EqualTo("csrf-2"));
+            Assert.That(result.Cookie, Is.EqualTo(ConsentCookie.Expire));
         }
 
         [Test]
         public void Callback_WithNeitherCodeNorError_RedirectsServerErrorToTheClient()
         {
-            var (target, parameters) = SplitLocation(this.Broker.Callback(Query(("state", Wrap(ClientRedirect, "csrf-3")))).Location);
+            var (target, parameters) = SplitLocation(this.Broker.Callback(Query(("state", Sign(ClientRedirect, "csrf-3"))), Nonce).Location);
 
             Assert.That(target, Is.EqualTo(ClientRedirect));
             Assert.That(parameters["error"], Is.EqualTo("server_error"));
@@ -69,45 +75,56 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
         [TestCase(null)]
         [TestCase("not-a-state")]
-        [TestCase("eyJyIjoiaHR0cHM6Ly9ldmlsLmV4YW1wbGUvY2IifQ")]
-        public void Callback_WithoutAValidState_AnswersBadRequest_WithoutRedirecting(string? state)
+        [TestCase("eyJyIjoiaHR0cDovLzEyNy4wLjAuMToxL2NiIiwicyI6IngifQ")]
+        public void Callback_WithoutAValidState_IsTheInvalidPage(string? state)
         {
             var query = state is null ? Query(("code", Code)) : Query(("code", Code), ("state", state));
 
-            var result = this.Broker.Callback(query);
-
-            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-            Assert.That(result.Location, Is.Null);
-            Assert.That(Json(result.Body)["error"]!.GetValue<string>(), Is.EqualTo("invalid_request"));
+            AssertInvalidPage(this.Broker.Callback(query, Nonce));
         }
 
         [TestCase("https://evil.example/callback")]
         [TestCase("http://localhost.evil.com/callback")]
         [TestCase("http://127.0.0.1.nip.io/callback")]
-        public void Callback_WithACraftedNonLoopbackState_NeverRedirects(string redirectUri)
+        public void Callback_WithACraftedUnsignedState_NeverRedirects(string redirectUri)
         {
-            var crafted = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{{\"r\":\"{redirectUri}\",\"s\":\"x\"}}")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var crafted = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{{\"r\":\"{redirectUri}\",\"s\":\"x\",\"n\":\"{Nonce}\",\"e\":4102444800}}")).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-            var result = this.Broker.Callback(Query(("code", Code), ("state", crafted)));
-
-            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-            Assert.That(result.Location, Is.Null);
+            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", crafted)), Nonce));
+            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", crafted + ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")), Nonce));
         }
 
         [Test]
-        public void Callback_WithARepeatedState_AnswersBadRequest_WithoutRedirecting()
+        public void Callback_WithARepeatedState_IsTheInvalidPage()
         {
-            var query = Query(("code", Code), ("state", Wrap(ClientRedirect, "a")), ("state", Wrap("http://localhost:1/other", "b")));
+            var query = Query(("code", Code), ("state", Sign(ClientRedirect, "a")), ("state", Sign("http://localhost:1/other", "b")));
 
-            var result = this.Broker.Callback(query);
-
-            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
-            Assert.That(result.Location, Is.Null);
+            AssertInvalidPage(this.Broker.Callback(query, Nonce));
         }
 
-        private static string Wrap(string redirectUri, string? clientState)
+        [Test]
+        public void Callback_WithoutTheCookie_OrWithAnotherNonce_IsTheInvalidPage()
         {
-            Assert.That(new BrokerState(redirectUri, clientState).TryEncode(out var encoded), Is.True);
+            var query = Query(("code", Code), ("state", Sign(ClientRedirect, "csrf-4")));
+
+            AssertInvalidPage(this.Broker.Callback(query, null));
+            AssertInvalidPage(this.Broker.Callback(query, "short"));
+            AssertInvalidPage(this.Broker.Callback(query, ConsentToken.NewNonce()));
+        }
+
+        [Test]
+        public void Callback_WithAnExpiredStateOrOneSignedWithAnotherKey_IsTheInvalidPage()
+        {
+            Assert.That(SignedBrokerState.TryCreate(McpOAuthTestKey.Bytes, ClientRedirect, "csrf-5", Nonce, DateTimeProvider.UtcNow.AddMinutes(-10), out var expired), Is.True);
+            Assert.That(SignedBrokerState.TryCreate(new byte[32], ClientRedirect, "csrf-5", Nonce, DateTimeProvider.UtcNow, out var otherKey), Is.True);
+
+            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", expired!)), Nonce));
+            AssertInvalidPage(this.Broker.Callback(Query(("code", Code), ("state", otherKey!)), Nonce));
+        }
+
+        private static string Sign(string redirectUri, string? clientState)
+        {
+            Assert.That(SignedBrokerState.TryCreate(McpOAuthTestKey.Bytes, redirectUri, clientState, Nonce, DateTimeProvider.UtcNow, out var encoded), Is.True);
             return encoded!;
         }
     }

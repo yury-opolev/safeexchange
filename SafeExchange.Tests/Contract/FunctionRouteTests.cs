@@ -56,7 +56,7 @@ namespace SafeExchange.Tests.Contract
             "SafeExchange-ListSecretMeta|get|api/{apiVersion}/secret-list",
             "SafeExchange-Mcp|delete,get,post|api/mcp",
             "SafeExchange-OAuthAuthorizationServerMetadata|get|api/.well-known/oauth-authorization-server",
-            "SafeExchange-OAuthAuthorize|get|api/oauth/authorize",
+            "SafeExchange-OAuthAuthorize|get,post|api/oauth/authorize",
             "SafeExchange-OAuthCallback|get|api/oauth/callback",
             "SafeExchange-OAuthOpenIdConfiguration|get|api/.well-known/openid-configuration",
             "SafeExchange-OAuthProtectedResource|get|api/.well-known/oauth-protected-resource",

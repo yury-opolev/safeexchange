@@ -13,8 +13,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
     using System.Threading.Tasks;
 
     /// <summary>
-    /// The Functions adapter: request URL and body in, status, <c>Location</c>, JSON body and
-    /// <c>Cache-Control: no-store</c> out; a bare 404 while the broker is off.
+    /// The Functions adapter: request URL, body and cookie in; status, <c>Location</c>, <c>Set-Cookie</c>, a JSON or HTML
+    /// body (HTML with the security headers) and <c>Cache-Control: no-store</c> out; a bare 404 while the broker is off.
     /// </summary>
     [TestFixture]
     public class McpOAuthHandlerTests : McpOAuthHttpTestBase
@@ -46,18 +46,44 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [Test]
-        public async Task Authorize_AnswersFound_WithTheEntraLocationAndNoBody()
+        public async Task Authorize_AnswersTheConsentPage_AsUncacheableHtmlWithTheSecurityHeaders_AndSetsTheCookie()
         {
-            var query = $"oauth/authorize?client_id={BrokerClientId}&redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fcallback&response_type=code"
-                + $"&code_challenge={Challenge}&code_challenge_method=S256&state=abc&resource=https%3A%2F%2Fsafeexchange.test%2Fapi%2Fmcp";
+            var response = await this.OAuthHandler.Authorize(OAuthRequest("get", AuthorizeQuery + "&resource=https%3A%2F%2Fsafeexchange.test%2Fapi%2Fmcp"));
 
-            var response = await this.OAuthHandler.Authorize(OAuthRequest("get", query));
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            AssertHtmlNoStore(response);
+            Assert.That(response.Headers.GetValues("Set-Cookie").Single(), Does.Match("^__Host-saex-mcp-consent=[A-Za-z0-9_-]{43}; Max-Age=600; Path=/; Secure; HttpOnly; SameSite=Lax$"));
+            Assert.That(response.Headers.Contains("Location"), Is.False);
+            Assert.That(BodyOf(response), Does.Contain("<form method=\"post\" action=\"https://safeexchange.test/api/oauth/authorize\">"));
+        }
+
+        [Test]
+        public async Task AuthorizePost_WithTheCookie_RedirectsToEntra()
+        {
+            var page = await this.OAuthHandler.Authorize(OAuthRequest("get", AuthorizeQuery));
+            var form = ConsentForm.Post(ConsentForm.HiddenFields(BodyOf(page)));
+
+            var response = await this.OAuthHandler.Authorize(OAuthRequest("post", "oauth/authorize", form, "theme=dark; " + CookieFrom(page)));
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Found));
             Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
             Assert.That(response.Headers.GetValues("Location").Single(), Does.StartWith($"https://login.microsoftonline.com/{TenantId}/oauth2/v2.0/authorize?client_id={BrokerClientId}&"));
+            Assert.That(response.Headers.Contains("Set-Cookie"), Is.False);
             Assert.That(response.Headers.Contains("Content-Type"), Is.False);
             Assert.That(BodyOf(response), Is.Empty);
+        }
+
+        [Test]
+        public async Task AuthorizePost_WithoutTheCookie_IsTheInvalidPage()
+        {
+            var page = await this.OAuthHandler.Authorize(OAuthRequest("get", AuthorizeQuery));
+
+            var response = await this.OAuthHandler.Authorize(OAuthRequest("post", "oauth/authorize", ConsentForm.Post(ConsentForm.HiddenFields(BodyOf(page)))));
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            AssertHtmlNoStore(response);
+            Assert.That(response.Headers.Contains("Location"), Is.False);
+            Assert.That(BodyOf(response), Does.Contain(ConsentPage.InvalidRequestMessage));
         }
 
         [Test]
@@ -73,17 +99,20 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [Test]
-        public async Task Callback_AnswersFound_ToTheClientsLoopbackRedirect()
+        public async Task Callback_ForwardsToTheClientsLoopbackRedirect_AndExpiresTheCookie()
         {
-            Assert.That(new BrokerState("http://127.0.0.1:53682/callback", "abc").TryEncode(out var state), Is.True);
+            var nonce = ConsentToken.NewNonce();
+            Assert.That(SignedBrokerState.TryCreate(McpOAuthTestKey.Bytes, "http://127.0.0.1:53682/callback", "abc", nonce, DateTime.UtcNow, out var state), Is.True);
+            var request = OAuthRequest("get", $"oauth/callback?code=the-code&state={state}", cookie: "theme=dark");
+            request.Headers.Add("Cookie", $"{ConsentCookie.Name}={nonce}");
 
-            var response = await this.OAuthHandler.Callback(OAuthRequest("get", $"oauth/callback?code=the-code&state={state}"));
+            var response = await this.OAuthHandler.Callback(request);
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Found));
             Assert.That(response.Headers.GetValues("Location"), Is.EqualTo(new[] { "http://127.0.0.1:53682/callback?code=the-code&state=abc" }));
             Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
+            Assert.That(response.Headers.GetValues("Set-Cookie"), Is.EqualTo(new[] { "__Host-saex-mcp-consent=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax" }));
         }
-
         [Test]
         public async Task Token_RelaysEntrasStatusAndBody_AsUncacheableJson()
         {
@@ -109,11 +138,12 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(this.Entra.Requests, Is.Empty);
         }
 
-        [TestCase("False", BrokerClientId)]
-        [TestCase("True", "")]
-        public async Task EveryRoute_IsABareNotFound_WhileTheBrokerIsOff(string mcpEndpoint, string clientId)
+        [TestCase("False", BrokerClientId, McpOAuthTestKey.Value)]
+        [TestCase("True", "", McpOAuthTestKey.Value)]
+        [TestCase("True", BrokerClientId, "")]
+        public async Task EveryRoute_IsABareNotFound_WhileTheBrokerIsOff(string mcpEndpoint, string clientId, string stateKey)
         {
-            this.BuildProvider(("Features:McpEndpoint", mcpEndpoint), ("Mcp:OAuth:ClientId", clientId));
+            this.BuildProvider(("Features:McpEndpoint", mcpEndpoint), ("Mcp:OAuth:ClientId", clientId), ("Mcp:OAuth:StateKey", stateKey));
             var handler = this.OAuthHandler;
 
             var responses = new[]
@@ -122,6 +152,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 await handler.Metadata(OAuthRequest("get", ".well-known/openid-configuration")),
                 await handler.Register(OAuthRequest("post", "oauth/register", "{\"redirect_uris\":[\"http://127.0.0.1:1/cb\"]}")),
                 await handler.Authorize(OAuthRequest("get", $"oauth/authorize?client_id={BrokerClientId}")),
+                await handler.Authorize(OAuthRequest("post", "oauth/authorize", $"client_id={BrokerClientId}&decision=allow")),
                 await handler.Callback(OAuthRequest("get", "oauth/callback?code=c")),
                 await handler.Token(OAuthRequest("post", "oauth/token", "grant_type=refresh_token&refresh_token=r")),
             };
@@ -134,6 +165,19 @@ namespace SafeExchange.Tests.Mcp.OAuth
             }
 
             Assert.That(this.Entra.Requests, Is.Empty);
+        }
+
+        private const string AuthorizeQuery = "oauth/authorize?client_id=" + BrokerClientId + "&redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fcallback"
+            + "&response_type=code&code_challenge=" + Challenge + "&code_challenge_method=S256&state=abc";
+
+        private static void AssertHtmlNoStore(HttpResponseData response)
+        {
+            Assert.That(response.Headers.GetValues("Content-Type"), Is.EqualTo(new[] { "text/html; charset=utf-8" }));
+            Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
+            Assert.That(response.Headers.GetValues("Content-Security-Policy"), Is.EqualTo(new[] { "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" }));
+            Assert.That(response.Headers.GetValues("X-Frame-Options"), Is.EqualTo(new[] { "DENY" }));
+            Assert.That(response.Headers.GetValues("X-Content-Type-Options"), Is.EqualTo(new[] { "nosniff" }));
+            Assert.That(response.Headers.GetValues("Referrer-Policy"), Is.EqualTo(new[] { "no-referrer" }));
         }
 
         private static void AssertJsonNoStore(HttpResponseData response)

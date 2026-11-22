@@ -13,65 +13,50 @@ namespace SafeExchange.Tests.Mcp.OAuth
     [TestFixture]
     public class McpOAuthBrokerAuthorizeTests : McpOAuthBrokerTestBase
     {
-        private const string ClientState = "rmcp-csrf-token-123";
-
         [Test]
-        public void Authorize_RedirectsToEntra_WithTheBrokersClientCallbackScopeAndWrappedState()
+        public void Authorize_AnswersTheConsentPage_AndSetsTheConsentCookie_WithoutContactingEntra()
         {
             var result = this.Broker.Authorize(ApiBase, ValidQuery());
 
-            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.Found));
-            Assert.That(result.Body, Is.Null);
-            var (target, parameters) = SplitLocation(result.Location);
-            Assert.That(target, Is.EqualTo(Tenant + "/oauth2/v2.0/authorize"));
-            Assert.That(parameters.Keys, Is.EquivalentTo(new[] { "client_id", "response_type", "redirect_uri", "response_mode", "scope", "code_challenge", "code_challenge_method", "state" }));
-            Assert.That(parameters["client_id"], Is.EqualTo(BrokerClientId));
-            Assert.That(parameters["response_type"], Is.EqualTo("code"));
-            Assert.That(parameters["redirect_uri"], Is.EqualTo(Callback));
-            Assert.That(parameters["response_mode"], Is.EqualTo("query"));
-            Assert.That(parameters["scope"], Is.EqualTo(ApiScope + " offline_access"));
-            Assert.That(parameters["code_challenge"], Is.EqualTo(Challenge));
-            Assert.That(parameters["code_challenge_method"], Is.EqualTo("S256"));
-            Assert.That(BrokerState.TryDecode(parameters["state"], out var state), Is.True);
-            Assert.That(state, Is.EqualTo(new BrokerState(ClientRedirect, ClientState)));
+            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(result.Location, Is.Null);
+            Assert.That(result.ContentType, Is.EqualTo("text/html; charset=utf-8"));
+            Assert.That(result.Cookie!.MaxAgeSeconds, Is.EqualTo(600));
+            Assert.That(ConsentToken.IsNonce(result.Cookie.Value), Is.True);
+            Assert.That(result.Body, Does.Not.Contain(result.Cookie.Value), "The nonce travels only in the cookie.");
+            Assert.That(result.Body, Does.Contain("<form method=\"post\" action=\"https://safeexchange.test/api/oauth/authorize\">"));
+            Assert.That(result.Body, Does.Contain("It will receive the result at <b>http://127.0.0.1:53682</b>."));
+            var fields = ConsentForm.HiddenFields(result.Body);
+            Assert.That(fields.Select(f => f.Key), Is.EqualTo(new[] { "client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "state", "consent_expires", "consent_token" }));
+            Assert.That(fields.Take(6).Select(f => f.Value), Is.EqualTo(new[] { BrokerClientId, ClientRedirect, "code", Challenge, "S256", ClientState }));
+            Assert.That(this.Entra.Requests, Is.Empty);
         }
 
         [Test]
-        public void Authorize_DropsResourceAndUnknownParameters_AndReplacesTheRequestedScope()
+        public void Authorize_KeepsScopeAndLoginHintInTheForm_ButNeverPromptOrUnknownParameters()
         {
-            var result = this.Broker.Authorize(ApiBase, ValidQuery(
+            var (fields, _) = this.OpenConsent(ValidQuery(
+                ("prompt", "none"),
+                ("login_hint", "user@contoso.test"),
+                ("scope", "openid profile"),
                 ("resource", "https://safeexchange.test/api/mcp"),
-                ("scope", "openid profile https://graph.microsoft.com/Mail.Read api://other/.default"),
                 ("nonce", "n-0S6_WzA2Mj"),
                 ("redirect_to", "https://evil.example/")));
 
-            var (_, parameters) = SplitLocation(result.Location);
-            Assert.That(parameters.Keys, Does.Not.Contain("resource").And.Not.Contain("nonce").And.Not.Contain("redirect_to"));
-            Assert.That(parameters["scope"], Is.EqualTo(ApiScope + " offline_access"));
+            Assert.That(fields.Select(f => f.Key), Is.EqualTo(new[] { "client_id", "redirect_uri", "response_type", "code_challenge", "code_challenge_method", "state", "scope", "login_hint", "consent_expires", "consent_token" }));
+            Assert.That(fields.Single(f => f.Key == "scope").Value, Is.EqualTo("openid profile"));
+            Assert.That(fields.Single(f => f.Key == "login_hint").Value, Is.EqualTo("user@contoso.test"));
         }
 
         [Test]
-        public void Authorize_PassesPromptAndLoginHint_OnlyWhenPresent()
-        {
-            var withHints = SplitLocation(this.Broker.Authorize(ApiBase, ValidQuery(("prompt", "select_account"), ("login_hint", "user@contoso.test"))).Location).Parameters;
-            var without = SplitLocation(this.Broker.Authorize(ApiBase, ValidQuery()).Location).Parameters;
-
-            Assert.That(withHints["prompt"], Is.EqualTo("select_account"));
-            Assert.That(withHints["login_hint"], Is.EqualTo("user@contoso.test"));
-            Assert.That(without.Keys, Does.Not.Contain("prompt").And.Not.Contain("login_hint"));
-        }
-
-        [Test]
-        public void Authorize_WithoutClientState_WrapsOnlyTheRedirect()
+        public void Authorize_WithoutClientState_LeavesItOutOfTheForm()
         {
             var query = Query(("client_id", BrokerClientId), ("redirect_uri", ClientRedirect), ("response_type", "code"), ("code_challenge", Challenge), ("code_challenge_method", "S256"));
 
-            var (_, parameters) = SplitLocation(this.Broker.Authorize(ApiBase, query).Location);
+            var (fields, _) = this.OpenConsent(query);
 
-            Assert.That(BrokerState.TryDecode(parameters["state"], out var state), Is.True);
-            Assert.That(state, Is.EqualTo(new BrokerState(ClientRedirect, null)));
+            Assert.That(fields.Select(f => f.Key), Does.Not.Contain("state"));
         }
-
         [TestCase("00000000-0000-0000-0000-0000000000ff")]
         [TestCase("")]
         [TestCase(BrokerClientId + " ")]
@@ -157,17 +142,6 @@ namespace SafeExchange.Tests.Mcp.OAuth
             Assert.That(target, Is.EqualTo(ClientRedirect));
             Assert.That(parameters["error"], Is.EqualTo("invalid_request"));
         }
-
-        private static string ValidQuery(params (string Name, string Value)[] extra)
-            => Query(new[]
-            {
-                ("client_id", BrokerClientId),
-                ("redirect_uri", ClientRedirect),
-                ("response_type", "code"),
-                ("code_challenge", Challenge),
-                ("code_challenge_method", "S256"),
-                ("state", ClientState),
-            }.Concat(extra).ToArray());
 
         private static void AssertNoRedirect(McpOAuthResult result, string error)
         {

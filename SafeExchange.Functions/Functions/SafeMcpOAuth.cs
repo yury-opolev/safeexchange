@@ -41,7 +41,7 @@ namespace SafeExchange.Functions
 
         [Function(McpRoutes.OAuthAuthorizeFunctionName)]
         public Task<HttpResponseData> Authorize(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.ApiRoutePrefix + McpRoutes.OAuthAuthorize)]
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = McpRoutes.ApiRoutePrefix + McpRoutes.OAuthAuthorize)]
             HttpRequestData request)
             => this.handler.Authorize(request);
 

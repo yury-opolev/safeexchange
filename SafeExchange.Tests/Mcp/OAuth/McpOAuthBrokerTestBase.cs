@@ -15,6 +15,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net;
     using System.Text.Json.Nodes;
 
     /// <summary>
@@ -30,6 +31,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
         protected const string ApiScope = "api://safeexchange.test/user_impersonation";
 
         protected const string ClientRedirect = "http://127.0.0.1:53682/callback";
+
+        protected const string ClientState = "rmcp-csrf-token-123";
 
         protected const string Callback = "https://safeexchange.test/api/oauth/callback";
 
@@ -71,6 +74,45 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
         protected static string Query(params (string Name, string Value)[] parameters)
             => string.Join('&', parameters.Select(p => $"{Uri.EscapeDataString(p.Name)}={Uri.EscapeDataString(p.Value)}"));
+
+        protected static string ValidQuery(params (string Name, string Value)[] extra)
+            => Query(new[]
+            {
+                ("client_id", BrokerClientId),
+                ("redirect_uri", ClientRedirect),
+                ("response_type", "code"),
+                ("code_challenge", Challenge),
+                ("code_challenge_method", "S256"),
+                ("state", ClientState),
+            }.Concat(extra).ToArray());
+
+        /// <summary>
+        /// Opens the consent page for <paramref name="query"/>: its hidden form fields and the consent cookie's nonce.
+        /// </summary>
+        protected (List<KeyValuePair<string, string>> Fields, string Nonce) OpenConsent(string query)
+        {
+            var page = this.Broker.Authorize(ApiBase, query);
+            Assert.That(page.StatusCode, Is.EqualTo(HttpStatusCode.OK), "Arrange: the consent page.");
+            return (ConsentForm.HiddenFields(page.Body), page.Cookie!.Value);
+        }
+
+        /// <summary>
+        /// Opens the consent page and allows it: the signed state Entra receives and the consent cookie's nonce.
+        /// </summary>
+        protected (string State, string Nonce) AllowConsent(string query)
+        {
+            var (fields, nonce) = this.OpenConsent(query);
+            var (_, parameters) = SplitLocation(this.Broker.AuthorizeConsent(ApiBase, ConsentForm.Post(fields), nonce).Location);
+            return (parameters["state"], nonce);
+        }
+
+        protected static void AssertInvalidPage(McpOAuthResult result)
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(result.Location, Is.Null);
+            Assert.That(result.ContentType, Is.EqualTo("text/html; charset=utf-8"));
+            Assert.That(result.Body, Does.Contain(ConsentPage.InvalidRequestMessage));
+        }
 
         /// <summary>
         /// Splits a redirect URL into the part before <c>?</c> and its decoded parameters.

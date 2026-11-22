@@ -10,9 +10,12 @@ namespace SafeExchange.Core.Mcp.OAuth
     using System;
     using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
+    using System.Globalization;
     using System.Linq;
     using System.Net;
     using System.Net.Http;
+    using System.Security.Cryptography;
+    using System.Text;
     using System.Text.Json;
     using System.Text.Json.Nodes;
     using System.Threading;
@@ -20,15 +23,20 @@ namespace SafeExchange.Core.Mcp.OAuth
 
     /// <summary>
     /// A standards-shaped OAuth authorization server for MCP clients that delegates every decision to Entra ID:
-    /// registration hands out the configured Entra public client, authorize and callback relay the code flow through
-    /// this host's callback with a wrapped state, and token forwards to Entra's fixed token endpoint. It never issues,
-    /// stores or inspects tokens, and never logs codes, verifiers, tokens or state.
+    /// registration hands out the configured Entra public client, authorize asks the user for consent and then relays
+    /// the code flow through this host's callback with a signed state bound to the consent cookie, and token forwards to
+    /// Entra's fixed token endpoint. It never issues, stores or inspects tokens, and never logs codes, verifiers,
+    /// tokens, state, cookies or nonces.
     /// </summary>
     public sealed class McpOAuthBroker
     {
         public const int MaxBodyLength = 16 * 1024;
 
         public const string OfflineAccessScope = "offline_access";
+
+        private const string ConsentTokenField = "consent_token";
+
+        private const string ConsentExpiresField = "consent_expires";
 
         private const int MaxRedirectUris = 10;
 
@@ -133,15 +141,15 @@ namespace SafeExchange.Core.Mcp.OAuth
         }
 
         /// <summary>
-        /// Validates an authorization request and redirects to Entra with the broker's client ID, callback and scope,
-        /// the client's S256 challenge and the wrapped state. An unknown client or a redirect URI that is not
-        /// loopback is answered with 400 and never redirected; other errors go back to the client's redirect URI.
+        /// Validates an authorization request (unknown client or non-loopback redirect: 400 JSON, never redirected; other
+        /// errors go back to the client's redirect URI) and answers the consent page, setting the consent cookie. Nothing
+        /// is sent to Entra until the user allows the request (<see cref="AuthorizeConsent"/>); <c>prompt</c> is never
+        /// forwarded.
         /// </summary>
         public McpOAuthResult Authorize(Uri apiBaseUri, string? query)
         {
             ArgumentNullException.ThrowIfNull(apiBaseUri);
-            var endpoints = this.EnabledEndpoints;
-            if (endpoints is null)
+            if (!this.TryGetStateKey(out var key))
             {
                 return McpOAuthResult.NotFound;
             }
@@ -151,38 +159,90 @@ namespace SafeExchange.Core.Mcp.OAuth
                 return this.Refuse("authorize", "invalid_request", "A parameter was repeated.");
             }
 
-            if (!string.Equals(Get(parameters, "client_id"), this.ClientId, StringComparison.Ordinal))
+            if (!this.TryReadAuthorize(parameters, out var request, out var failure))
             {
-                return this.Refuse("authorize", "invalid_client", "Unknown client_id; register at the registration endpoint first.");
+                return failure.RedirectUri is null
+                    ? this.Refuse("authorize", failure.Error, failure.Description)
+                    : this.RedirectError("authorize", failure.RedirectUri, failure.ClientState, failure.Error, failure.Description);
             }
 
-            var redirectUri = Get(parameters, "redirect_uri");
-            if (!LoopbackRedirectUri.IsValid(redirectUri))
+            var now = DateTimeProvider.UtcNow;
+            var nonce = ConsentToken.NewNonce();
+            if (!SignedBrokerState.TryCreate(key, request.RedirectUri, request.State, nonce, now, out _))
             {
-                return this.Refuse("authorize", "invalid_request", "redirect_uri must be a loopback http URI (127.0.0.1, localhost or [::1]) without fragment or user info.");
+                return this.RedirectError("authorize", request.RedirectUri, request.State, "invalid_request", "state is too long.");
             }
 
-            var clientState = Get(parameters, "state");
-            var responseType = Get(parameters, "response_type");
-            if (responseType is null)
+            var fields = request.Fields(SignedBrokerState.UnixSeconds(now + ConsentCookie.Lifetime));
+            fields.Add(new(ConsentTokenField, ConsentToken.Create(key, nonce, fields)));
+            var page = ConsentPage.Render(McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Authorize), Origin(request.RedirectUri), fields);
+
+            this.log.LogInformation("MCP OAuth authorize answered the consent page.");
+            return McpOAuthResult.Html(HttpStatusCode.OK, page) with { Cookie = ConsentCookie.Issue(nonce) };
+        }
+
+        /// <summary>
+        /// The consent form post: re-validates the parameters like <see cref="Authorize"/>, requires the consent cookie
+        /// and a consent token that matches it and the parameters, and is valid for <see cref="ConsentCookie.Lifetime"/>.
+        /// <c>allow</c> redirects to Entra with the broker's client ID, callback and scope, the client's S256 challenge,
+        /// <c>login_hint</c> when present and the signed state; <c>deny</c> redirects <c>access_denied</c> to the
+        /// client. Any failure answers the 400 page and never redirects.
+        /// </summary>
+        public McpOAuthResult AuthorizeConsent(Uri apiBaseUri, string? form, string? consentCookie)
+        {
+            ArgumentNullException.ThrowIfNull(apiBaseUri);
+            var endpoints = this.EnabledEndpoints;
+            if (endpoints is null || !this.TryGetStateKey(out var key))
             {
-                return this.RedirectError("authorize", redirectUri, clientState, "invalid_request", "response_type is required.");
+                return McpOAuthResult.NotFound;
             }
 
-            if (responseType != "code")
+            if (string.IsNullOrEmpty(form) || form.Length > MaxBodyLength || !OAuthParameters.TryParse(form, out var parameters))
             {
-                return this.RedirectError("authorize", redirectUri, clientState, "unsupported_response_type", "Only response_type=code is supported.");
+                return this.RefusePage("authorize", "invalid_form");
             }
 
-            var challenge = Get(parameters, "code_challenge");
-            if (!IsPkceValue(challenge) || Get(parameters, "code_challenge_method") != "S256")
+            if (!this.TryReadAuthorize(parameters, out var request, out _)
+                || !long.TryParse(Get(parameters, ConsentExpiresField), NumberStyles.None, CultureInfo.InvariantCulture, out var expires))
             {
-                return this.RedirectError("authorize", redirectUri, clientState, "invalid_request", "PKCE with code_challenge_method=S256 is required.");
+                return this.RefusePage("authorize", "invalid_parameters");
             }
 
-            if (!new BrokerState(redirectUri, clientState).TryEncode(out var wrappedState))
+            if (!ConsentToken.IsNonce(consentCookie))
             {
-                return this.RedirectError("authorize", redirectUri, clientState, "invalid_request", "state is too long.");
+                return this.RefusePage("authorize", "missing_cookie");
+            }
+
+            if (!ConsentToken.Verify(key, consentCookie, request.Fields(expires), Get(parameters, ConsentTokenField)))
+            {
+                return this.RefusePage("authorize", "invalid_consent_token");
+            }
+
+            var now = DateTimeProvider.UtcNow;
+            if (expires <= SignedBrokerState.UnixSeconds(now))
+            {
+                return this.RefusePage("authorize", "expired");
+            }
+
+            switch (Get(parameters, "decision"))
+            {
+                case "deny":
+                    this.log.LogInformation("MCP OAuth authorize consent was denied by the user.");
+                    return McpOAuthResult.Redirect(AppendQuery(request.RedirectUri, new KeyValuePair<string, string?>[]
+                    {
+                        new("error", "access_denied"),
+                        new("error_description", "The user denied the sign-in."),
+                        new("state", request.State),
+                    })) with { Cookie = ConsentCookie.Expire };
+                case "allow":
+                    break;
+                default:
+                    return this.RefusePage("authorize", "invalid_decision");
+            }
+
+            if (!SignedBrokerState.TryCreate(key, request.RedirectUri, request.State, consentCookie, now, out var signedState))
+            {
+                return this.RefusePage("authorize", "invalid_parameters");
             }
 
             var entraParameters = new List<KeyValuePair<string, string?>>
@@ -192,11 +252,10 @@ namespace SafeExchange.Core.Mcp.OAuth
                 new("redirect_uri", McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Callback)),
                 new("response_mode", "query"),
                 new("scope", string.Join(' ', this.Scopes)),
-                new("code_challenge", challenge),
+                new("code_challenge", request.CodeChallenge),
                 new("code_challenge_method", "S256"),
-                new("state", wrappedState),
-                new("prompt", Get(parameters, "prompt")),
-                new("login_hint", Get(parameters, "login_hint")),
+                new("state", signedState),
+                new("login_hint", request.LoginHint),
             };
 
             this.log.LogInformation("MCP OAuth authorize redirected to Entra.");
@@ -204,20 +263,32 @@ namespace SafeExchange.Core.Mcp.OAuth
         }
 
         /// <summary>
-        /// Entra's redirect target: decodes and re-validates the wrapped state, then forwards <c>code</c> and the
-        /// client's <c>state</c> (or only <c>error</c>, <c>error_description</c> and <c>state</c>) to the loopback
-        /// redirect. Without a valid state there is nowhere safe to go, so the answer is 400.
+        /// Entra's redirect target: verifies the signed state (HMAC, expiry, loopback redirect) and that its nonce is the
+        /// consent cookie's, then forwards <c>code</c> and the client's <c>state</c> (or only <c>error</c>,
+        /// <c>error_description</c> and <c>state</c>) to the loopback redirect and expires the cookie. Without a valid
+        /// state and cookie there is nowhere safe to go, so the answer is the 400 page.
         /// </summary>
-        public McpOAuthResult Callback(string? query)
+        public McpOAuthResult Callback(string? query, string? consentCookie)
         {
-            if (!this.IsEnabled)
+            if (!this.TryGetStateKey(out var key))
             {
                 return McpOAuthResult.NotFound;
             }
 
-            if (!OAuthParameters.TryParse(query, out var parameters) || !BrokerState.TryDecode(Get(parameters, "state"), out var state))
+            if (!OAuthParameters.TryParse(query, out var parameters)
+                || !SignedBrokerState.TryVerify(key, Get(parameters, "state"), DateTimeProvider.UtcNow, out var state))
             {
-                return this.Refuse("callback", "invalid_request", "The authorization response has no valid state.");
+                return this.RefusePage("callback", "invalid_state");
+            }
+
+            if (!ConsentToken.IsNonce(consentCookie))
+            {
+                return this.RefusePage("callback", "missing_cookie");
+            }
+
+            if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(consentCookie), Encoding.ASCII.GetBytes(state.Nonce)))
+            {
+                return this.RefusePage("callback", "nonce_mismatch");
             }
 
             var error = Get(parameters, "error");
@@ -229,13 +300,14 @@ namespace SafeExchange.Core.Mcp.OAuth
                     new("error", error),
                     new("error_description", Get(parameters, "error_description")),
                     new("state", state.ClientState),
-                }));
+                })) with { Cookie = ConsentCookie.Expire };
             }
 
             var code = Get(parameters, "code");
             if (code is null)
             {
-                return this.RedirectError("callback", state.RedirectUri, state.ClientState, "server_error", "The identity provider returned no authorization code.");
+                return this.RedirectError("callback", state.RedirectUri, state.ClientState, "server_error", "The identity provider returned no authorization code.")
+                    with { Cookie = ConsentCookie.Expire };
             }
 
             this.log.LogInformation("MCP OAuth callback forwarded the authorization code to the client.");
@@ -243,7 +315,7 @@ namespace SafeExchange.Core.Mcp.OAuth
             {
                 new("code", code),
                 new("state", state.ClientState),
-            }));
+            })) with { Cookie = ConsentCookie.Expire };
         }
 
         /// <summary>
@@ -339,6 +411,66 @@ namespace SafeExchange.Core.Mcp.OAuth
         private IReadOnlyList<string> Scopes
             => this.protectedResource.Scopes.Append(OfflineAccessScope).Distinct(StringComparer.Ordinal).ToList();
 
+        private bool TryGetStateKey([NotNullWhen(true)] out byte[]? key)
+        {
+            key = null;
+            return this.IsEnabled && McpOAuthStateKey.TryDecode(this.oauth.CurrentValue.StateKey, out key);
+        }
+
+        // The checks shared by the authorize request and the consent form post, in RFC 6749 order.
+        private bool TryReadAuthorize(
+            IReadOnlyDictionary<string, string> parameters,
+            [NotNullWhen(true)] out AuthorizeRequest? request,
+            [NotNullWhen(false)] out AuthorizeFailure? failure)
+        {
+            request = null;
+            failure = null;
+            if (!string.Equals(Get(parameters, "client_id"), this.ClientId, StringComparison.Ordinal))
+            {
+                failure = new("invalid_client", "Unknown client_id; register at the registration endpoint first.", null, null);
+                return false;
+            }
+
+            var redirectUri = Get(parameters, "redirect_uri");
+            if (!LoopbackRedirectUri.IsValid(redirectUri))
+            {
+                failure = new("invalid_request", "redirect_uri must be a loopback http URI (127.0.0.1, localhost or [::1]) without fragment or user info.", null, null);
+                return false;
+            }
+
+            var clientState = Get(parameters, "state");
+            var responseType = Get(parameters, "response_type");
+            if (responseType is null)
+            {
+                failure = new("invalid_request", "response_type is required.", redirectUri, clientState);
+                return false;
+            }
+
+            if (responseType != "code")
+            {
+                failure = new("unsupported_response_type", "Only response_type=code is supported.", redirectUri, clientState);
+                return false;
+            }
+
+            var challenge = Get(parameters, "code_challenge");
+            if (!IsPkceValue(challenge) || Get(parameters, "code_challenge_method") != "S256")
+            {
+                failure = new("invalid_request", "PKCE with code_challenge_method=S256 is required.", redirectUri, clientState);
+                return false;
+            }
+
+            request = new AuthorizeRequest(this.ClientId, redirectUri, challenge, clientState, Get(parameters, "scope"), Get(parameters, "login_hint"));
+            return true;
+        }
+
+        private McpOAuthResult RefusePage(string endpoint, string reason)
+        {
+            this.log.LogWarning("MCP OAuth {Endpoint} refused the request: {Reason}.", endpoint, reason);
+            return McpOAuthResult.Html(HttpStatusCode.BadRequest, ConsentPage.Message(ConsentPage.InvalidRequestMessage));
+        }
+
+        private static string Origin(string redirectUri) => new Uri(redirectUri).GetLeftPart(UriPartial.Authority);
+
         private McpOAuthResult Refuse(string endpoint, string error, string description)
         {
             this.log.LogInformation("MCP OAuth {Endpoint} refused the request with {Error}.", endpoint, error);
@@ -432,5 +564,29 @@ namespace SafeExchange.Core.Mcp.OAuth
                 return null;
             }
         }
+
+        // The validated authorize parameters; Fields are the consent form fields the consent token covers, in order.
+        private sealed record AuthorizeRequest(string ClientId, string RedirectUri, string CodeChallenge, string? State, string? Scope, string? LoginHint)
+        {
+            public List<KeyValuePair<string, string>> Fields(long consentExpires)
+                => new KeyValuePair<string, string?>[]
+                {
+                    new("client_id", this.ClientId),
+                    new("redirect_uri", this.RedirectUri),
+                    new("response_type", "code"),
+                    new("code_challenge", this.CodeChallenge),
+                    new("code_challenge_method", "S256"),
+                    new("state", this.State),
+                    new("scope", this.Scope),
+                    new("login_hint", this.LoginHint),
+                    new(ConsentExpiresField, consentExpires.ToString(CultureInfo.InvariantCulture)),
+                }
+                .Where(field => field.Value is not null)
+                .Select(field => new KeyValuePair<string, string>(field.Key, field.Value!))
+                .ToList();
+        }
+
+        // RedirectUri is null when the error must not be redirected.
+        private sealed record AuthorizeFailure(string Error, string Description, string? RedirectUri, string? ClientState);
     }
 }
