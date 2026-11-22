@@ -57,6 +57,8 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
             Assert.That(provider.GetRequiredService<IEntraTokenClient>(), Is.InstanceOf<EntraTokenClient>());
             Assert.That(provider.GetRequiredService<McpOAuthBroker>(), Is.SameAs(provider.GetRequiredService<McpOAuthBroker>()));
+            Assert.That(provider.GetRequiredService<McpOAuthThrottle>(), Is.SameAs(provider.GetRequiredService<McpOAuthThrottle>()));
+            Assert.That(provider.GetRequiredService<EntraCallGate>(), Is.SameAs(provider.GetRequiredService<EntraCallGate>()));
             Assert.That(provider.GetRequiredService<IHttpClientFactory>().CreateClient(EntraTokenClient.HttpClientName).Timeout, Is.EqualTo(TimeSpan.FromSeconds(10)));
             var handler = provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(EntraTokenClient.HttpClientName);
             while (handler is DelegatingHandler delegating)
