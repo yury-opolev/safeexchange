@@ -1,6 +1,6 @@
 # API Endpoints
 
-This document lists the SafeExchange REST API endpoints, as defined by the HTTP triggers in `SafeExchange.Functions`. All endpoints require a valid Microsoft Entra ID Bearer token, except `GET /api/.well-known/oauth-protected-resource` (see [MCP](#mcp)).
+This document lists the SafeExchange REST API endpoints, as defined by the HTTP triggers in `SafeExchange.Functions`. All endpoints require a valid Microsoft Entra ID Bearer token, except the MCP discovery and OAuth broker routes (`/api/.well-known/*`, `/api/oauth/*`; see [MCP](#mcp)).
 
 Routes are served under the Azure Functions `/api` prefix, so `/{v}/secret/{secretId}` is `https://<host>/api/v3/secret/{secretId}`.
 
@@ -168,12 +168,18 @@ Admin endpoints require the caller to be a configured admin (`AdminConfiguration
 
 ## MCP
 
-SafeExchange exposes a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents can use secrets and files under the same permissions and audit as people. It is off unless `Features.McpEndpoint` is enabled; when off, the anonymous metadata route responds `404`, and `/api/mcp` responds `404` to authenticated callers (an unauthenticated call gets the normal `401`, without the `WWW-Authenticate` challenge, because authentication runs first). See [mcp.md](mcp.md) for setup, authentication, the tool list and the file transfer flows.
+SafeExchange exposes a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents can use secrets and files under the same permissions and audit as people. It is off unless `Features.McpEndpoint` is enabled; when off, the anonymous metadata and OAuth broker routes respond `404`, and `/api/mcp` responds `404` to authenticated callers (an unauthenticated call gets the normal `401`, without the `WWW-Authenticate` challenge, because authentication runs first). The OAuth broker routes additionally need `Mcp:OAuth:ClientId`. See [mcp.md](mcp.md) for setup, authentication, the OAuth broker, the tool list and the file transfer flows.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/mcp` | MCP over stateless streamable HTTP: one JSON-RPC message in, one JSON response out. Requires a Bearer token. `GET` and `DELETE` respond `405` |
-| GET | `/api/.well-known/oauth-protected-resource` | Anonymous RFC 9728 protected-resource metadata for MCP clients |
+| GET | `/api/.well-known/oauth-protected-resource` | Anonymous RFC 9728 protected-resource metadata for MCP clients (`resource` = `https://<host>/api/mcp`) |
+| GET | `/api/.well-known/openid-configuration` | Anonymous authorization-server metadata of the OAuth broker (issuer `https://<host>/api`) |
+| GET | `/api/.well-known/oauth-authorization-server` | Same document as `openid-configuration` |
+| POST | `/api/oauth/register` | Anonymous RFC 7591 client registration (JSON). Loopback `redirect_uris` only; answers `201` with the configured Entra public `client_id` |
+| GET | `/api/oauth/authorize` | Anonymous. Validates the authorization request (S256 PKCE, loopback `redirect_uri`, known `client_id`) and redirects (`302`) to Entra |
+| GET | `/api/oauth/callback` | Anonymous. Entra's redirect target; redirects (`302`) the code or error to the client's loopback `redirect_uri` |
+| POST | `/api/oauth/token` | Anonymous (form). Forwards `authorization_code` / `refresh_token` grants to Entra and relays Entra's status and JSON body (`Cache-Control: no-store`) |
 
 When MCP is enabled, `401` responses additionally carry `WWW-Authenticate: Bearer resource_metadata="https://<host>/api/.well-known/oauth-protected-resource"` (the body is unchanged).
 

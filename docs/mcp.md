@@ -18,7 +18,7 @@ SafeExchange has a first-party [Model Context Protocol](https://modelcontextprot
 | Batches | Not supported (`400`); send one message per request |
 | Errors | JSON-RPC codes `-32700` (parse), `-32600` (invalid request), `-32601` (unknown method), `-32602` (invalid params, unknown tool). Tool failures are normal results with `isError: true` |
 
-The dispatcher and tools live in `SafeExchange.Core/Mcp` and depend only on the services; the Functions adapter (`McpHandler`, `OAuthProtectedResourceHandler`) is in `SafeExchange.Core.Functions`, and the two triggers are in `SafeExchange.Functions`.
+The dispatcher and tools live in `SafeExchange.Core/Mcp` and depend only on the services, and the OAuth broker lives in `SafeExchange.Core/Mcp/OAuth`; the Functions adapters (`McpHandler`, `OAuthProtectedResourceHandler`, `McpOAuthHandler`) are in `SafeExchange.Core.Functions`, and the triggers (`SafeMcp`, `SafeOAuthMetadata`, `SafeMcpOAuth`) are in `SafeExchange.Functions`.
 
 ## Enabling
 
@@ -26,20 +26,22 @@ The dispatcher and tools live in `SafeExchange.Core/Mcp` and depend only on the 
 |---------|------------------|---------------|---------|
 | `Features:McpEndpoint` | `Features--McpEndpoint` (`True` / `False`) | `settings-features-mcpEndpoint` | `False` |
 | `Authentication:McpScopes` (optional) | `Authentication--McpScopes` | — (set the secret by hand) | empty |
+| `Mcp:OAuth:ClientId` (optional) | `Mcp--OAuth--ClientId` | `settings-mcp-oauthClientId` (written only when not empty) | empty (OAuth broker off) |
 
-- With the flag off, `GET /api/.well-known/oauth-protected-resource` (anonymous) answers `404`. `POST /api/mcp` answers `404` to authenticated callers; an unauthenticated call gets the normal `401` from authentication, because authentication runs before the handler checks the flag (it is deliberately not skipped based on the flag). Either way `401` responses carry no `WWW-Authenticate` challenge while the flag is off.
+- With the flag off, `GET /api/.well-known/oauth-protected-resource` and the [OAuth broker](#oauth-broker-for-entra-id) routes (all anonymous) answer `404`. `POST /api/mcp` answers `404` to authenticated callers; an unauthenticated call gets the normal `401` from authentication, because authentication runs before the handler checks the flag (it is deliberately not skipped based on the flag). Either way `401` responses carry no `WWW-Authenticate` challenge while the flag is off.
 - The flag is read live (`IOptionsMonitor`), so no redeploy is needed. Key Vault configuration is reloaded every 5 minutes; restart the Function app to apply a change immediately.
 - Production should keep the flag off until it is enabled explicitly. Staging (`test` environment) is where it is validated first (see [Staging validation](#staging-validation)).
-- The `deployment\current\arm` templates define `settings-features-mcpEndpoint` (default `False`) and the `Features--McpEndpoint` secret, like the other `Features--*` settings.
+- The `deployment\current\arm` templates define `settings-features-mcpEndpoint` (default `False`) and the `Features--McpEndpoint` secret, like the other `Features--*` settings, and `settings-mcp-oauthClientId` (default empty) for the `Mcp--OAuth--ClientId` secret, which is written only when the parameter is not empty (like `AADClient--ClientSecret`), so a value set by hand survives later deployments.
 
-**Derived defaults.** The protected-resource metadata and `file_transfer_info` are derived from the existing `Authentication` section:
+**Derived defaults.** The protected-resource metadata and `file_transfer_info` are derived from the request URL and the existing `Authentication` section:
 
 | Value | Derived from |
 |-------|--------------|
-| `resource` | First `api://…` entry of `Authentication:ValidAudiences`; if there is none, the first entry |
-| `authorization_servers` | `Authentication:Authority`, with `/v2.0` appended when missing |
-| `scopes_supported` (user scope) | `Authentication:McpScopes` (comma-separated) when set, otherwise `{resource}/user_impersonation` |
-| S2S application scope | `{resource}/.default` |
+| `resource` | The MCP URL of the host that served the request: `https://<host>/api/mcp` |
+| `authorization_servers` | `https://<host>/api` (the [OAuth broker](#oauth-broker-for-entra-id)) when `Mcp:OAuth:ClientId` is set; otherwise `Authentication:Authority`, with `/v2.0` appended when missing |
+| API resource (for scopes) | First `api://…` entry of `Authentication:ValidAudiences`; if there is none, the first entry |
+| `scopes_supported` (user scope) | `Authentication:McpScopes` (comma-separated) when set, otherwise `{API resource}/user_impersonation` |
+| S2S application scope | `{API resource}/.default` |
 
 If `ValidAudiences` has no `api://` entry, set `Authentication:McpScopes` explicitly so clients request the scope your API app registration exposes.
 
@@ -55,12 +57,12 @@ When a request has no valid token, the `401` carries an RFC 9728 challenge:
 WWW-Authenticate: Bearer resource_metadata="https://<host>/api/.well-known/oauth-protected-resource"
 ```
 
-The anonymous metadata document at that URL tells the client where to sign in:
+The anonymous metadata document at that URL tells the client where to sign in (here with the OAuth broker configured):
 
 ```json
 {
-  "resource": "api://<api>",
-  "authorization_servers": ["https://login.microsoftonline.com/<tenant>/v2.0"],
+  "resource": "https://<host>/api/mcp",
+  "authorization_servers": ["https://<host>/api"],
   "scopes_supported": ["api://<api>/user_impersonation"],
   "bearer_methods_supported": ["header"]
 }
@@ -68,12 +70,74 @@ The anonymous metadata document at that URL tells the client where to sign in:
 
 The metadata lives under `/api` because Azure Functions serves every HTTP trigger under the `api` route prefix; the challenge points to it explicitly, so clients that follow `resource_metadata` find it. Clients that ignore the hint and probe `https://<host>/.well-known/oauth-protected-resource` get `404`.
 
-Limits to know about:
+`resource` is always the MCP URL (RFC 9728; MCP clients such as Copilot CLI reject anything else). Without `Mcp:OAuth:ClientId`, `authorization_servers` names Entra directly; Entra has no dynamic client registration and rejects the MCP URL as `resource`, so most MCP clients cannot finish OAuth that way and need the [fallback](#fallback-bearer-header-from-the-azure-cli).
 
-- **Entra ID has no dynamic client registration.** A client that needs it cannot finish OAuth against Entra on its own.
-- `resource` is the API's `api://` identifier, not the MCP URL (Entra rejects a `resource` that does not match the requested scope's API). A client that insists on `resource` matching the MCP URL may reject the metadata.
+### OAuth broker for Entra ID
 
-In both cases use the fallback below. Record per client whether discovery works.
+With `Mcp:OAuth:ClientId` set (and `Features.McpEndpoint` on), SafeExchange presents a small, standards-shaped authorization server to MCP clients and delegates every real decision to Entra. It never issues, stores or inspects tokens: clients receive Entra's tokens, which the backend validates as before.
+
+| Route (anonymous) | Purpose |
+|-------------------|---------|
+| `GET /api/.well-known/openid-configuration`, `GET /api/.well-known/oauth-authorization-server` | Authorization-server metadata (same JSON): issuer `https://<host>/api`, the three endpoints below, `code` + S256 PKCE, `token_endpoint_auth_methods_supported: ["none"]`, scopes = the user scope + `offline_access` |
+| `POST /api/oauth/register` | RFC 7591 registration. Always answers `201` with the configured Entra public `client_id` and `token_endpoint_auth_method: none` |
+| `GET /api/oauth/authorize` | Validates the request and redirects (`302`) to Entra's `/oauth2/v2.0/authorize` with the broker's client ID, the callback below, the API scope + `offline_access`, the client's S256 challenge and a wrapped `state` |
+| `GET /api/oauth/callback` | Entra's redirect target. Forwards `code` and the client's `state` (or `error`, `error_description`, `state`) to the client's loopback redirect URI |
+| `POST /api/oauth/token` | Forwards an `authorization_code` or `refresh_token` grant to Entra's `/oauth2/v2.0/token` and relays Entra's status and JSON body (`Cache-Control: no-store`) |
+
+Rules the broker enforces:
+
+- **Loopback redirects only.** Client `redirect_uri`s must be `http` to `127.0.0.1`, `localhost` or `[::1]` (any port and path, no fragment, no user info, at most 2048 characters), checked at register, authorize and again at callback. A code can only reach the signing-in user's own machine, and PKCE means only the client holding the verifier can redeem it, so the broker is not an open redirect.
+- **One client.** `client_id` must equal `Mcp:OAuth:ClientId`. An unknown client or a bad `redirect_uri` is answered with `400` JSON and never redirected; other authorize errors (`response_type` other than `code`, missing S256 PKCE, a `state` too long) are redirected to the client as `error=…`.
+- **Rewritten requests.** `resource`, `client_secret` and unknown parameters are dropped; `scope` is replaced by the API scope plus `offline_access`; the token request always uses the broker's client ID and callback and is posted to the token endpoint derived from `Authentication:Authority` (nothing the caller sends changes the URL). A repeated parameter is refused.
+- **State.** Entra receives `base64url({"r": clientRedirect, "s": clientState})` (at most 2 KB). It carries no authority, so it is not signed or encrypted; it is size- and format-checked and the redirect is re-validated on decode.
+- **Logging.** The broker logs route, outcome and Entra error codes only, never codes, verifiers, tokens or state. The Functions platform's own request telemetry may still record request URLs, which for the callback include the single-use, PKCE-bound code.
+- **Off by default.** Every broker route answers `404` unless `Features.McpEndpoint` is on, `Mcp:OAuth:ClientId` is set and `Authentication:Authority` is an https URL.
+
+#### Entra setup (once per environment)
+
+Create a public client app for the broker and pre-authorise it on the API app, so users get no consent prompt. In PowerShell, signed in with `az login` as someone who can manage both apps:
+
+```powershell
+$apiAppId = '<API app (client) ID>'                      # the app whose api:// URI is in Authentication:ValidAudiences
+$apiHost  = 'safeexchange-staging.azurewebsites.net'     # the Function app host
+$envName  = 'staging'
+
+# 1. The API's user_impersonation scope id and its sign-in audience.
+$scopeId  = az ad app show --id $apiAppId --query "api.oauth2PermissionScopes[?value=='user_impersonation'].id | [0]" -o tsv
+$audience = az ad app show --id $apiAppId --query signInAudience -o tsv
+
+# 2. The public client: no secret; Entra redirects to the broker's callback.
+ConvertTo-Json -Depth 5 -InputObject @(@{ resourceAppId = $apiAppId; resourceAccess = @(@{ id = $scopeId; type = 'Scope' }) }) |
+    Set-Content mcp-client-access.json
+$clientAppId = az ad app create --display-name "SafeExchange MCP Client ($envName)" `
+    --sign-in-audience $audience `
+    --is-fallback-public-client true `
+    --public-client-redirect-uris "https://$apiHost/api/oauth/callback" `
+    --required-resource-accesses "@mcp-client-access.json" `
+    --query appId -o tsv
+az ad sp create --id $clientAppId
+Remove-Item mcp-client-access.json
+
+# 3. Pre-authorise the client on the API app, keeping the existing entries (the whole api object is written back).
+$apiObjectId = az ad app show --id $apiAppId --query id -o tsv
+$api = az ad app show --id $apiAppId --query api -o json | ConvertFrom-Json
+$others = @($api.preAuthorizedApplications | Where-Object { $_.appId -ne $clientAppId })
+$api.preAuthorizedApplications = $others + @([pscustomobject]@{ appId = $clientAppId; delegatedPermissionIds = @($scopeId) })
+ConvertTo-Json -Depth 10 -InputObject @{ api = $api } | Set-Content mcp-preauth.json
+az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$apiObjectId" --headers "Content-Type=application/json" --body "@mcp-preauth.json"
+Remove-Item mcp-preauth.json
+
+$clientAppId
+```
+
+Then give SafeExchange the client ID: set `settings-mcp-oauthClientId` to `$clientAppId` in `deployment\current\arm\services-parameters-<env>.arm.json` and run `deployment\deploy.ps1` (it is not a secret), or write the secret directly with `az keyvault secret set --vault-name <key vault> --name Mcp--OAuth--ClientId --value $clientAppId` (an empty parameter never overwrites it). Key Vault configuration reloads every 5 minutes; restart the Function app to apply it at once. Check:
+
+```powershell
+curl.exe -s "https://$apiHost/api/.well-known/oauth-protected-resource"   # authorization_servers = ["https://<host>/api"]
+curl.exe -s "https://$apiHost/api/.well-known/openid-configuration"       # issuer = "https://<host>/api"
+```
+
+To turn the broker off again, delete or disable the `Mcp--OAuth--ClientId` secret (or turn `Features.McpEndpoint` off).
 
 ### Fallback: bearer header from the Azure CLI
 
@@ -230,7 +294,7 @@ or edit the file directly (`~/.copilot/mcp-config.json`, or `.mcp.json` / `.gith
 }
 ```
 
-If the server needs OAuth, Copilot opens a browser to sign in (or asks you to run `/mcp auth safeexchange`). When OAuth discovery does not work against Entra (see [Authentication](#authentication)), send a static token as a header:
+If the server needs OAuth, Copilot opens a browser to sign in (or asks you to run `/mcp auth safeexchange`). With the [OAuth broker](#oauth-broker-for-entra-id) configured, Copilot registers through `/api/oauth/register`, the browser signs in with Entra and the token is stored and refreshed by Copilot. Without the broker, OAuth discovery does not work against Entra (see [Authentication](#authentication)); send a static token as a header:
 
 ```json
 {
@@ -248,7 +312,7 @@ or `copilot mcp add --transport http --header "Authorization: Bearer <token>" sa
 
 ### Any other client
 
-Any MCP client with streamable HTTP support needs the same three things: the URL `https://<host>/api/mcp`, a bearer token (OAuth where the client can complete it against Entra, otherwise a header) and, optionally, to send back the `Mcp-Session-Id` from `initialize` so audit shows its label. A minimal smoke test with `curl`:
+Any MCP client with streamable HTTP support needs the same three things: the URL `https://<host>/api/mcp`, a bearer token (OAuth through the broker where the client supports dynamic client registration and loopback redirects, otherwise a header) and, optionally, to send back the `Mcp-Session-Id` from `initialize` so audit shows its label. A minimal smoke test with `curl`:
 
 ```bash
 TOKEN=$(az account get-access-token --scope api://<api>/user_impersonation --query accessToken -o tsv)
@@ -268,8 +332,8 @@ Before enabling MCP anywhere else, deploy the branch to staging (`test` environm
 
 1. **REST regression** with the current web app (v3) and an older web app build (v2): create a secret, upload and download an attachment (hashed and legacy), grant and revoke access, audit view, pinned items, S2S apps pages.
 2. **MCP as an S2S agent:** register an app and grant it on a test secret; move a small file in-band; move a large synthetic file (tens of MB) through `file_transfer_info` and REST with the agent's own token; all SHA-256 values match; disable the app and confirm the next MCP call returns `403`.
-3. **MCP as a user from Copilot CLI** via OAuth discovery. Open risk: Entra has no dynamic client registration. If a client cannot complete OAuth, use the `az account get-access-token` header fallback and record the outcome per client.
+3. **MCP as a user from Copilot CLI** via OAuth discovery through the broker (after the [Entra setup](#entra-setup-once-per-environment)): `/mcp auth safeexchange` opens the browser, signs in without a consent prompt and the next tool call succeeds; repeat after the access token expires to see the refresh. If a client cannot complete OAuth, use the `az account get-access-token` header fallback and record the outcome per client.
 4. **Audit:** events from MCP show `channel = mcp` and the client label, REST events show nothing new, and the audit chain verifies including events from before the change.
-5. **Log scan** (Application Insights and Functions logs) for the whole run: no secret values, file content or tokens.
+5. **Log scan** (Application Insights and Functions logs) for the whole run: no secret values, file content, tokens, authorization codes or code verifiers in traces (request URLs of `/api/oauth/callback` are platform telemetry, see the broker's logging rule).
 
 Production keeps `Features--McpEndpoint = False` until it is explicitly enabled.
