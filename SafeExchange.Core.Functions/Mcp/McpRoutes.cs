@@ -47,7 +47,9 @@ namespace SafeExchange.Core.Functions.Mcp
 
         public const string WellKnownProtectedResourceApiMcp = ProtectedResourceMetadataDocument + "/" + Mcp;
 
-        public const string WellKnownNotFound = ".well-known/{*rest}";
+        // The Functions host tries the routes in function-name order and takes the first match (it does not prefer
+        // literal routes), so the catch-all itself excludes the three root documents above.
+        public const string WellKnownNotFound = ".well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/mcp)$).*$)}";
 
         public const string McpFunctionName = "SafeExchange-Mcp";
 

@@ -49,7 +49,7 @@ namespace SafeExchange.Functions
             HttpRequestData request)
             => this.protectedResourceHandler.Run(request);
 
-        // The specific routes above are literal, so the host's route table prefers them over this catch-all.
+        // The route excludes the three root documents above: the host takes the first matching route, not the most specific one.
         [Function(McpRoutes.WellKnownNotFoundFunctionName)]
         public HttpResponseData NotFound(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.WellKnownNotFound)]

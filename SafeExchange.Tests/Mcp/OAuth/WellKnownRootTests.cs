@@ -6,10 +6,12 @@ namespace SafeExchange.Tests.Mcp.OAuth
 {
     using Microsoft.Azure.Functions.Worker.Http;
     using NUnit.Framework;
+    using SafeExchange.Core.Functions.Mcp;
     using SafeExchange.Functions;
     using SafeExchange.Tests.Utilities;
     using System;
     using System.Net;
+    using System.Text.RegularExpressions;
     using System.Threading.Tasks;
 
     /// <summary>
@@ -96,6 +98,23 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
             Assert.That(BodyOf(response), Is.Empty);
+        }
+
+        // The Functions host takes the first matching route (by function name), so the catch-all must not match the root documents.
+        [TestCase("oauth-authorization-server/api", false)]
+        [TestCase("openid-configuration/api", false)]
+        [TestCase("oauth-protected-resource/api/mcp", false)]
+        [TestCase("oauth-authorization-server/api/mcp", true)]
+        [TestCase("oauth-authorization-server/apix", true)]
+        [TestCase("oauth-protected-resource/api", true)]
+        [TestCase("anything", true)]
+        [TestCase("a/b/c", true)]
+        public void NotFoundRoute_ExcludesTheRootDocuments(string rest, bool matched)
+        {
+            var constraint = Regex.Match(McpRoutes.WellKnownNotFound, @"\{\*rest:regex\((.*)\)\}$");
+
+            Assert.That(constraint.Success, Is.True);
+            Assert.That(Regex.IsMatch(rest, constraint.Groups[1].Value), Is.EqualTo(matched));
         }
 
         private static TestHttpRequestData RootRequest(string path)
