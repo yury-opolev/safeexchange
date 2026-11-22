@@ -5,6 +5,8 @@
 namespace SafeExchange.Tests.Services
 {
     using Microsoft.EntityFrameworkCore;
+    using Microsoft.EntityFrameworkCore.Diagnostics;
+    using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Logging.Abstractions;
     using Moq;
     using NUnit.Framework;
@@ -15,6 +17,7 @@ namespace SafeExchange.Tests.Services
     using SafeExchange.Core.Permissions;
     using SafeExchange.Core.Purger;
     using SafeExchange.Core.Services;
+    using SafeExchange.Tests.Utilities;
     using System;
     using System.Linq;
     using System.Net;
@@ -144,6 +147,63 @@ namespace SafeExchange.Tests.Services
             Assert.That(result.Status, Is.EqualTo(ServiceStatus.BadRequest));
             Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
             Assert.That(result.Error, Is.Not.Empty);
+        }
+
+        // Needs the real Cosmos provider: only it reports the name conflict (and has the separate
+        // Objects/Permissions containers) that make concurrent creates non-atomic.
+        [Test]
+        public async Task ConcurrentCreates_OfTheSameName_YieldOneWinnerAndNoStrayPermissions()
+        {
+            var secretConfiguration = new ConfigurationBuilder().AddUserSecrets<SecretServiceTests>().Build();
+            var options = new DbContextOptionsBuilder<SafeExchangeDbContext>()
+                .UseCosmos(
+                    secretConfiguration.GetConnectionString("CosmosDb")!,
+                    databaseName: $"{nameof(SecretServiceTests)}Race{Guid.NewGuid():N}",
+                    CosmosTestOptions.UseGateway)
+                .ConfigureWarnings(w => w.Ignore(CosmosEventId.SyncNotSupported))
+                .Options;
+
+            await using var setupContext = new SafeExchangeDbContext(options);
+            await setupContext.Database.EnsureCreatedAsync();
+
+            try
+            {
+                const int contenders = 8;
+                for (var round = 0; round < 3; round++)
+                {
+                    var secretId = $"race-{round}";
+                    var callers = Enumerable.Range(0, contenders).Select(i => UserCaller($"user{i}@services.test")).ToList();
+
+                    var results = await Task.WhenAll(callers.Select(async caller =>
+                    {
+                        await using var context = new SafeExchangeDbContext(options);
+                        var permissions = new PermissionsManager(this.Configuration, context, NullLogger<PermissionsManager>.Instance);
+                        var service = new SecretService(this.Configuration, context, this.Purger, permissions, this.AuditWriter, NullLogger<SecretService>.Instance);
+                        return await service.CreateAsync(caller, secretId, CreationInput());
+                    }));
+
+                    var winners = results.Select((result, index) => (result, index)).Where(r => r.result.IsOk).ToList();
+                    Assert.That(winners, Has.Count.EqualTo(1), $"round {round}");
+                    Assert.That(
+                        results.Where(r => !r.IsOk).Select(r => r.Status),
+                        Is.All.EqualTo(ServiceStatus.Conflict),
+                        $"round {round}");
+                    Assert.That(
+                        results.Where(r => !r.IsOk).Select(r => r.Error),
+                        Is.All.EqualTo($"Secret '{secretId}' already exists."),
+                        $"round {round}");
+
+                    await using var verifyContext = new SafeExchangeDbContext(options);
+                    var rows = await verifyContext.Permissions.Where(p => p.SecretName == secretId).ToListAsync();
+                    Assert.That(rows, Has.Count.EqualTo(1), $"round {round}");
+                    Assert.That(rows[0].SubjectId, Is.EqualTo(callers[winners[0].index].SubjectId), $"round {round}");
+                    Assert.That(rows[0].CanGrantAccess, Is.True, $"round {round}");
+                }
+            }
+            finally
+            {
+                await TestDatabase.EnsureDeletedTolerantAsync(setupContext.Database);
+            }
         }
 
         [Test]
