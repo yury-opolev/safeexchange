@@ -194,6 +194,49 @@ namespace SafeExchange.Core.Mcp.OAuth
             return McpOAuthResult.Redirect(AppendQuery(endpoints.Authorize, entraParameters));
         }
 
+        /// <summary>
+        /// Entra's redirect target: decodes and re-validates the wrapped state, then forwards <c>code</c> and the
+        /// client's <c>state</c> (or only <c>error</c>, <c>error_description</c> and <c>state</c>) to the loopback
+        /// redirect. Without a valid state there is nowhere safe to go, so the answer is 400.
+        /// </summary>
+        public McpOAuthResult Callback(string? query)
+        {
+            if (!this.IsEnabled)
+            {
+                return McpOAuthResult.NotFound;
+            }
+
+            if (!OAuthParameters.TryParse(query, out var parameters) || !BrokerState.TryDecode(Get(parameters, "state"), out var state))
+            {
+                return this.Refuse("callback", "invalid_request", "The authorization response has no valid state.");
+            }
+
+            var error = Get(parameters, "error");
+            if (error is not null)
+            {
+                this.log.LogInformation("MCP OAuth callback forwarded Entra error {EntraError} to the client.", LogSafeErrorCode(error));
+                return McpOAuthResult.Redirect(AppendQuery(state.RedirectUri, new KeyValuePair<string, string?>[]
+                {
+                    new("error", error),
+                    new("error_description", Get(parameters, "error_description")),
+                    new("state", state.ClientState),
+                }));
+            }
+
+            var code = Get(parameters, "code");
+            if (code is null)
+            {
+                return this.RedirectError("callback", state.RedirectUri, state.ClientState, "server_error", "The identity provider returned no authorization code.");
+            }
+
+            this.log.LogInformation("MCP OAuth callback forwarded the authorization code to the client.");
+            return McpOAuthResult.Redirect(AppendQuery(state.RedirectUri, new KeyValuePair<string, string?>[]
+            {
+                new("code", code),
+                new("state", state.ClientState),
+            }));
+        }
+
         private string ClientId => this.oauth.CurrentValue.ClientId.Trim();
 
         private IReadOnlyList<string> Scopes
@@ -271,5 +314,9 @@ namespace SafeExchange.Core.Mcp.OAuth
                 .Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value!)}"));
             return uri + (uri.Contains('?') ? "&" : "?") + query;
         }
+
+        // Entra error codes are short snake_case words; anything else is not echoed into logs.
+        private static string LogSafeErrorCode(string? error)
+            => error is { Length: > 0 and <= 64 } && error.All(c => char.IsAsciiLetterLower(c) || c == '_') ? error : "unrecognized";
     }
 }
