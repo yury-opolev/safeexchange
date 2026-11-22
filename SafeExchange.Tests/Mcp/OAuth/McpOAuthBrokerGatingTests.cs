@@ -43,6 +43,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             {
                 broker.Metadata(ApiBase),
                 broker.Register("{\"redirect_uris\":[\"http://127.0.0.1:1/cb\"]}"),
+                broker.Authorize(ApiBase, $"client_id={BrokerClientId}&redirect_uri=http%3A%2F%2F127.0.0.1%3A1%2Fcb&response_type=code&code_challenge={Challenge}&code_challenge_method=S256"),
             });
     }
 }

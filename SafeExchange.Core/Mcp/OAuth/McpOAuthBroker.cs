@@ -129,6 +129,71 @@ namespace SafeExchange.Core.Mcp.OAuth
             }.ToJsonString());
         }
 
+        /// <summary>
+        /// Validates an authorization request and redirects to Entra with the broker's client ID, callback and scope,
+        /// the client's S256 challenge and the wrapped state. An unknown client or a redirect URI that is not
+        /// loopback is answered with 400 and never redirected; other errors go back to the client's redirect URI.
+        /// </summary>
+        public McpOAuthResult Authorize(Uri apiBaseUri, string? query)
+        {
+            ArgumentNullException.ThrowIfNull(apiBaseUri);
+            var endpoints = this.EnabledEndpoints;
+            if (endpoints is null)
+            {
+                return McpOAuthResult.NotFound;
+            }
+
+            if (!OAuthParameters.TryParse(query, out var parameters))
+            {
+                return this.Refuse("authorize", "invalid_request", "A parameter was repeated.");
+            }
+
+            if (!string.Equals(Get(parameters, "client_id"), this.ClientId, StringComparison.Ordinal))
+            {
+                return this.Refuse("authorize", "invalid_client", "Unknown client_id; register at the registration endpoint first.");
+            }
+
+            var redirectUri = Get(parameters, "redirect_uri");
+            if (!LoopbackRedirectUri.IsValid(redirectUri))
+            {
+                return this.Refuse("authorize", "invalid_request", "redirect_uri must be a loopback http URI (127.0.0.1, localhost or [::1]) without fragment or user info.");
+            }
+
+            var clientState = Get(parameters, "state");
+            if (Get(parameters, "response_type") != "code")
+            {
+                return this.RedirectError("authorize", redirectUri, clientState, "unsupported_response_type", "Only response_type=code is supported.");
+            }
+
+            var challenge = Get(parameters, "code_challenge");
+            if (!IsPkceValue(challenge) || Get(parameters, "code_challenge_method") != "S256")
+            {
+                return this.RedirectError("authorize", redirectUri, clientState, "invalid_request", "PKCE with code_challenge_method=S256 is required.");
+            }
+
+            if (!new BrokerState(redirectUri, clientState).TryEncode(out var wrappedState))
+            {
+                return this.RedirectError("authorize", redirectUri, clientState, "invalid_request", "state is too long.");
+            }
+
+            var entraParameters = new List<KeyValuePair<string, string?>>
+            {
+                new("client_id", this.ClientId),
+                new("response_type", "code"),
+                new("redirect_uri", McpOAuthPaths.Endpoint(apiBaseUri, McpOAuthPaths.Callback)),
+                new("response_mode", "query"),
+                new("scope", string.Join(' ', this.Scopes)),
+                new("code_challenge", challenge),
+                new("code_challenge_method", "S256"),
+                new("state", wrappedState),
+                new("prompt", Get(parameters, "prompt")),
+                new("login_hint", Get(parameters, "login_hint")),
+            };
+
+            this.log.LogInformation("MCP OAuth authorize redirected to Entra.");
+            return McpOAuthResult.Redirect(AppendQuery(endpoints.Authorize, entraParameters));
+        }
+
         private string ClientId => this.oauth.CurrentValue.ClientId.Trim();
 
         private IReadOnlyList<string> Scopes
@@ -177,5 +242,34 @@ namespace SafeExchange.Core.Mcp.OAuth
 
         private static bool IsAbsentOrSubset(JsonObject request, string name, IReadOnlyCollection<string> allowed)
             => request[name] is null || (TryGetStrings(request, name, out var values) && values.All(allowed.Contains));
+
+        private EntraEndpoints? EnabledEndpoints
+            => this.IsEnabled ? EntraEndpoints.FromAuthority(this.authentication.CurrentValue.Authority) : null;
+
+        private McpOAuthResult RedirectError(string endpoint, string redirectUri, string? clientState, string error, string description)
+        {
+            this.log.LogInformation("MCP OAuth {Endpoint} redirected {Error} to the client.", endpoint, error);
+            return McpOAuthResult.Redirect(AppendQuery(redirectUri, new KeyValuePair<string, string?>[]
+            {
+                new("error", error),
+                new("error_description", description),
+                new("state", clientState),
+            }));
+        }
+
+        private static string? Get(IReadOnlyDictionary<string, string> parameters, string name)
+            => parameters.TryGetValue(name, out var value) ? value : null;
+
+        // RFC 7636: 43 to 128 characters from [A-Za-z0-9-._~].
+        private static bool IsPkceValue([NotNullWhen(true)] string? value)
+            => value is { Length: >= 43 and <= 128 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' or '~');
+
+        private static string AppendQuery(string uri, IEnumerable<KeyValuePair<string, string?>> parameters)
+        {
+            var query = string.Join('&', parameters
+                .Where(p => p.Value is not null)
+                .Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value!)}"));
+            return uri + (uri.Contains('?') ? "&" : "?") + query;
+        }
     }
 }
