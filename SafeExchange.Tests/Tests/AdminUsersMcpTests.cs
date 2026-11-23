@@ -6,6 +6,7 @@
 namespace SafeExchange.Tests
 {
     using Azure.Core.Serialization;
+    using Microsoft.Azure.Cosmos;
     using Microsoft.Azure.Functions.Worker;
     using Microsoft.EntityFrameworkCore;
     using Microsoft.Extensions.Configuration;
@@ -28,7 +29,9 @@ namespace SafeExchange.Tests
     using System.Net;
     using System.Security.Claims;
     using System.Text;
+    using System.Text.Json.Nodes;
     using System.Threading.Tasks;
+    using User = SafeExchange.Core.Model.User;
 
     [TestFixture]
     public class AdminUsersMcpTests
@@ -39,6 +42,9 @@ namespace SafeExchange.Tests
 
         private SafeExchangeDbContext dbContext = null!;
 
+        private CosmosClient cosmosClient = null!;
+
+        private Container users = null!;
         private GlobalFilters globalFilters = null!;
 
         private IOptionsMonitor<Limits> limits = null!;
@@ -56,6 +62,9 @@ namespace SafeExchange.Tests
             this.dbContext = new SafeExchangeDbContext(this.options);
             await this.dbContext.Database.EnsureCreatedAsync();
 
+            this.cosmosClient = CosmosTestOptions.CreateClient(connectionString!);
+            this.users = this.cosmosClient.GetDatabase($"{nameof(AdminUsersMcpTests)}Database").GetContainer("Users");
+
             this.globalFilters = new GlobalFilters(
                 Mock.Of<IOptionsMonitor<GloballyAllowedGroupsConfiguration>>(x => x.CurrentValue == new GloballyAllowedGroupsConfiguration()),
                 Mock.Of<IOptionsMonitor<AdminConfiguration>>(x => x.CurrentValue == new AdminConfiguration { AdminUsers = AdminObjectId }),
@@ -70,6 +79,7 @@ namespace SafeExchange.Tests
         {
             TestDatabase.EnsureDeletedTolerant(this.dbContext.Database);
             this.dbContext.Dispose();
+            this.cosmosClient.Dispose();
         }
 
         [SetUp]
@@ -103,6 +113,59 @@ namespace SafeExchange.Tests
                 ("allowed@test.test", true, false),
                 ("blocked@test.test", true, true),
             }));
+        }
+
+        [Test]
+        public async Task RunList_ReadsLegacyUsersWithoutTheFlags_AsFalse()
+        {
+            await this.SeedLegacyUserAsync("legacy@test.test");
+            await this.SeedUserAsync("current@test.test", mcpAllowed: true);
+
+            var response = (TestHttpResponseData)await this.Handler().RunList(Request("get"), Admin(), NullLogger.Instance);
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var items = response.ReadBodyAsJson<BaseResponseObject<PaginatedResult<UserOverviewOutput>>>()!.Result!.Items;
+            Assert.That(items.Select(i => (i.AadUpn, i.McpAllowed, i.McpBlockedByAdmin)), Is.EqualTo(new[]
+            {
+                ("current@test.test", true, false),
+                ("legacy@test.test", false, false),
+            }));
+        }
+
+        [Test]
+        public async Task RunDetail_ReadsALegacyUserWithoutTheFlags_AsFalse()
+        {
+            var user = await this.SeedLegacyUserAsync("legacy@test.test");
+
+            var response = (TestHttpResponseData)await this.Handler().RunDetail(Request("get"), user.AadUpn, Admin(), NullLogger.Instance);
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var detail = response.ReadBodyAsJson<BaseResponseObject<UserDetailOutput>>()!.Result!;
+            Assert.That((detail.McpAllowed, detail.McpBlockedByAdmin), Is.EqualTo((false, false)));
+        }
+
+        [Test]
+        public async Task RunByTelemetryId_ReadsALegacyUserWithoutTheFlags_AsFalse()
+        {
+            var user = await this.SeedLegacyUserAsync("legacy@test.test", telemetryId: "44444444444444444444444444444444");
+
+            var response = (TestHttpResponseData)await this.Handler().RunByTelemetryId(Request("get"), user.TelemetryId, Admin(), NullLogger.Instance);
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var detail = response.ReadBodyAsJson<BaseResponseObject<UserDetailOutput>>()!.Result!;
+            Assert.That((detail.McpAllowed, detail.McpBlockedByAdmin), Is.EqualTo((false, false)));
+        }
+
+        [Test]
+        public async Task RunToggleMcpBlocked_OnALegacyUserWithoutTheFlags_Blocks()
+        {
+            var user = await this.SeedLegacyUserAsync("legacy@test.test");
+
+            var response = (TestHttpResponseData)await this.Handler().RunToggleMcpBlocked(Request("patch", """{"blocked":true}"""), user.AadUpn, Admin(), NullLogger.Instance);
+
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            var stored = await this.StoredAsync(user.Id);
+            Assert.That((stored.McpAllowed, stored.McpBlockedByAdmin), Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -210,6 +273,31 @@ namespace SafeExchange.Tests
             };
             seed.Users.Add(user);
             await seed.SaveChangesAsync();
+            return user;
+        }
+
+        // A user written before the flags existed: saved through EF, then the two properties removed from the stored document.
+        private async Task<User> SeedLegacyUserAsync(string upn, string telemetryId = "")
+        {
+            var user = await this.SeedUserAsync(upn);
+            if (telemetryId.Length > 0)
+            {
+                await using var update = new SafeExchangeDbContext(this.options);
+                var tracked = await update.Users.SingleAsync(u => u.Id == user.Id);
+                tracked.TelemetryId = telemetryId;
+                await update.SaveChangesAsync();
+                user.TelemetryId = telemetryId;
+            }
+
+            using var read = await this.users.ReadItemStreamAsync(user.Id, new PartitionKey(User.DefaultPartitionKey));
+            read.EnsureSuccessStatusCode();
+            using var reader = new StreamReader(read.Content);
+            var document = JsonNode.Parse(await reader.ReadToEndAsync())!.AsObject();
+            document.Remove("McpAllowed");
+            document.Remove("McpBlockedByAdmin");
+            using var content = new MemoryStream(Encoding.UTF8.GetBytes(document.ToJsonString()));
+            using var replaced = await this.users.ReplaceItemStreamAsync(content, user.Id, new PartitionKey(User.DefaultPartitionKey));
+            replaced.EnsureSuccessStatusCode();
             return user;
         }
 

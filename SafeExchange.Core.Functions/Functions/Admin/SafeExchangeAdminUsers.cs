@@ -79,8 +79,9 @@ namespace SafeExchange.Core.Functions.Admin
                         DisplayName = u.DisplayName,
                         ContactEmail = u.ContactEmail,
                         Enabled = u.Enabled,
-                        McpAllowed = u.McpAllowed,
-                        McpBlockedByAdmin = u.McpBlockedByAdmin,
+                        // Projections (unlike entity materialization) fail on documents that predate these flags.
+                        McpAllowed = (bool?)u.McpAllowed ?? false,
+                        McpBlockedByAdmin = (bool?)u.McpBlockedByAdmin ?? false,
                     })
                     .ToListAsync();
 
