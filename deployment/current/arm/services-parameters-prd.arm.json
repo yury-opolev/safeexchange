@@ -63,10 +63,13 @@
             "value": "False"
         },
         "settings-features-mcpEndpoint": {
-            "value": "False"
+            "value": "True"
         },
         "settings-mcp-oauthClientId": {
-            "value": ""
+            "value": "b75602e2-2c3b-446b-9c92-77021db634eb"
+        },
+        "settings-authentication-mcpScopes": {
+            "value": "https://spaceoysteroutlook.onmicrosoft.com/user_impersonation"
         },
         "deployer_ip_addresses": {
             "value": []
