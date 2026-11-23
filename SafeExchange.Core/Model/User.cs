@@ -18,6 +18,8 @@ namespace SafeExchange.Core.Model
             this.PartitionKey = User.DefaultPartitionKey;
             this.Enabled = true;
             this.ReceiveExternalNotifications = true;
+            this.McpAllowed = false;
+            this.McpBlockedByAdmin = false;
 
             this.DisplayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
             this.AadObjectId = aadObjectId ?? throw new ArgumentNullException(nameof(aadObjectId));
@@ -59,6 +61,14 @@ namespace SafeExchange.Core.Model
         /// User is required to consent in AAD to the application to allow synchronization of user group memberships in Graph.
         /// </summary>
         public bool ConsentRequired { get; set; }
+
+        /// <summary>The user's own choice to allow their account to be used through the MCP endpoint
+        /// (opt-in, off by default). Changed only through <c>PATCH /me/settings</c>.</summary>
+        public bool McpAllowed { get; set; }
+
+        /// <summary>An administrator blocked MCP for this user; overrides <see cref="McpAllowed"/>.
+        /// Changed only through <c>PATCH /admin/users/{upn}/mcp-blocked</c>.</summary>
+        public bool McpBlockedByAdmin { get; set; }
 
         public DateTime CreatedAt { get; set; }
 
