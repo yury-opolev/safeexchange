@@ -25,6 +25,9 @@ namespace SafeExchange.Tests.Mcp
             {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"copilot-cli","version":"1.0.114"}}}
             """;
 
+        [SetUp]
+        public Task OptInOwnerAsync() => this.SeedMcpUserAsync(OwnerUpn, mcpAllowed: true);
+
         [Test]
         public async Task FlagOff_AnswersNotFound()
         {

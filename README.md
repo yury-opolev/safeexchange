@@ -63,7 +63,7 @@ docs/                        — Architecture and design documentation
 
 ## MCP for AI Agents
 
-SafeExchange has a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint (`POST /api/v1/mcp`) so AI agents such as Copilot CLI can store, read and share secrets and files under the same permissions and audit as people. It is off by default (`Features.McpEndpoint`). See [docs/mcp.md](docs/mcp.md) for setup, authentication (signed-in users and S2S agent apps), the tool list and client configuration.
+SafeExchange has a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint (`POST /api/v1/mcp`) so AI agents such as Copilot CLI can store, read and share secrets and files under the same permissions and audit as people. It is off by default (`Features.McpEndpoint`), and each user must opt in before their account can be used through MCP (**Allow MCP** in the web app's settings, or `PATCH /api/v2/me/settings`); administrators can block it per user. See [docs/mcp.md](docs/mcp.md) for setup, authentication (signed-in users and S2S agent apps), the tool list and client configuration.
 
 ## Documentation
 

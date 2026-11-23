@@ -47,6 +47,12 @@ namespace SafeExchange.Core.Model.Dto.Output
         /// <summary>Gets or sets a value indicating whether the user is required to consent in AAD.</summary>
         public bool ConsentRequired { get; set; }
 
+        /// <summary>The user's own choice to allow MCP for their account.</summary>
+        public bool McpAllowed { get; set; }
+
+        /// <summary>An administrator blocked MCP for the user (overrides <see cref="McpAllowed"/>).</summary>
+        public bool McpBlockedByAdmin { get; set; }
+
         /// <summary>The user's current pseudonymous telemetry id (empty if never set).</summary>
         public string CurrentTelemetryId { get; set; } = string.Empty;
 

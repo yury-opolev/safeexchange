@@ -111,6 +111,12 @@ namespace SafeExchange.Core.Migrations
                     return;
                 }
 
+                if ("00013".Equals(migrationId, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    await this.RunMigration00013Async();
+                    return;
+                }
+
                 this.log.LogInformation($"Migration '{migrationId}' does not exist, skipping any actions.");
             }
             finally
@@ -795,6 +801,91 @@ namespace SafeExchange.Core.Migrations
             }
 
             this.log.LogInformation($"Migration 00012 complete. Backfilled {backfilled} document(s).");
+        }
+
+        private async Task RunMigration00013Async()
+        {
+            using CosmosClient client = new CosmosClient(this.dbConfiguration.CosmosDbEndpoint, this.tokenCredential);
+            var database = client.GetDatabase(this.dbConfiguration.DatabaseName);
+            var container = database.GetContainer("Users");
+
+            var backfilled = await BackfillMcpFlagsAsync(container, this.log);
+            this.log.LogInformation($"Migration 00013 complete. Backfilled {backfilled} document(s).");
+        }
+
+        /// <summary>
+        /// Writes <c>McpAllowed = false</c> / <c>McpBlockedByAdmin = false</c> onto every user document
+        /// that lacks them and returns how many documents were rewritten. Idempotent.
+        /// </summary>
+        internal static async Task<int> BackfillMcpFlagsAsync(Container container, ILogger log)
+        {
+            // Already-backfilled users are filtered server-side so re-runs are cheap.
+            var query = new QueryDefinition(
+                "SELECT c.id, c.PartitionKey FROM c WHERE NOT IS_DEFINED(c.McpAllowed) OR IS_NULL(c.McpAllowed) OR NOT IS_DEFINED(c.McpBlockedByAdmin) OR IS_NULL(c.McpBlockedByAdmin)");
+
+            using FeedIterator<MigrationItem00013_User> feed =
+                container.GetItemQueryIterator<MigrationItem00013_User>(queryDefinition: query);
+
+            var backfilled = 0;
+            while (feed.HasMoreResults)
+            {
+                FeedResponse<MigrationItem00013_User> response = await feed.ReadNextAsync();
+                foreach (MigrationItem00013_User item in response)
+                {
+                    if (await BackfillMcpFlagsOnUserAsync(container, item, log))
+                    {
+                        backfilled++;
+                    }
+                }
+            }
+
+            return backfilled;
+        }
+
+        private static async Task<bool> BackfillMcpFlagsOnUserAsync(Container container, MigrationItem00013_User item, ILogger log)
+        {
+            // The replace is conditional on the etag of the read: the user document is written
+            // concurrently (the user's own opt-in, telemetry-id rotation, group sync), and an
+            // unconditional replace could overwrite such a write. On 412 read again and re-check.
+            const int maxAttempts = 3;
+            var partitionKey = new PartitionKey(item.PartitionKey);
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                using var readResponse = await container.ReadItemStreamAsync(item.id, partitionKey);
+                if (!readResponse.IsSuccessStatusCode)
+                {
+                    return false;
+                }
+
+                var etag = readResponse.Headers.ETag;
+                string original;
+                using (var reader = new StreamReader(readResponse.Content))
+                {
+                    original = await reader.ReadToEndAsync();
+                }
+
+                var rewritten = McpFlagsBackfill.BackfillIfMissing(original);
+                if (rewritten is null)
+                {
+                    return false;
+                }
+
+                using var content = new MemoryStream(Encoding.UTF8.GetBytes(rewritten));
+                using var replaceResponse = await container.ReplaceItemStreamAsync(
+                    content, item.id, partitionKey, new ItemRequestOptions { IfMatchEtag = etag });
+                if (replaceResponse.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+                {
+                    log.LogInformation($"User '{item.id}' changed during the MCP flags backfill, reading it again.");
+                    continue;
+                }
+
+                replaceResponse.EnsureSuccessStatusCode();
+                log.LogInformation($"Backfilled McpAllowed/McpBlockedByAdmin on User '{item.id}'.");
+                return true;
+            }
+
+            log.LogWarning($"Skipped User '{item.id}' after {maxAttempts} concurrent changes; run migration 00013 again.");
+            return false;
         }
     }
 }

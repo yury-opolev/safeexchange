@@ -28,6 +28,9 @@ namespace SafeExchange.Tests.Mcp
 
         private const string Token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJsb2ctdGVzdCJ9.c2lnbmF0dXJl";
 
+        [SetUp]
+        public Task OptInOwnerAsync() => this.SeedMcpUserAsync(OwnerUpn, mcpAllowed: true);
+
         [Test]
         public async Task AFullSession_LogsNoSecretValueChunkDataTokenOrSessionId()
         {

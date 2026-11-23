@@ -69,6 +69,8 @@ namespace SafeExchange.Tests.Mcp
         [TestCase("SafeExchange-OAuthOpenIdConfiguration", "httpTrigger", true)]
         [TestCase("SafeExchange-Mcp", "httpTrigger", true)]
         [TestCase("SafeExchange-SecretMeta", "httpTrigger", true)]
+        [TestCase("SafeExchange-Me-Settings-Get", "httpTrigger", true)]
+        [TestCase("SafeExchange-Me-Settings-Update", "httpTrigger", true)]
         [TestCase("SafeExchange-Purge", "timerTrigger", false)]
         public void OnlyTheMetadataAndBrokerTriggers_SkipAuthentication_ByExactName(string functionName, string triggerType, bool authenticated)
         {

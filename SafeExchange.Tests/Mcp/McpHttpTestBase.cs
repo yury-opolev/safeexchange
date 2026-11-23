@@ -35,6 +35,8 @@ namespace SafeExchange.Tests.Mcp
     {
         protected const string AgentClientId = "00000000-0000-0000-0000-0000000000c1";
 
+        protected const string UserObjectId = "00000000-0000-0000-0000-0000000000a1";
+
         protected static readonly Uri McpUrl = new("https://safeexchange.test/api/v1/mcp");
 
         private IServiceProvider previousInstanceServices = null!;
@@ -74,7 +76,7 @@ namespace SafeExchange.Tests.Mcp
             => new(new CaseSensitiveClaimsIdentity(new List<Claim>
             {
                 new("upn", upn),
-                new("oid", "00000000-0000-0000-0000-0000000000a1"),
+                new("oid", UserObjectId),
                 new("tid", TenantId),
             }.AsEnumerable()));
 
@@ -102,6 +104,22 @@ namespace SafeExchange.Tests.Mcp
         }
 
         protected static string BodyOf(HttpResponseData response) => ((TestHttpResponseData)response).ReadBodyAsString();
+
+        /// <summary>
+        /// Adds the Users row that <see cref="UserPrincipal"/> resolves to (one per test: every user principal
+        /// carries <see cref="UserObjectId"/>), with the given MCP settings.
+        /// </summary>
+        protected async Task<User> SeedMcpUserAsync(string upn, bool mcpAllowed, bool mcpBlockedByAdmin = false)
+        {
+            var user = new User(upn, UserObjectId, TenantId, upn, upn)
+            {
+                McpAllowed = mcpAllowed,
+                McpBlockedByAdmin = mcpBlockedByAdmin,
+            };
+            this.DbContext.Users.Add(user);
+            await this.DbContext.SaveChangesAsync();
+            return user;
+        }
 
         protected async Task SeedApplicationAsync(string clientId, string displayName, bool enabled)
         {
