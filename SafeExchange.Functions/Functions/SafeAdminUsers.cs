@@ -67,5 +67,15 @@ namespace SafeExchange.Functions
             var principal = request.FunctionContext.GetPrincipal();
             return await this.handler.RunToggleEnabled(request, upn, principal, this.log);
         }
+
+        [Function("SafeExchange-Admin-Users-ToggleMcpBlocked")]
+        public async Task<HttpResponseData> RunToggleMcpBlocked(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = $"{Version}/admin/users/{{upn}}/mcp-blocked")]
+            HttpRequestData request,
+            string upn)
+        {
+            var principal = request.FunctionContext.GetPrincipal();
+            return await this.handler.RunToggleMcpBlocked(request, upn, principal, this.log);
+        }
     }
 }
