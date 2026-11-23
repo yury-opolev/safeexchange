@@ -19,20 +19,24 @@ namespace SafeExchange.Core.Functions.Mcp
     using System.Threading.Tasks;
 
     /// <summary>
-    /// Functions adapter for <c>/api/v1/mcp</c>: feature flag, method check and caller resolution (a denial is
-    /// answered exactly like REST, before any MCP processing), then <see cref="McpRequestDispatcher"/>.
+    /// Functions adapter for <c>/api/v1/mcp</c>: feature flag, method check, caller resolution and the per-user
+    /// opt-in (<see cref="McpUserAccessPolicy"/>); a denial is answered exactly like REST, before any MCP
+    /// processing. Then <see cref="McpRequestDispatcher"/>.
     /// </summary>
     public sealed class McpHandler
     {
         private readonly ICallerResolver callerResolver;
 
+        private readonly McpUserAccessPolicy userAccessPolicy;
+
         private readonly McpRequestDispatcher dispatcher;
 
         private readonly IOptionsMonitor<Features> features;
 
-        public McpHandler(ICallerResolver callerResolver, McpRequestDispatcher dispatcher, IOptionsMonitor<Features> features)
+        public McpHandler(ICallerResolver callerResolver, McpUserAccessPolicy userAccessPolicy, McpRequestDispatcher dispatcher, IOptionsMonitor<Features> features)
         {
             this.callerResolver = callerResolver ?? throw new ArgumentNullException(nameof(callerResolver));
+            this.userAccessPolicy = userAccessPolicy ?? throw new ArgumentNullException(nameof(userAccessPolicy));
             this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
             this.features = features ?? throw new ArgumentNullException(nameof(features));
         }
@@ -57,6 +61,12 @@ namespace SafeExchange.Core.Functions.Mcp
             if (!resolution.IsAllowed)
             {
                 return await resolution.Denial.ToResponseAsync(request);
+            }
+
+            var optInDenial = await this.userAccessPolicy.EvaluateAsync(principal, resolution.Caller);
+            if (optInDenial is not null)
+            {
+                return await optInDenial.ToResponseAsync(request);
             }
 
             log.LogInformation($"{nameof(McpHandler)} triggered by {resolution.Caller.SubjectType} (tid {TelemetryContext.Current}).");

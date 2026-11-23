@@ -15,7 +15,8 @@ namespace SafeExchange.Core.Mcp
     {
         /// <summary>
         /// Registers the MCP tools (scoped, like the services they call), their registry, the dispatcher, the
-        /// protected-resource facts and the OAuth broker with its Entra token client, Entra call gate and rate limits.
+        /// per-user opt-in policy, the protected-resource facts and the OAuth broker with its Entra token client,
+        /// Entra call gate and rate limits.
         /// Needs the SafeExchange services and the <c>Authentication</c>, <c>Features</c> and <c>Mcp:OAuth</c> options.
         /// </summary>
         public static IServiceCollection AddSafeExchangeMcp(this IServiceCollection services)
@@ -41,6 +42,7 @@ namespace SafeExchange.Core.Mcp
 
             services.AddScoped<McpToolRegistry>();
             services.AddScoped<McpRequestDispatcher>();
+            services.AddScoped<McpUserAccessPolicy>();
             services.AddSingleton<McpProtectedResource>();
             services.AddSingleton<McpBaseUriGuard>();
 
