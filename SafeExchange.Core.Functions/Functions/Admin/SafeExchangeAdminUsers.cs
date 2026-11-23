@@ -1,6 +1,6 @@
 /// <summary>
-/// SafeExchangeAdminUsers — admin-only paginated user listing + enable/disable
-/// toggle. Search is case-insensitive substring against AadUpn and DisplayName.
+/// SafeExchangeAdminUsers — admin-only paginated user listing, user detail, the enable/disable
+/// toggle and the MCP block toggle. Search is case-insensitive substring against AadUpn and DisplayName.
 /// </summary>
 
 namespace SafeExchange.Core.Functions.Admin
@@ -14,11 +14,13 @@ namespace SafeExchange.Core.Functions.Admin
     using SafeExchange.Core.Model;
     using SafeExchange.Core.Model.Dto.Input;
     using SafeExchange.Core.Model.Dto.Output;
+    using SafeExchange.Core.Utilities;
     using System;
     using System.IO;
     using System.Linq;
     using System.Net;
     using System.Security.Claims;
+    using System.Text.Json;
     using System.Threading.Tasks;
 
     public class SafeExchangeAdminUsers
@@ -77,6 +79,8 @@ namespace SafeExchange.Core.Functions.Admin
                         DisplayName = u.DisplayName,
                         ContactEmail = u.ContactEmail,
                         Enabled = u.Enabled,
+                        McpAllowed = u.McpAllowed,
+                        McpBlockedByAdmin = u.McpBlockedByAdmin,
                     })
                     .ToListAsync();
 
@@ -179,6 +183,8 @@ namespace SafeExchange.Core.Functions.Admin
                 ModifiedAt = user.ModifiedAt,
                 ReceiveExternalNotifications = user.ReceiveExternalNotifications,
                 ConsentRequired = user.ConsentRequired,
+                McpAllowed = user.McpAllowed,
+                McpBlockedByAdmin = user.McpBlockedByAdmin,
                 CurrentTelemetryId = user.TelemetryId,
                 TelemetryIdActiveSinceUtc = user.TelemetryIdIssuedAt,
                 TelemetryIdRotatesAtUtc = user.TelemetryIdExpiresAt,
@@ -217,41 +223,76 @@ namespace SafeExchange.Core.Functions.Admin
                         new BaseResponseObject<object> { Status = "error", Error = "Body is required." });
                 }
 
-                user.Enabled = input.Enabled;
-                user.ModifiedAt = DateTimeProvider.UtcNow;
-
-                // The user document may be updated concurrently (e.g. the user's own request
-                // rotating its telemetry id under the etag concurrency token). The admin intent
-                // is authoritative, so on a conflict reload the latest document, re-apply the
-                // enabled flag, and save again.
-                const int maxAttempts = 4;
-                for (var attempt = 1; ; attempt++)
+                // The admin intent is authoritative: re-applied on top of concurrent updates.
+                await UserUpdate.SaveWithRetryAsync(this.dbContext, user, u =>
                 {
-                    try
-                    {
-                        await this.dbContext.SaveChangesAsync();
-                        break;
-                    }
-                    catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
-                    {
-                        await this.dbContext.Entry(user).ReloadAsync();
-                        user.Enabled = input.Enabled;
-                        user.ModifiedAt = DateTimeProvider.UtcNow;
-                    }
-                }
+                    u.Enabled = input.Enabled;
+                    u.ModifiedAt = DateTimeProvider.UtcNow;
+                    return true;
+                });
 
                 log.LogInformation("Admin toggled User '{Upn}' Enabled to {Enabled}.", upn, input.Enabled);
                 return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
-                    new BaseResponseObject<UserOverviewOutput>
-                    {
-                        Status = "ok",
-                        Result = new UserOverviewOutput
-                        {
-                            AadUpn = user.AadUpn, DisplayName = user.DisplayName,
-                            ContactEmail = user.ContactEmail, Enabled = user.Enabled,
-                        },
-                    });
+                    new BaseResponseObject<UserOverviewOutput> { Status = "ok", Result = ToOverview(user) });
             }, nameof(RunToggleEnabled), log);
         }
+
+        public async Task<HttpResponseData> RunToggleMcpBlocked(HttpRequestData request, string upn, ClaimsPrincipal principal, ILogger log)
+        {
+            var (shouldReturn, filterResponse) = await this.globalFilters.GetAdminFilterResultAsync(request, principal, this.dbContext);
+            if (shouldReturn)
+            {
+                return filterResponse ?? request.CreateResponse(HttpStatusCode.NoContent);
+            }
+
+            return await ActionResults.TryCatchAsync(request, async () =>
+            {
+                var user = await this.dbContext.Users.FirstOrDefaultAsync(u => u.AadUpn == upn);
+                if (user is null)
+                {
+                    return await ActionResults.CreateResponseAsync(request, HttpStatusCode.NotFound,
+                        new BaseResponseObject<object> { Status = "not_found", Error = $"User '{upn}' not found." });
+                }
+
+                var body = await new StreamReader(request.Body).ReadToEndAsync();
+                McpBlockedToggleInput? input;
+                try
+                {
+                    input = DefaultJsonSerializer.Deserialize<McpBlockedToggleInput>(body);
+                }
+                catch (JsonException)
+                {
+                    input = null;
+                }
+
+                if (input?.Blocked is not bool blocked)
+                {
+                    return await ActionResults.CreateResponseAsync(request, HttpStatusCode.BadRequest,
+                        new BaseResponseObject<object> { Status = "error", Error = "Body must be { \"blocked\": bool }." });
+                }
+
+                // The admin intent is authoritative: re-applied on top of concurrent updates.
+                await UserUpdate.SaveWithRetryAsync(this.dbContext, user, u =>
+                {
+                    u.McpBlockedByAdmin = blocked;
+                    u.ModifiedAt = DateTimeProvider.UtcNow;
+                    return true;
+                });
+
+                log.LogInformation("Admin set McpBlockedByAdmin to {Blocked} for user (tid {TelemetryId}).", blocked, user.TelemetryId);
+                return await ActionResults.CreateResponseAsync(request, HttpStatusCode.OK,
+                    new BaseResponseObject<UserOverviewOutput> { Status = "ok", Result = ToOverview(user) });
+            }, nameof(RunToggleMcpBlocked), log);
+        }
+
+        private static UserOverviewOutput ToOverview(User user) => new()
+        {
+            AadUpn = user.AadUpn,
+            DisplayName = user.DisplayName,
+            ContactEmail = user.ContactEmail,
+            Enabled = user.Enabled,
+            McpAllowed = user.McpAllowed,
+            McpBlockedByAdmin = user.McpBlockedByAdmin,
+        };
     }
 }

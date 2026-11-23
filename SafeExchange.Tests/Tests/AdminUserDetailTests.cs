@@ -315,6 +315,23 @@ namespace SafeExchange.Tests
         }
 
         [Test]
+        public async Task RunDetail_ReturnsTheMcpFlags()
+        {
+            // [GIVEN] a user who allowed MCP and was blocked by an admin
+            var user = await this.SeedUserAsync("detail-mcp@test.test");
+            user.McpAllowed = true;
+            user.McpBlockedByAdmin = true;
+            await this.dbContext.SaveChangesAsync();
+
+            // [WHEN] admin fetches detail
+            var detail = await this.GetDetailAsync(user.AadUpn);
+
+            // [THEN] both flags are returned
+            Assert.That(detail.McpAllowed, Is.True);
+            Assert.That(detail.McpBlockedByAdmin, Is.True);
+        }
+
+        [Test]
         public async Task RunDetail_ListsRetiredTelemetryIds_NewestFirst()
         {
             var user = await this.SeedUserAsync("detail-hist@test.test");

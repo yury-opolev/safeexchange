@@ -6,6 +6,8 @@ namespace SafeExchange.Core.Model.Dto.Output
         public string DisplayName { get; set; }
         public string ContactEmail { get; set; }
         public bool Enabled { get; set; }
+        public bool McpAllowed { get; set; }
+        public bool McpBlockedByAdmin { get; set; }
     }
 
     public class ApplicationAdminOverviewOutput
