@@ -117,6 +117,15 @@ The list / single-GET responses always return a DTO with `exists`, `canRead`, `c
 | GET | `/{v}/applications-list` | List registered applications |
 | GET | `/{v}/telemetry/config` | Client telemetry configuration |
 
+## Personal Settings
+
+Users only: an application (S2S) caller gets `403` (`Settings are available to users only.`).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/{v}/me/settings` | The caller's settings: `{ "mcpAllowed": bool, "mcpBlockedByAdmin": bool, "mcpEffective": bool }` (`mcpEffective` = allowed and not blocked) |
+| PATCH | `/{v}/me/settings` | Change the caller's settings. Body `{ "mcpAllowed": bool }`; a missing or non-boolean `mcpAllowed` answers `400`. Turning MCP on while an administrator blocked it answers `403` with `subStatus = "mcp_blocked_by_admin"` and stores nothing; turning it off is always accepted. Returns the same body as `GET` |
+
 ## Self-service S2S Applications
 
 > Available only when `Features.S2SAppsSelfService` is enabled. When the flag is off, the endpoints respond `204 No Content`. These endpoints use the regular authentication gate (not admin).
@@ -152,23 +161,24 @@ Admin endpoints require the caller to be a configured admin (`AdminConfiguration
 | PATCH | `/{v}/admin/applications/{displayName}/enabled` | Enable or disable an application |
 | PUT | `/{v}/admin/applications/{displayName}/owners` | Replace application owners |
 | POST, GET, PATCH, DELETE | `/{v}/applications/{applicationId}` | Register and manage an application by id |
-| GET | `/{v}/admin/users` | List users |
-| GET | `/{v}/admin/users/{upn}` | User detail |
+| GET | `/{v}/admin/users` | List users (each with `mcpAllowed` and `mcpBlockedByAdmin`) |
+| GET | `/{v}/admin/users/{upn}` | User detail (including `mcpAllowed` and `mcpBlockedByAdmin`) |
 | GET | `/{v}/admin/users/by-telemetry-id/{telemetryId}` | Look up a user by telemetry id |
 | PATCH | `/{v}/admin/users/{upn}/enabled` | Enable or disable a user |
+| PATCH | `/{v}/admin/users/{upn}/mcp-blocked` | Block or unblock MCP for a user. Body `{ "blocked": bool }` (otherwise `400`); `404` for an unknown user; returns the updated user. A block overrides the user's own `mcpAllowed` |
 | GET | `/{v}/admin/secret-list` | List all secrets |
 | GET | `/{v}/admin/secret/{secretName}` | Secret detail |
 | GET | `/{v}/admin/secret/{secretName}/access` | Secret access list |
 | GET | `/{v}/admin/audit` | Search audit events |
 | GET | `/{v}/admin/audit/{auditInstanceId}` | Audit events of one secret instance |
-| POST | `/{v}/admops/{operationName}` | Run an admin operation (`add_kek_version`, `run_dbmigration`) |
+| POST | `/{v}/admops/{operationName}` | Run an admin operation (`add_kek_version`, `run_dbmigration` with body `{ "migrationId": "<id>" }`) |
 | POST | `/v1/webhooksubscriptions` | Register a webhook subscription |
 | GET, PATCH, DELETE | `/v1/webhooksubscriptions/{webhookSubscriptionId}` | Read, update or remove a webhook subscription |
 | GET | `/v1/webhooksubscriptions-list` | List webhook subscriptions |
 
 ## MCP
 
-SafeExchange exposes a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents can use secrets and files under the same permissions and audit as people. It is off unless `Features.McpEndpoint` is enabled; when off, the anonymous metadata and OAuth broker routes respond `404`, and `/api/v1/mcp` responds `404` to authenticated callers (an unauthenticated call gets the normal `401`, without the `WWW-Authenticate` challenge, because authentication runs first). The OAuth broker routes additionally need `Mcp:OAuth:ClientId` and `Mcp:OAuth:StateKey`, are throttled per client address (`429` with `Retry-After`) and answer `404` over plain http except to localhost. See [mcp.md](mcp.md) for setup, authentication, the OAuth broker, the tool list and the file transfer flows.
+SafeExchange exposes a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint so AI agents can use secrets and files under the same permissions and audit as people. It is off unless `Features.McpEndpoint` is enabled; when off, the anonymous metadata and OAuth broker routes respond `404`, and `/api/v1/mcp` responds `404` to authenticated callers (an unauthenticated call gets the normal `401`, without the `WWW-Authenticate` challenge, because authentication runs first). The OAuth broker routes additionally need `Mcp:OAuth:ClientId` and `Mcp:OAuth:StateKey`, are throttled per client address (`429` with `Retry-After`) and answer `404` over plain http except to localhost. See [mcp.md](mcp.md) for setup, authentication, the OAuth broker, the tool list and the file transfer flows. A user can use MCP only after opting in (`PATCH /{v}/me/settings` with `{ "mcpAllowed": true }`, see [Personal Settings](#personal-settings)); otherwise `/api/v1/mcp` answers `403` with `subStatus = "mcp_not_allowed"`, or `"mcp_blocked_by_admin"` when an administrator blocked MCP for the user. Applications are not affected.
 
 | Method | Path | Description |
 |--------|------|-------------|

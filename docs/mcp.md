@@ -49,7 +49,29 @@ If `ValidAudiences` has no `api://` entry, set `Authentication:McpScopes` explic
 
 ## Authentication
 
-Every call needs `Authorization: Bearer <token>`, validated exactly like REST (issuer, audience, signature, expiry). The caller is then resolved once per MCP request, before dispatch; a denial (not in the allowed groups, an unregistered or disabled application) returns the same status and body as REST (for example `403`).
+Every call needs `Authorization: Bearer <token>`, validated exactly like REST (issuer, audience, signature, expiry). The caller is then resolved once per MCP request, before dispatch; a denial (not in the allowed groups, an unregistered or disabled application, a user who has not opted in to MCP) returns the same status and body shape as REST (for example `403`).
+
+### User opt-in
+
+A signed-in user can use MCP only after turning it on for their own account. The default is off, for new and existing users.
+
+- **Turn it on or off:** the **Allow MCP** switch in the web app's settings, or `PATCH /api/v2/me/settings` with `{ "mcpAllowed": true }` (or `false`); `GET /api/v2/me/settings` shows the current state. See [api-endpoints.md](api-endpoints.md#personal-settings).
+- **Administrators can block it:** `PATCH /api/v2/admin/users/{upn}/mcp-blocked` with `{ "blocked": true }`. A block overrides the user's choice; while blocked, the user cannot turn MCP on (they can still turn it off). Administrators cannot turn MCP on for a user.
+- **No MCP tool reads or changes the setting**, so an agent cannot grant itself access through MCP.
+- **It applies to users only.** S2S applications are unaffected; disabling the application remains their kill switch.
+
+The setting is read on every MCP message, so a change applies to the next call. Refusals (logged with the user's telemetry id only):
+
+| State | Response |
+|---|---|
+| not turned on | `403`, `{ "status": "forbidden", "subStatus": "mcp_not_allowed", "error": "MCP access is not enabled for this account. Turn on 'Allow MCP' in SafeExchange settings." }` |
+| blocked by an administrator (whatever the user chose) | `403`, `{ "status": "forbidden", "subStatus": "mcp_blocked_by_admin", "error": "MCP access is blocked for this account by an administrator." }` |
+
+Sign-in through the OAuth broker still completes (the broker does not inspect tokens); the first MCP message is refused with the reason.
+
+**Known limitation:** the setting controls use of SafeExchange **through MCP** only. A token obtained through the broker is an ordinary Entra token for the SafeExchange API (in production the broker uses the web app's registration), so software holding it can still call REST, including `PATCH /me/settings`.
+
+**Existing users:** after deploying, run migration `00013` once (`POST /api/v2/admops/run_dbmigration` with `{ "migrationId": "00013" }`, as an administrator). It writes `McpAllowed = false` and `McpBlockedByAdmin = false` onto user documents that predate the setting; it is idempotent. Until it runs, such users already read as off.
 
 ### Signed-in user (OAuth discovery)
 
@@ -323,12 +345,14 @@ Download is `GET /api/v2/secret/<name>/content/<contentId>/all` with the same he
 - **Nothing secret is logged.** Secret values, chunk data, tokens and raw `Mcp-Session-Id` values are never logged by MCP code. Tool names, secret names, status and duration are.
 - **Every call is audited like REST** (when the secret has audit enabled), with `channel = mcp` and the self-reported client label.
 - **No MCP-specific size caps** (owner decision): the existing backend limits and the Functions default request size limit apply. Trade-off: `/api/v1/mcp` buffers the JSON request body in memory (several copies per request), so very large in-band chunks can pressure worker memory. Keep chunks at most 256 KB and use `file_transfer_info` for large files.
-- **Caller resolution costs one set of database lookups per MCP message**, the same as one REST call; that is what lets the kill switch apply on the next call.
+- **Caller resolution costs one set of database lookups per MCP message**, the same as one REST call, plus one read of the Users row for a user caller (the opt-in); that is what lets the kill switch and the opt-in apply on the next call.
 - No `Origin` check is done: the endpoint is remote and needs a bearer token (no cookies), so DNS-rebinding does not apply.
 - **Token redemptions reach Entra from the Function app.** The broker posts authorization-code and refresh-token redemptions to Entra itself, so Entra sees the Function app's outbound IP address, not the user's. IP- or location-based Conditional Access policies and Identity Protection sign-in risk evaluate that address for these requests (the interactive sign-in in the browser still comes from the user's own address).
 - **Broker throttling is per instance and best effort** (see [Rate limits](#rate-limits)); put edge rate limiting in front of the Function app for a hard limit.
 
 ## Client configuration
+
+A user must first turn on MCP for their account (see [User opt-in](#user-opt-in)); until then every call answers `403` with `subStatus = "mcp_not_allowed"`.
 
 ### Copilot CLI
 
@@ -389,7 +413,7 @@ Before enabling MCP anywhere else, deploy the branch to staging (`test` environm
 
 1. **REST regression** with the current web app (v3) and an older web app build (v2): create a secret, upload and download an attachment (hashed and legacy), grant and revoke access, audit view, pinned items, S2S apps pages.
 2. **MCP as an S2S agent:** register an app and grant it on a test secret; move a small file in-band; move a large synthetic file (tens of MB) through `file_transfer_info` and REST with the agent's own token; all SHA-256 values match; disable the app and confirm the next MCP call returns `403`.
-3. **MCP as a user from Copilot CLI** via OAuth discovery through the broker (after the [Entra setup](#entra-setup-once-per-environment)): `/mcp auth safeexchange` opens the browser on the SafeExchange consent page; **Continue** signs in with Entra without an Entra consent prompt and the next tool call succeeds (**Cancel** makes the client report `access_denied`); repeat after the access token expires to see the refresh. If a client cannot complete OAuth, use the `az account get-access-token` header fallback and record the outcome per client.
+3. **MCP as a user from Copilot CLI** via OAuth discovery through the broker (after the [Entra setup](#entra-setup-once-per-environment)): with MCP not yet allowed for the account, sign-in completes and the first tool call returns `403` `mcp_not_allowed`; allow it (`PATCH /api/v2/me/settings` with `{ "mcpAllowed": true }`) and the next call succeeds; block the user as an administrator (`PATCH /api/v2/admin/users/{upn}/mcp-blocked` with `{ "blocked": true }`) and the next call returns `403` `mcp_blocked_by_admin`; unblock again. `/mcp auth safeexchange` opens the browser on the SafeExchange consent page; **Continue** signs in with Entra without an Entra consent prompt and the next tool call succeeds (**Cancel** makes the client report `access_denied`); repeat after the access token expires to see the refresh. If a client cannot complete OAuth, use the `az account get-access-token` header fallback and record the outcome per client.
 4. **Audit:** events from MCP show `channel = mcp` and the client label, REST events show nothing new, and the audit chain verifies including events from before the change.
 5. **Log scan** (Application Insights and Functions logs) for the whole run: no secret values, file content, tokens, authorization codes or code verifiers in traces (request URLs of `/api/oauth/callback` are platform telemetry, see the broker's logging rule).
 
