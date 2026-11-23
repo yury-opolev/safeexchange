@@ -26,7 +26,7 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(response.Headers.GetValues("Content-Type"), Is.EqualTo(new[] { "application/json" }));
             Assert.That(response.Headers.GetValues("Cache-Control"), Is.EqualTo(new[] { "no-store" }));
             Assert.That(BodyOf(response), Is.EqualTo(
-                "{\"resource\":\"https://safeexchange.test/api/mcp\","
+                "{\"resource\":\"https://safeexchange.test/api/v1/mcp\","
                 + $"\"authorization_servers\":[\"https://login.microsoftonline.com/{TenantId}/v2.0\"],"
                 + "\"bearer_methods_supported\":[\"header\"],"
                 + "\"scopes_supported\":[\"api://safeexchange.test/user_impersonation\"]}"));
@@ -40,7 +40,7 @@ namespace SafeExchange.Tests.Mcp
             var response = await this.MetadataHandler.Run(MetadataRequest());
 
             Assert.That(BodyOf(response), Is.EqualTo(
-                "{\"resource\":\"https://safeexchange.test/api/mcp\","
+                "{\"resource\":\"https://safeexchange.test/api/v1/mcp\","
                 + "\"authorization_servers\":[\"https://safeexchange.test/api\"],"
                 + "\"bearer_methods_supported\":[\"header\"],"
                 + "\"scopes_supported\":[\"api://safeexchange.test/user_impersonation\"]}"));
@@ -85,13 +85,13 @@ namespace SafeExchange.Tests.Mcp
             var response = await this.MetadataHandler.Run(MetadataRequest("http://localhost:7071"));
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            Assert.That(BodyOf(response), Does.StartWith("{\"resource\":\"http://localhost:7071/api/mcp\","));
+            Assert.That(BodyOf(response), Does.StartWith("{\"resource\":\"http://localhost:7071/api/v1/mcp\","));
         }
 
         private static TestHttpRequestData MetadataRequest(string origin = "https://safeexchange.test")
         {
             var request = TestFactory.CreateHttpRequestData("get");
-            request.SetUrl(new Uri(origin + "/api/.well-known/oauth-protected-resource"));
+            request.SetUrl(new Uri(origin + "/.well-known/oauth-protected-resource/api/v1/mcp"));
             return request;
         }
     }

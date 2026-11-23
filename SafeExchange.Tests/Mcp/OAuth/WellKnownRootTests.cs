@@ -15,8 +15,9 @@ namespace SafeExchange.Tests.Mcp.OAuth
     using System.Threading.Tasks;
 
     /// <summary>
-    /// The discovery documents at the host root answer exactly like their <c>/api/.well-known/*</c> twins (same
-    /// gating, same <c>https://host/api</c> issuer and resource), and any other root well-known path is a plain 404.
+    /// The discovery documents live only at the host root (there is no <c>/api/.well-known/*</c>): they carry the
+    /// <c>https://host/api</c> issuer and the <c>https://host/api/v1/mcp</c> resource, and any other root well-known
+    /// path (including the former <c>oauth-protected-resource/api/mcp</c>) is a plain 404.
     /// </summary>
     [TestFixture]
     public class WellKnownRootTests : McpOAuthHttpTestBase
@@ -51,19 +52,19 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [Test]
-        public async Task ProtectedResourceApiMcp_IsTheRfc9728Document_ForTheApiMcpResource()
+        public async Task ProtectedResourceApiMcp_IsTheRfc9728Document_ForTheApiV1McpResource()
         {
-            var expected = await this.MetadataHandler.Run(RootRequest("api/.well-known/oauth-protected-resource"));
+            var expected = await this.MetadataHandler.Run(RootRequest(".well-known/oauth-protected-resource/api/v1/mcp"));
 
-            var response = await this.Root.ProtectedResourceApiMcp(RootRequest(".well-known/oauth-protected-resource/api/mcp"));
+            var response = await this.Root.ProtectedResourceApiMcp(RootRequest(".well-known/oauth-protected-resource/api/v1/mcp"));
 
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
             Assert.That(BodyOf(response), Is.EqualTo(BodyOf(expected)));
-            Assert.That(BodyOf(response), Does.StartWith("{\"resource\":\"https://safeexchange.test/api/mcp\",\"authorization_servers\":[\"https://safeexchange.test/api\"]"));
+            Assert.That(BodyOf(response), Does.StartWith("{\"resource\":\"https://safeexchange.test/api/v1/mcp\",\"authorization_servers\":[\"https://safeexchange.test/api\"]"));
         }
 
         [Test]
-        public async Task RootDocuments_AreNotFound_WhileTheirApiTwinsAre()
+        public async Task RootDocuments_AreNotFound_WhileMcpIsDisabled()
         {
             this.BuildProvider(("Features:McpEndpoint", "False"));
 
@@ -71,7 +72,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
             {
                 await this.Root.AuthorizationServerApi(RootRequest(".well-known/oauth-authorization-server/api")),
                 await this.Root.OpenIdConfigurationApi(RootRequest(".well-known/openid-configuration/api")),
-                await this.Root.ProtectedResourceApiMcp(RootRequest(".well-known/oauth-protected-resource/api/mcp")),
+                await this.Root.ProtectedResourceApiMcp(RootRequest(".well-known/oauth-protected-resource/api/v1/mcp")),
             })
             {
                 Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
@@ -90,6 +91,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         }
 
         [TestCase(".well-known/oauth-authorization-server/api/mcp")]
+        [TestCase(".well-known/oauth-protected-resource/api/mcp")]
         [TestCase(".well-known/anything")]
         [TestCase(".well-known/a/b/c")]
         public void NotFound_IsAPlain404(string path)
@@ -103,12 +105,13 @@ namespace SafeExchange.Tests.Mcp.OAuth
         // The Functions host takes the first matching route (by function name), so the catch-all must not match the root documents.
         [TestCase("oauth-authorization-server/api", false)]
         [TestCase("openid-configuration/api", false)]
-        [TestCase("oauth-protected-resource/api/mcp", false)]
+        [TestCase("oauth-protected-resource/api/v1/mcp", false)]
         [TestCase("oauth-authorization-server/api/", false)]
         [TestCase("openid-configuration/api/", false)]
-        [TestCase("oauth-protected-resource/api/mcp/", false)]
-        [TestCase("oauth-protected-resource/api/mcp//", true)]
+        [TestCase("oauth-protected-resource/api/v1/mcp/", false)]
+        [TestCase("oauth-protected-resource/api/v1/mcp//", true)]
         [TestCase("oauth-authorization-server/api/mcp", true)]
+        [TestCase("oauth-protected-resource/api/mcp", true)]
         [TestCase("oauth-authorization-server/apix", true)]
         [TestCase("oauth-protected-resource/api", true)]
         [TestCase("anything", true)]

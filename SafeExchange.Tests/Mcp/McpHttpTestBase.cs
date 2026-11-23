@@ -35,7 +35,7 @@ namespace SafeExchange.Tests.Mcp
     {
         protected const string AgentClientId = "00000000-0000-0000-0000-0000000000c1";
 
-        protected static readonly Uri McpUrl = new("https://safeexchange.test/api/mcp");
+        protected static readonly Uri McpUrl = new("https://safeexchange.test/api/v1/mcp");
 
         private IServiceProvider previousInstanceServices = null!;
 

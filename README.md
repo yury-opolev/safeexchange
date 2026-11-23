@@ -55,7 +55,7 @@ Deploy all required services with one click:
 ```
 SafeExchange.Core/           — Host-agnostic domain models, services, permissions, audit, MCP tools and Azure integrations (no Azure Functions types)
 SafeExchange.Core.Functions/ — Azure Functions-typed handlers, middleware, filters and the MCP HTTP adapters built on SafeExchange.Core
-SafeExchange.Functions/      — Azure Functions HTTP endpoints (the API layer), including the /api/mcp triggers
+SafeExchange.Functions/      — Azure Functions HTTP endpoints (the API layer), including the /api/v1/mcp triggers
 SafeExchange.Tests/          — Unit, contract and integration tests
 deployment/                  — ARM templates for Azure infrastructure
 docs/                        — Architecture and design documentation
@@ -63,7 +63,7 @@ docs/                        — Architecture and design documentation
 
 ## MCP for AI Agents
 
-SafeExchange has a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint (`POST /api/mcp`) so AI agents such as Copilot CLI can store, read and share secrets and files under the same permissions and audit as people. It is off by default (`Features.McpEndpoint`). See [docs/mcp.md](docs/mcp.md) for setup, authentication (signed-in users and S2S agent apps), the tool list and client configuration.
+SafeExchange has a first-party [Model Context Protocol](https://modelcontextprotocol.io) endpoint (`POST /api/v1/mcp`) so AI agents such as Copilot CLI can store, read and share secrets and files under the same permissions and audit as people. It is off by default (`Features.McpEndpoint`). See [docs/mcp.md](docs/mcp.md) for setup, authentication (signed-in users and S2S agent apps), the tool list and client configuration.
 
 ## Documentation
 

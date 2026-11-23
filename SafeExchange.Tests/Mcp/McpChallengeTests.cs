@@ -34,7 +34,7 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
             Assert.That(response.Headers.GetValues("WWW-Authenticate"), Is.EqualTo(new[]
             {
-                "Bearer resource_metadata=\"https://safeexchange.test/api/.well-known/oauth-protected-resource\"",
+                "Bearer resource_metadata=\"https://safeexchange.test/.well-known/oauth-protected-resource/api/v1/mcp\"",
             }));
             Assert.That(BodyOf(response), Is.EqualTo(BodyOf(expected)));
             Assert.That(BodyOf(response), Is.EqualTo("""{"status":"unauthorized","subStatus":"","error":"Bearer token is not present or invalid."}"""));
@@ -52,9 +52,6 @@ namespace SafeExchange.Tests.Mcp
             Assert.That(BodyOf(response), Is.EqualTo(BodyOf(expected)));
         }
 
-        [TestCase("SafeExchange-OAuthProtectedResource", "httpTrigger", false)]
-        [TestCase("SafeExchange-OAuthAuthorizationServerMetadata", "httpTrigger", false)]
-        [TestCase("SafeExchange-OAuthOpenIdConfiguration", "httpTrigger", false)]
         [TestCase("SafeExchange-OAuthRegister", "httpTrigger", false)]
         [TestCase("SafeExchange-OAuthAuthorize", "httpTrigger", false)]
         [TestCase("SafeExchange-OAuthCallback", "httpTrigger", false)]
@@ -67,6 +64,9 @@ namespace SafeExchange.Tests.Mcp
         [TestCase("safeexchange-oauthtoken", "httpTrigger", true)]
         [TestCase("SafeExchange-OAuthToken2", "httpTrigger", true)]
         [TestCase("SafeExchange-OAuth", "httpTrigger", true)]
+        [TestCase("SafeExchange-OAuthProtectedResource", "httpTrigger", true)]
+        [TestCase("SafeExchange-OAuthAuthorizationServerMetadata", "httpTrigger", true)]
+        [TestCase("SafeExchange-OAuthOpenIdConfiguration", "httpTrigger", true)]
         [TestCase("SafeExchange-Mcp", "httpTrigger", true)]
         [TestCase("SafeExchange-SecretMeta", "httpTrigger", true)]
         [TestCase("SafeExchange-Purge", "timerTrigger", false)]

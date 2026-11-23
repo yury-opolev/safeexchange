@@ -256,14 +256,14 @@
                 "False"
             ],
             "metadata": {
-                "description": "Enables the first-party MCP endpoint (POST /api/mcp and /api/.well-known/oauth-protected-resource). When False both routes return 404. Default off; see docs/mcp.md."
+                "description": "Enables the first-party MCP endpoint (POST /api/v1/mcp and the OAuth discovery documents). When False these routes return 404. Default off; see docs/mcp.md."
             }
         },
         "settings-mcp-oauthClientId": {
             "defaultValue": "",
             "type": "string",
             "metadata": {
-                "description": "Application (client) ID of the Entra public client app used by the MCP OAuth broker (/api/oauth/*, /api/.well-known/oauth-authorization-server). Empty: the Mcp--OAuth--ClientId secret is not written (an existing value is kept; without one the broker answers 404). See docs/mcp.md."
+                "description": "Application (client) ID of the Entra public client app used by the MCP OAuth broker (/api/oauth/*, /.well-known/oauth-authorization-server/api). Empty: the Mcp--OAuth--ClientId secret is not written (an existing value is kept; without one the broker answers 404). See docs/mcp.md."
             }
         },
         "settings-mcp-oauthStateKey": {

@@ -57,19 +57,19 @@ Key endpoint groups:
 | `POST/GET/PATCH/DELETE /{v}/access/{secretId}` | Grant, list, change or revoke permissions |
 | `POST/PATCH/DELETE /{v}/accessrequest/{secretId}`, `GET /{v}/accessrequest-list` | Request and approve/deny access |
 | `/{v}/pinnedgroups*`, `/{v}/group-search`, `/{v}/groups-list` | Search and pin Entra ID groups |
-| `POST /api/mcp`, `GET /api/.well-known/oauth-protected-resource` | First-party MCP endpoint (feature-flagged, see below) |
+| `POST /api/v1/mcp`, `GET /.well-known/oauth-protected-resource/api/v1/mcp` | First-party MCP endpoint (feature-flagged, see below) |
 
 The full list is in [api-endpoints.md](api-endpoints.md).
 
 ### MCP Endpoint
 
-AI agents reach SafeExchange through a first-party [MCP](mcp.md) endpoint (`POST /api/mcp`, stateless streamable HTTP, sixteen tools) behind `Features.McpEndpoint`. Layering:
+AI agents reach SafeExchange through a first-party [MCP](mcp.md) endpoint (`POST /api/v1/mcp`, stateless streamable HTTP, sixteen tools) behind `Features.McpEndpoint`. Layering:
 
-- `SafeExchange.Functions` holds the two triggers (`SafeMcp`, `SafeOAuthMetadata`).
+- `SafeExchange.Functions` holds the MCP triggers (`SafeMcp`, `SafeMcpOAuth`, `SafeWellKnownRoot`).
 - `SafeExchange.Core.Functions/Mcp` adapts them (`McpHandler`: feature flag, caller resolution, body, session header; `OAuthProtectedResourceHandler`).
 - `SafeExchange.Core/Mcp` holds the host-agnostic JSON-RPC dispatcher and the tools. The tools call the same `SafeExchange.Core/Services` as the REST handlers, with a `Caller` whose channel is `mcp`, so permissions, validation and audit are identical to REST; audit events additionally record the channel and the client's self-reported label.
 
-The same bearer-token middleware protects `/api/mcp`; with MCP enabled, `401` responses carry a `WWW-Authenticate` challenge pointing to the protected-resource metadata. Projects that host their own Functions app and authentication: see [consumer-migration.md](consumer-migration.md).
+The same bearer-token middleware protects `/api/v1/mcp`; with MCP enabled, `401` responses carry a `WWW-Authenticate` challenge pointing to the protected-resource metadata at the host root (`/.well-known/oauth-protected-resource/api/v1/mcp`). Projects that host their own Functions app and authentication: see [consumer-migration.md](consumer-migration.md).
 
 ### Data Layer — Cosmos DB
 
@@ -125,13 +125,13 @@ SafeExchange.Core/
 SafeExchange.Core.Functions/  — Azure Functions-typed code (references SafeExchange.Core, never the reverse)
 ├── Functions/             — HTTP handlers for each endpoint (the secret, content, chunk, commit, access and audit handlers are thin adapters over Core's Services)
 ├── Middleware/            — Authentication middleware (JWT validation), token filter, session and API-version telemetry
-├── Mcp/                   — McpHandler (/api/mcp), OAuthProtectedResourceHandler, McpRoutes
+├── Mcp/                   — McpHandler (/api/v1/mcp), OAuthProtectedResourceHandler, McpRoutes
 ├── Requests/Filters/      — Global authorization filters (HTTP wrappers; the global-group decision is Core's GlobalAccessPolicy)
 ├── Utilities/             — ActionResults, TokenHelperHttpExtensions, CallerDenialHttpExtensions, ServiceResultHttpExtensions
 └── SafeExchangeFunctionsStartup.cs — Worker middleware and Functions-typed DI registrations
 
 SafeExchange.Functions/
-├── Functions/             — HTTP-triggered Azure Function definitions, including the MCP triggers (SafeMcp, SafeOAuthMetadata); handlers come from DI
+├── Functions/             — HTTP-triggered Azure Function definitions, including the MCP triggers (SafeMcp, SafeMcpOAuth, SafeWellKnownRoot); handlers come from DI
 ├── AdminFunctions/        — Admin-only endpoints
 └── Program.cs            — DI container setup and app bootstrap
 

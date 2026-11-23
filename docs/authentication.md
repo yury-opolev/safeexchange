@@ -30,7 +30,7 @@ Applications must be pre-registered in SafeExchange before they can access the A
 
 ### MCP
 
-The [MCP endpoint](mcp.md) (`POST /api/mcp`, when `Features.McpEndpoint` is on) uses the same token validation and caller resolution as REST, so both users and registered applications can call it. With MCP enabled, `401` responses carry `WWW-Authenticate: Bearer resource_metadata="…"` pointing to `/api/.well-known/oauth-protected-resource`. Disabling an application stops its MCP access on the next call.
+The [MCP endpoint](mcp.md) (`POST /api/v1/mcp`, when `Features.McpEndpoint` is on) uses the same token validation and caller resolution as REST, so both users and registered applications can call it. With MCP enabled, `401` responses carry `WWW-Authenticate: Bearer resource_metadata="…"` pointing to `/.well-known/oauth-protected-resource/api/v1/mcp`. Disabling an application stops its MCP access on the next call.
 
 ## Authorization
 

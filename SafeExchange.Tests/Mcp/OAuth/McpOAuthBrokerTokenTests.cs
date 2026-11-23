@@ -25,7 +25,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 ("code_verifier", Verifier),
                 ("redirect_uri", ClientRedirect),
                 ("client_id", BrokerClientId),
-                ("resource", "https://safeexchange.test/api/mcp"),
+                ("resource", "https://safeexchange.test/api/v1/mcp"),
                 ("client_secret", "should-never-reach-entra"),
                 ("scope", "openid https://graph.microsoft.com/.default"));
 
@@ -49,7 +49,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
         [Test]
         public async Task RefreshToken_IsForwardedWithTheBrokersClientAndScope_AndNothingElse()
         {
-            var body = Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("client_id", BrokerClientId), ("resource", "https://safeexchange.test/api/mcp"), ("client_secret", "x"));
+            var body = Query(("grant_type", "refresh_token"), ("refresh_token", FakeEntraTokenClient.RefreshToken), ("client_id", BrokerClientId), ("resource", "https://safeexchange.test/api/v1/mcp"), ("client_secret", "x"));
 
             var result = await this.Broker.TokenAsync(ApiBase, body);
 
