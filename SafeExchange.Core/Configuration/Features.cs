@@ -47,7 +47,7 @@ namespace SafeExchange.Core.Configuration
         public bool RedactTelemetryPii { get; set; } = false;
 
         /// <summary>
-        /// Enables the MCP endpoint (<c>POST /api/mcp</c>) and its protected-resource metadata. When false both
+        /// Enables the MCP endpoint (<c>POST /api/v1/mcp</c>) and its protected-resource metadata. When false both
         /// routes answer 404 and 401 responses carry no <c>WWW-Authenticate</c> challenge.
         /// Read live (IOptionsMonitor), so it can be toggled without a redeploy.
         /// </summary>

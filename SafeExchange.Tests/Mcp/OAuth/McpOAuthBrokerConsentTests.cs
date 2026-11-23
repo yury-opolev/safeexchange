@@ -55,7 +55,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 ("prompt", prompt),
                 ("login_hint", "user@contoso.test"),
                 ("scope", "openid profile https://graph.microsoft.com/Mail.Read api://other/.default"),
-                ("resource", "https://safeexchange.test/api/mcp")));
+                ("resource", "https://safeexchange.test/api/v1/mcp")));
             var posted = fields.Append(new KeyValuePair<string, string>("prompt", prompt));
 
             var (_, parameters) = SplitLocation(this.Broker.AuthorizeConsent(ApiBase, ConsentForm.Post(posted), nonce).Location);

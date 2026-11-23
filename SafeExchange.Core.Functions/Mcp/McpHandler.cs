@@ -19,7 +19,7 @@ namespace SafeExchange.Core.Functions.Mcp
     using System.Threading.Tasks;
 
     /// <summary>
-    /// Functions adapter for <c>/api/mcp</c>: feature flag, method check and caller resolution (a denial is
+    /// Functions adapter for <c>/api/v1/mcp</c>: feature flag, method check and caller resolution (a denial is
     /// answered exactly like REST, before any MCP processing), then <see cref="McpRequestDispatcher"/>.
     /// </summary>
     public sealed class McpHandler
@@ -86,7 +86,7 @@ namespace SafeExchange.Core.Functions.Mcp
         }
 
         /// <summary>
-        /// The REST API base of this host, e.g. <c>https://host/api/</c> for <c>https://host/api/mcp</c>.
+        /// The REST API base of this host, e.g. <c>https://host/api/</c> for <c>https://host/api/v1/mcp</c>.
         /// </summary>
         public static Uri ApiBaseUri(Uri requestUrl)
         {

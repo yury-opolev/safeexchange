@@ -12,7 +12,7 @@ namespace SafeExchange.Core.Mcp.OAuth
     /// </summary>
     public static class McpOAuthPaths
     {
-        public const string Mcp = "mcp";
+        public const string Mcp = "v1/mcp";
 
         public const string AuthorizationServerMetadata = ".well-known/oauth-authorization-server";
 

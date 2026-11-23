@@ -80,7 +80,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
                 ("prompt", "none"),
                 ("login_hint", "user@contoso.test"),
                 ("scope", "openid profile"),
-                ("resource", "https://safeexchange.test/api/mcp"),
+                ("resource", "https://safeexchange.test/api/v1/mcp"),
                 ("nonce", "n-0S6_WzA2Mj"),
                 ("redirect_to", "https://evil.example/")));
 

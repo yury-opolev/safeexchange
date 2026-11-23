@@ -15,8 +15,8 @@ namespace SafeExchange.Functions
     /// <summary>
     /// OAuth discovery documents at the host root. The platform answers 502 to paths outside the route prefix, and
     /// MCP clients probe the root well-known URLs first (a 5xx there is fatal, a 404 moves on to the next candidate).
-    /// The documents are the ones served under <c>/api/.well-known/*</c>, with the same feature gating and the same
-    /// <c>https://host/api</c> issuer and resource; every other <c>/.well-known/*</c> path answers a plain 404.
+    /// These are the only discovery documents (there is no <c>/api/.well-known/*</c>), with the same feature gating and the
+    /// <c>https://host/api</c> issuer and <c>https://host/api/v1/mcp</c> resource; every other <c>/.well-known/*</c> path answers a plain 404.
     /// </summary>
     // Anonymous: SafeExchangeFunctionsStartup.IsAuthenticatedHttpTrigger excludes these functions from the auth middleware.
     public class SafeWellKnownRoot

@@ -35,7 +35,7 @@ namespace SafeExchange.Tests.Mcp.OAuth
 
             Assert.That(McpOAuthPaths.Issuer(apiBase), Is.EqualTo("https://saex.example:8443/api"));
             Assert.That(McpOAuthPaths.Endpoint(apiBase, McpOAuthPaths.Callback), Is.EqualTo("https://saex.example:8443/api/oauth/callback"));
-            Assert.That(McpOAuthPaths.Endpoint(apiBase, McpOAuthPaths.Mcp), Is.EqualTo("https://saex.example:8443/api/mcp"));
+            Assert.That(McpOAuthPaths.Endpoint(apiBase, McpOAuthPaths.Mcp), Is.EqualTo("https://saex.example:8443/api/v1/mcp"));
         }
     }
 }

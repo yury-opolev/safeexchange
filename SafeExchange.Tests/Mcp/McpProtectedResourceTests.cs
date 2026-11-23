@@ -73,7 +73,7 @@ namespace SafeExchange.Tests.Mcp
             var metadata = resource.ToMetadata(ApiBase);
 
             Assert.That(resource.IsBrokerConfigured, Is.False);
-            Assert.That(metadata.Resource, Is.EqualTo("https://safeexchange.test/api/mcp"));
+            Assert.That(metadata.Resource, Is.EqualTo("https://safeexchange.test/api/v1/mcp"));
             Assert.That(metadata.AuthorizationServers, Is.EqualTo(new[] { Authority + "/v2.0" }));
             Assert.That(metadata.ScopesSupported, Is.EqualTo(new[] { "api://safeexchange.test/user_impersonation" }));
             Assert.That(metadata.BearerMethodsSupported, Is.EqualTo(new[] { "header" }));
@@ -87,7 +87,7 @@ namespace SafeExchange.Tests.Mcp
             var metadata = resource.ToMetadata(ApiBase);
 
             Assert.That(resource.IsBrokerConfigured, Is.True);
-            Assert.That(metadata.Resource, Is.EqualTo("https://safeexchange.test/api/mcp"));
+            Assert.That(metadata.Resource, Is.EqualTo("https://safeexchange.test/api/v1/mcp"));
             Assert.That(metadata.AuthorizationServers, Is.EqualTo(new[] { "https://safeexchange.test/api" }));
             Assert.That(metadata.ScopesSupported, Is.EqualTo(new[] { "api://safeexchange.test/user_impersonation" }));
         }

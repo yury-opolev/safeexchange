@@ -10,16 +10,15 @@ namespace SafeExchange.Core.Functions.Mcp
 
     /// <summary>
     /// Routes and function names of the MCP triggers. The route constants are relative to the default <c>api</c>
-    /// route prefix (<see cref="RoutePrefix"/>), so the metadata document lives at
-    /// <c>/api/.well-known/oauth-protected-resource</c> (the <c>WWW-Authenticate</c> challenge points there).
-    /// The OAuth broker's issuer is <c>https://host/api</c>, so its metadata is served at
-    /// <c>/api/.well-known/openid-configuration</c> (the issuer-relative form MCP clients try) and
-    /// <c>/api/.well-known/oauth-authorization-server</c>.
+    /// route prefix (<see cref="RoutePrefix"/>), so the MCP endpoint lives at <c>/api/v1/mcp</c> and the OAuth broker
+    /// endpoints at <c>/api/oauth/*</c>. The broker's issuer is <c>https://host/api</c> and its metadata is served
+    /// only at the host root (below), in the RFC 8414 path-insertion form; there are no <c>/api/.well-known/*</c> routes.
     /// An app that sets <c>extensions.http.routePrefix</c> to <c>""</c> (as SafeExchange.Functions does) prefixes
-    /// these with <see cref="ApiRoutePrefix"/> to keep the public paths. Such an app can also serve the root
-    /// documents below: the platform answers 502 to paths outside the route prefix, so the documents are served at
+    /// the relative routes with <see cref="ApiRoutePrefix"/> to keep the public paths. Such an app can also serve the
+    /// root documents below: the platform answers 502 to paths outside the route prefix, so the documents are served at
     /// the host root in the forms MCP clients probe (the issuer path or the resource path appended to the
-    /// well-known segment, RFC 8414 / RFC 9728), and any other <c>/.well-known/*</c> path answers 404.
+    /// well-known segment, RFC 8414 / RFC 9728), and any other <c>/.well-known/*</c> path answers 404. The
+    /// <c>WWW-Authenticate</c> challenge points at the root protected-resource document.
     /// </summary>
     public static class McpRoutes
     {
@@ -33,12 +32,6 @@ namespace SafeExchange.Core.Functions.Mcp
         public const string Mcp = McpOAuthPaths.Mcp;
 
         public const string ProtectedResourceMetadataDocument = ".well-known/oauth-protected-resource";
-
-        public const string ProtectedResourceMetadata = ProtectedResourceMetadataDocument;
-
-        public const string OAuthAuthorizationServerMetadata = McpOAuthPaths.AuthorizationServerMetadata;
-
-        public const string OAuthOpenIdConfiguration = McpOAuthPaths.OpenIdConfiguration;
 
         public const string OAuthRegister = McpOAuthPaths.Register;
 
@@ -57,14 +50,8 @@ namespace SafeExchange.Core.Functions.Mcp
 
         // The Functions host tries the routes in function-name order and takes the first match (it does not prefer
         // literal routes), so the catch-all itself excludes the three root documents above (with an optional trailing slash).
-        public const string WellKnownNotFound = ".well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/mcp)/?$).*$)}";
+        public const string WellKnownNotFound = ".well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/v1/mcp)/?$).*$)}";
         public const string McpFunctionName = "SafeExchange-Mcp";
-
-        public const string ProtectedResourceMetadataFunctionName = "SafeExchange-OAuthProtectedResource";
-
-        public const string OAuthAuthorizationServerMetadataFunctionName = "SafeExchange-OAuthAuthorizationServerMetadata";
-
-        public const string OAuthOpenIdConfigurationFunctionName = "SafeExchange-OAuthOpenIdConfiguration";
 
         public const string OAuthRegisterFunctionName = "SafeExchange-OAuthRegister";
 
@@ -82,16 +69,16 @@ namespace SafeExchange.Core.Functions.Mcp
 
         public const string WellKnownNotFoundFunctionName = "SafeExchange-WellKnownNotFound";
 
-        public const string ProtectedResourceMetadataPath = "/" + ApiRoutePrefix + ProtectedResourceMetadata;
+        /// <summary>
+        /// The path of the protected-resource metadata the <c>WWW-Authenticate</c> challenge points to (RFC 9728, resource <c>/api/v1/mcp</c>).
+        /// </summary>
+        public const string ProtectedResourceMetadataPath = "/" + WellKnownProtectedResourceApiMcp;
 
         /// <summary>
         /// The functions the authentication middleware skips, matched by exact (ordinal) name.
         /// </summary>
         public static IReadOnlySet<string> AnonymousFunctionNames { get; } = new HashSet<string>(StringComparer.Ordinal)
         {
-            ProtectedResourceMetadataFunctionName,
-            OAuthAuthorizationServerMetadataFunctionName,
-            OAuthOpenIdConfigurationFunctionName,
             OAuthRegisterFunctionName,
             OAuthAuthorizeFunctionName,
             OAuthCallbackFunctionName,

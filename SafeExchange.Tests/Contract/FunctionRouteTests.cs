@@ -54,12 +54,9 @@ namespace SafeExchange.Tests.Contract
             "SafeExchange-GroupsList|get|api/{apiVersion}/groups-list",
             "SafeExchange-ListAccessRequests|get|api/{apiVersion}/accessrequest-list",
             "SafeExchange-ListSecretMeta|get|api/{apiVersion}/secret-list",
-            "SafeExchange-Mcp|delete,get,post|api/mcp",
-            "SafeExchange-OAuthAuthorizationServerMetadata|get|api/.well-known/oauth-authorization-server",
+            "SafeExchange-Mcp|delete,get,post|api/v1/mcp",
             "SafeExchange-OAuthAuthorize|get,post|api/oauth/authorize",
             "SafeExchange-OAuthCallback|get|api/oauth/callback",
-            "SafeExchange-OAuthOpenIdConfiguration|get|api/.well-known/openid-configuration",
-            "SafeExchange-OAuthProtectedResource|get|api/.well-known/oauth-protected-resource",
             "SafeExchange-OAuthRegister|post|api/oauth/register",
             "SafeExchange-OAuthToken|post|api/oauth/token",
             "SafeExchange-PinnedGroupsList|get|api/{apiVersion}/pinnedgroups-list",
@@ -94,8 +91,8 @@ namespace SafeExchange.Tests.Contract
             // Root routes for OAuth discovery (the platform answers 502 to anything outside the route prefix).
             "SafeExchange-WellKnownAuthorizationServerApi|get|.well-known/oauth-authorization-server/api",
             "SafeExchange-WellKnownOpenIdConfigurationApi|get|.well-known/openid-configuration/api",
-            "SafeExchange-WellKnownProtectedResourceApiMcp|get|.well-known/oauth-protected-resource/api/mcp",
-            "SafeExchange-WellKnownNotFound|get|.well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/mcp)/?$).*$)}",
+            "SafeExchange-WellKnownProtectedResourceApiMcp|get|.well-known/oauth-protected-resource/api/v1/mcp",
+            "SafeExchange-WellKnownNotFound|get|.well-known/{*rest:regex(^(?!(oauth-authorization-server/api|openid-configuration/api|oauth-protected-resource/api/v1/mcp)/?$).*$)}",
         };
 
         [Test]
@@ -118,6 +115,53 @@ namespace SafeExchange.Tests.Contract
                 .Where(f => !f[2].StartsWith("api/", StringComparison.Ordinal) && !f[2].StartsWith(".well-known/", StringComparison.Ordinal));
 
             Assert.That(outsideApi, Is.Empty);
+        }
+
+        [Test]
+        public void NoRoute_StartsWithApiWellKnown()
+        {
+            var routes = DiscoverFunctions(ReadRoutePrefix()).Select(f => f.Split('|')[2]);
+
+            Assert.That(routes.Where(r => r.StartsWith("api/.well-known", StringComparison.OrdinalIgnoreCase)), Is.Empty);
+        }
+
+        // The MCP endpoint must not be shadowed by an api/{apiVersion}/... route, and nothing may answer the removed /api/.well-known/* paths.
+        [Test]
+        public void McpEndpoint_IsTheOnlyRouteThatCanMatchItsPath()
+        {
+            Assert.That(RoutesMatching("api/v1/mcp"), Is.EqualTo(new[] { "SafeExchange-Mcp" }));
+        }
+
+        [TestCase("api/.well-known/oauth-protected-resource")]
+        [TestCase("api/.well-known/oauth-authorization-server")]
+        [TestCase("api/.well-known/openid-configuration")]
+        [TestCase("api/mcp")]
+        public void RemovedPaths_AreMatchedByNoRoute(string path)
+        {
+            Assert.That(RoutesMatching(path), Is.Empty);
+        }
+
+        private static List<string> RoutesMatching(string path)
+        {
+            var segments = path.Split('/');
+            return DiscoverFunctions(ReadRoutePrefix())
+                .Select(f => f.Split('|'))
+                .Where(f => Matches(f[2], segments))
+                .Select(f => f[0])
+                .ToList();
+        }
+
+        // Route templates by segments: literals compare ignoring case, {parameters} match any segment and a {*catch-all} the rest.
+        private static bool Matches(string template, string[] segments)
+        {
+            var catchAllIndex = template.IndexOf("{*", StringComparison.Ordinal);
+            var templateSegments = (catchAllIndex < 0 ? template : template[..catchAllIndex]).Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (catchAllIndex < 0 ? templateSegments.Length != segments.Length : templateSegments.Length >= segments.Length)
+            {
+                return false;
+            }
+
+            return templateSegments.Zip(segments).All(pair => pair.First.StartsWith('{') || string.Equals(pair.First, pair.Second, StringComparison.OrdinalIgnoreCase));
         }
 
         // name|methods|path, where path is the route prefix from host.json joined with the trigger route.

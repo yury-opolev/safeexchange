@@ -21,18 +21,6 @@ namespace SafeExchange.Functions
             this.handler = handler ?? throw new ArgumentNullException(nameof(handler));
         }
 
-        [Function(McpRoutes.OAuthAuthorizationServerMetadataFunctionName)]
-        public Task<HttpResponseData> AuthorizationServerMetadata(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.ApiRoutePrefix + McpRoutes.OAuthAuthorizationServerMetadata)]
-            HttpRequestData request)
-            => this.handler.Metadata(request);
-
-        [Function(McpRoutes.OAuthOpenIdConfigurationFunctionName)]
-        public Task<HttpResponseData> OpenIdConfiguration(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.ApiRoutePrefix + McpRoutes.OAuthOpenIdConfiguration)]
-            HttpRequestData request)
-            => this.handler.Metadata(request);
-
         [Function(McpRoutes.OAuthRegisterFunctionName)]
         public Task<HttpResponseData> Register(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = McpRoutes.ApiRoutePrefix + McpRoutes.OAuthRegister)]

@@ -56,7 +56,7 @@ builder.UseWhen<SessionCorrelationMiddleware>(IsHttpTrigger);
 builder.UseWhen<ApiVersionTelemetryMiddleware>(IsHttpTrigger);
 ```
 
-`IsAuthenticatedHttpTrigger` is every HTTP trigger except the anonymous MCP functions listed in `McpRoutes.AnonymousFunctionNames` (the protected-resource metadata and the six OAuth broker functions), matched by exact name.
+`IsAuthenticatedHttpTrigger` is every HTTP trigger except the anonymous MCP functions listed in `McpRoutes.AnonymousFunctionNames` (the four OAuth broker functions and the four root well-known ones), matched by exact name.
 
 A consumer with its own authentication does **not** use `ConfigureWorkerDefaults` (it would add our `DefaultAuthenticationMiddleware`). It registers its own authentication middleware first and then calls `UseSafeExchangeMiddleware`:
 
@@ -112,11 +112,11 @@ If you implement these interfaces, update the implementations; callers are sourc
 
 `Features.McpEndpoint` (default `false`) and `Authentication:McpScopes` (optional) are new; see [mcp.md](mcp.md#enabling). `SafeExchangeStartup.ConfigureServices` already registers the MCP tools, dispatcher and protected-resource facts (`AddSafeExchangeMcp()`).
 
-`Mcp:OAuth:ClientId` (optional, `McpOAuthOptions`) turns on the OAuth broker for MCP clients; see [mcp.md](mcp.md#oauth-broker-for-entra-id). `SafeExchangeStartup.ConfigureServices` binds the `Mcp:OAuth` section, and `AddSafeExchangeMcp()` also registers `McpOAuthBroker` and `IEntraTokenClient` (`EntraTokenClient`, named `HttpClient` `SafeExchange.McpOAuth.EntraToken`: 10 s timeout, no redirects). A host that calls `AddSafeExchangeMcp()` without `ConfigureServices` must bind `McpOAuthOptions` to `Mcp:OAuth` itself. `McpProtectedResource` now also takes `IOptionsMonitor<McpOAuthOptions>`, and `ToMetadata()` became `ToMetadata(Uri apiBaseUri)`: the published `resource` is the MCP URL (`https://<host>/api/mcp`) instead of the `api://` identifier.
+`Mcp:OAuth:ClientId` (optional, `McpOAuthOptions`) turns on the OAuth broker for MCP clients; see [mcp.md](mcp.md#oauth-broker-for-entra-id). `SafeExchangeStartup.ConfigureServices` binds the `Mcp:OAuth` section, and `AddSafeExchangeMcp()` also registers `McpOAuthBroker` and `IEntraTokenClient` (`EntraTokenClient`, named `HttpClient` `SafeExchange.McpOAuth.EntraToken`: 10 s timeout, no redirects). A host that calls `AddSafeExchangeMcp()` without `ConfigureServices` must bind `McpOAuthOptions` to `Mcp:OAuth` itself. `McpProtectedResource` now also takes `IOptionsMonitor<McpOAuthOptions>`, and `ToMetadata()` became `ToMetadata(Uri apiBaseUri)`: the published `resource` is the MCP URL (`https://<host>/api/v1/mcp`) instead of the `api://` identifier.
 
 ## 8. Exposing MCP (optional)
 
-Add the two triggers to your Functions app, and a third for the OAuth broker. `McpHandler`, `OAuthProtectedResourceHandler` and `McpOAuthHandler` come from DI (`ConfigureFunctionsServices`); the route constants and function names are in `SafeExchange.Core.Functions.Mcp.McpRoutes`.
+Add the MCP trigger to your Functions app, and a second for the OAuth broker (plus `SafeWellKnownRoot` for discovery, below). `McpHandler`, `OAuthProtectedResourceHandler` and `McpOAuthHandler` come from DI (`ConfigureFunctionsServices`); the route constants and function names are in `SafeExchange.Core.Functions.Mcp.McpRoutes`.
 
 ```csharp
 public class SafeMcp
@@ -141,23 +141,6 @@ public class SafeMcp
     }
 }
 
-public class SafeOAuthMetadata
-{
-    private readonly OAuthProtectedResourceHandler handler;
-
-    public SafeOAuthMetadata(OAuthProtectedResourceHandler handler)
-    {
-        this.handler = handler;
-    }
-
-    // Anonymous: SafeExchangeFunctionsStartup.IsAuthenticatedHttpTrigger excludes this function from authentication.
-    [Function(McpRoutes.ProtectedResourceMetadataFunctionName)]
-    public Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.ProtectedResourceMetadata)]
-        HttpRequestData request)
-        => this.handler.Run(request);
-}
-
 public class SafeMcpOAuth
 {
     private readonly McpOAuthHandler handler;
@@ -167,17 +150,7 @@ public class SafeMcpOAuth
         this.handler = handler;
     }
 
-    // Anonymous, like the metadata: all six names are in McpRoutes.AnonymousFunctionNames.
-    [Function(McpRoutes.OAuthAuthorizationServerMetadataFunctionName)]
-    public Task<HttpResponseData> AuthorizationServerMetadata(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.OAuthAuthorizationServerMetadata)] HttpRequestData request)
-        => this.handler.Metadata(request);
-
-    [Function(McpRoutes.OAuthOpenIdConfigurationFunctionName)]
-    public Task<HttpResponseData> OpenIdConfiguration(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = McpRoutes.OAuthOpenIdConfiguration)] HttpRequestData request)
-        => this.handler.Metadata(request);
-
+    // Anonymous: the four names are in McpRoutes.AnonymousFunctionNames.
     [Function(McpRoutes.OAuthRegisterFunctionName)]
     public Task<HttpResponseData> Register(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = McpRoutes.OAuthRegister)] HttpRequestData request)
@@ -202,11 +175,13 @@ public class SafeMcpOAuth
 
 Requirements:
 
-- Your authentication middleware must skip the anonymous functions (`McpRoutes.AnonymousFunctionNames`: the metadata, the six broker functions and the four root well-known functions), which is what `IsAuthenticatedHttpTrigger` does.
+- Your authentication middleware must skip the anonymous functions (`McpRoutes.AnonymousFunctionNames`: the four broker functions and the four root well-known functions), which is what `IsAuthenticatedHttpTrigger` does.
 - The metadata is derived from the request URL and the `Authentication` section (`Authority`, `ValidAudiences`, `McpScopes`); the broker also needs `Mcp:OAuth:ClientId` and an Entra public client app (see [mcp.md](mcp.md#entra-setup-once-per-environment)).
-- The route constants (`McpRoutes.Mcp` is `mcp`, `McpRoutes.ProtectedResourceMetadata` is `.well-known/oauth-protected-resource`, and so on) are relative to the default `api` route prefix (`McpRoutes.RoutePrefix`). A consumer that keeps the default prefix uses them unchanged, as in the code above: the public paths are `/api/mcp` and `/api/.well-known/...`, matching the challenge URL and `file_transfer_info` URLs, which assume `/api/...`. Such a consumer does not register the root routes below, so the root discovery documents are not served; Azure answers `502` to paths outside the route prefix, and Copilot CLI treats that during discovery as fatal, so signing in from Copilot CLI needs the empty route prefix and the root routes.
-- A consumer that adopts an empty route prefix (`extensions.http.routePrefix` set to `""` in `host.json`, as SafeExchange.Functions does) prefixes the routes with `McpRoutes.ApiRoutePrefix` (`api/`), so the public paths stay the same: `Route = McpRoutes.ApiRoutePrefix + McpRoutes.Mcp` (`api/mcp`), and likewise for the metadata and the broker routes (the `{apiVersion}` routes use `api/{apiVersion}`).
-- `SafeWellKnownRoot` adds the root discovery routes (`/.well-known/oauth-authorization-server/api`, `/.well-known/openid-configuration/api`, `/.well-known/oauth-protected-resource/api/mcp`, each with an optional trailing slash handled by the catch-all exclusion, and a `/.well-known/{*rest}` catch-all answering `404`). They are for apps with an empty route prefix (`McpRoutes.WellKnown*` are root routes, used as they are) and their function names are in `McpRoutes.AnonymousFunctionNames`; see [mcp.md](mcp.md#discovery-at-the-host-root).- If your principals' claims differ from ours, register your own `ICallerResolver` (section 5); the MCP handler resolves the caller through it for every request.
+- The route constants (`McpRoutes.Mcp` is `v1/mcp`, the broker routes are `oauth/register` and so on) are relative to the default `api` route prefix (`McpRoutes.RoutePrefix`). A consumer that keeps the default prefix uses them unchanged, as in the code above: the public paths are `/api/v1/mcp` and `/api/oauth/*`. There are no `/api/.well-known/*` routes: the discovery documents are served only at the host root (below), and the `401` challenge points at `/.well-known/oauth-protected-resource/api/v1/mcp`. Azure answers `502` to paths outside the route prefix, and Copilot CLI treats that during discovery as fatal, so a consumer needs the empty route prefix and the root routes for MCP sign-in to work.
+- A consumer that adopts an empty route prefix (`extensions.http.routePrefix` set to `""` in `host.json`, as SafeExchange.Functions does) prefixes the routes with `McpRoutes.ApiRoutePrefix` (`api/`), so the public paths stay the same: `Route = McpRoutes.ApiRoutePrefix + McpRoutes.Mcp` (`api/v1/mcp`), and likewise for the broker routes (the `{apiVersion}` routes use `api/{apiVersion}`). `api/v1/mcp` is a fixed path, not an `{apiVersion}` route, and must not be matched by any other route of the app.
+- `SafeWellKnownRoot` adds the root discovery routes (`/.well-known/oauth-authorization-server/api`, `/.well-known/openid-configuration/api`, `/.well-known/oauth-protected-resource/api/v1/mcp`, each with an optional trailing slash handled by the catch-all exclusion, and a `/.well-known/{*rest}` catch-all answering `404`). They are for apps with an empty route prefix (`McpRoutes.WellKnown*` are root routes, used as they are) and their function names are in `McpRoutes.AnonymousFunctionNames`; see [mcp.md](mcp.md#discovery-at-the-host-root).
+- Breaking change from the earlier MCP routes: the endpoint moved from `/api/mcp` to `/api/v1/mcp` (no alias), and `McpRoutes.ProtectedResourceMetadata`, `OAuthAuthorizationServerMetadata`, `OAuthOpenIdConfiguration` and their function names are gone together with the `/api/.well-known/*` triggers (the `SafeOAuthMetadata` trigger class and the two metadata functions of `SafeMcpOAuth`); `McpRoutes.ProtectedResourceMetadataPath` is now the root path `/.well-known/oauth-protected-resource/api/v1/mcp`. Re-register the MCP server in clients with the new URL.
+- If your principals' claims differ from ours, register your own `ICallerResolver` (section 5); the MCP handler resolves the caller through it for every request.
 
 ## Migration checklist
 
