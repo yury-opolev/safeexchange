@@ -25,14 +25,14 @@ The dispatcher and tools live in `SafeExchange.Core/Mcp` and depend only on the 
 | Setting | Key Vault secret | ARM parameter | Default |
 |---------|------------------|---------------|---------|
 | `Features:McpEndpoint` | `Features--McpEndpoint` (`True` / `False`) | `settings-features-mcpEndpoint` | `False` |
-| `Authentication:McpScopes` (optional) | `Authentication--McpScopes` | — (set the secret by hand) | empty |
+| `Authentication:McpScopes` (optional) | `Authentication--McpScopes` | `settings-authentication-mcpScopes` (written only when not empty) | empty |
 | `Mcp:OAuth:ClientId` (optional) | `Mcp--OAuth--ClientId` | `settings-mcp-oauthClientId` (written only when not empty) | empty (OAuth broker off) |
 | `Mcp:OAuth:StateKey` (with the client ID) | `Mcp--OAuth--StateKey` | `settings-mcp-oauthStateKey` (`securestring`; leave it unset; written only when `settings-mcp-oauthClientId` is not empty) | empty (OAuth broker off); the ARM default is a new random key per deployment |
 | `Mcp:OAuth:RateLimit:*` (optional) | `Mcp--OAuth--RateLimit--*` | — (set the secret by hand) | see [Rate limits](#rate-limits) |
 
 - With the flag off, `GET /api/.well-known/oauth-protected-resource` and the [OAuth broker](#oauth-broker-for-entra-id) routes (all anonymous) answer `404`. `POST /api/mcp` answers `404` to authenticated callers; an unauthenticated call gets the normal `401` from authentication, because authentication runs before the handler checks the flag (it is deliberately not skipped based on the flag). Either way `401` responses carry no `WWW-Authenticate` challenge while the flag is off.
 - The flag is read live (`IOptionsMonitor`), so no redeploy is needed. Key Vault configuration is reloaded every 5 minutes; restart the Function app to apply a change immediately.
-- Production should keep the flag off until it is enabled explicitly. Staging (`test` environment) is where it is validated first (see [Staging validation](#staging-validation)).
+- Staging (`test` environment) is where changes are validated first (see [Staging validation](#staging-validation)). Production enables MCP and the broker in `services-parameters-prd.arm.json` (client ID of the production app, `settings-authentication-mcpScopes` = `https://spaceoysteroutlook.onmicrosoft.com/user_impersonation`, because its `ValidAudiences` has no `api://` entry).
 - The `deployment\current\arm` templates define `settings-features-mcpEndpoint` (default `False`) and the `Features--McpEndpoint` secret, like the other `Features--*` settings, and `settings-mcp-oauthClientId` (default empty) for the `Mcp--OAuth--ClientId` secret, which is written only when the parameter is not empty (like `AADClient--ClientSecret`), so a value set by hand survives later deployments. Under the same condition the template writes `Mcp--OAuth--StateKey` from `settings-mcp-oauthStateKey`, a `securestring` whose default is `[base64(concat(newGuid(), newGuid()))]` (72 random-GUID bytes; ARM allows `newGuid()` only inside a parameter default). The parameter is deliberately absent from the parameter files, so every deployment rotates the key; only sign-ins in progress at that moment fail and are simply started again.
 
 **Derived defaults.** The protected-resource metadata and `file_transfer_info` are derived from the request URL and the existing `Authentication` section:
@@ -393,4 +393,4 @@ Before enabling MCP anywhere else, deploy the branch to staging (`test` environm
 4. **Audit:** events from MCP show `channel = mcp` and the client label, REST events show nothing new, and the audit chain verifies including events from before the change.
 5. **Log scan** (Application Insights and Functions logs) for the whole run: no secret values, file content, tokens, authorization codes or code verifiers in traces (request URLs of `/api/oauth/callback` are platform telemetry, see the broker's logging rule).
 
-Production keeps `Features--McpEndpoint = False` until it is explicitly enabled.
+Production enables MCP through its parameter file after the staging run passes; turn it off again with `settings-features-mcpEndpoint = "False"` (or the `Features--McpEndpoint` secret, see above).
